@@ -1,6 +1,47 @@
-# Ignore data/ directory
-/dat/
-
 # Ignore .ipynb_checkpoints/ directories anywhere in the repo
 **/.ipynb_checkpoints/
+
+# macOS system files
+.DS_Store
+.LSOverride
+
+# Thumbnails
+._*
+
+# Spotlight
+.Spotlight-V100
+
+# Trash
+.Trashes
+
+# macOS system logs
+*.swp
+*.lock
+
+# macOS resource forks
+*.fseventsd
+.fseventsd
+
+# macOS metadata
+*.DocumentRevisions-V100
+.DocumentRevisions-V100
+.TemporaryItems
+.apdisk
+.VolumeIcon.icns
+
+# macOS disk image files
+*.dmg
+
+# iCloud files
+*.icloud
+
+# Finder settings
+Icon?
+
+# R temporary files
+*.Rhistory
+*.Rapp.history
+*.RData
+*.Ruserdata
+.Rproj.user/
 

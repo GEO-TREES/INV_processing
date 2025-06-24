@@ -1,10 +1,15 @@
 # Workflows for processing GEO-TREES plot data
 
-Each Jupyter notebook (`*.ipynb`) is designed to run on a single site containing multiple plots.
+Each R script (`*.R`) is designed to run on a single site containing multiple plots.
 
-* `01_subplot_polys.ipynb` - creates `subplot_polys.gpkg`, containing polygons defining subplots within plots. 
-* `02_subplot_summ.ipynb` - creates `subplot_summ.csv`, containing summary statistics generated for each subplot.
+* `01_subplot_polys.R` - creates `subplot_polys.gpkg`, containing polygons defining subplots within plots. 
+* `02_subplot_summ.R` - creates `subplot_summ.csv`, containing summary statistics generated for each subplot.
 
+To convert R scripts to Jupyter notebooks for deployment on MAAP:
+
+```sh
+jupyter nbconvert --to script *.ipynb
+```
 
 To prevent committing the outputs of Jupyter notebooks to this repository, add the following to `./git/hooks/pre-commit`:
 

@@ -252,11 +252,12 @@ bearing <- function(x, y, name = NULL, deg = FALSE) {
 #'     subplots, a vector of length two for rectangular subplots with given 
 #'     width and length, or a list of vectors, one for each plot in the same
 #'     row order as `x`.
-#' @param align alignment of subplots relative to `x`. "north" = true north,
-#'     "centre" = centre of plot in orientation of plot edge, "SW", "NW", "NE", 
-#'     or "SE" = to corner of plot in orientation of plot edge. Either a single
-#'     value or a vector of values, one for each plot in the same row order as
-#'     `x`.
+#' @param TODO: align alignment of subplots relative to `x`. "north" = true north
+#'     grid overlay, "centre" = centre of plot in orientation of plot edge, "SW", 
+#'     "NW", "NE", or "SE" = to corner of plot in orientation of plot edge.
+#'     Either a single value, a vector of values one for each plot in the same
+#'     row order as `x`, or an sf object containing points defining the
+#'     alignment in the same row order as `x` 
 #' @param angle optional vector of angle value describing plot orientation
 #'     along bearing edge, in radians. Only needed if align != "north". Either
 #'     a single value or a vector of values, one for each plot in the same row
@@ -266,7 +267,7 @@ bearing <- function(x, y, name = NULL, deg = FALSE) {
 #' @return 
 #' 
 #' @importFrom sf st_make_grid st_sf st_centroid st_cast st_combine st_union st_geometry st_crs st_intersection st_area st_drop_geometry 
-#' @importFrom dplyr bind_rows
+#' @importFrom dplyr bind_rows left_join
 #' @importFrom units drop_units
 #' 
 #' @export
@@ -328,7 +329,7 @@ subplotSplit <- function(x, dim, align = "north", angle = NULL, name = NULL) {
 
       xg <- sf::st_make_grid(x[i,], cellsize = dim[[i]])
 
-      g <- sf::st_sf(x[rep(i, times = length(xg)),], geometry = xg)
+      g <- sf::st_sf(st_drop_geometry(x[rep(i, times = length(xg)),]), geometry = xg)
 
     } else if (align[i] %in% c("centre", "SW", "NW", "NE", "SE")) {
 
@@ -381,25 +382,37 @@ subplotSplit <- function(x, dim, align = "north", angle = NULL, name = NULL) {
 
     }
 
-    # Add subplot IDs
-    gid <- cbind(subplot_id = seq_len(nrow(g)), g)
+    gid <- cbind(row_id = seq_len(nrow(g)), g)
 
-    # Add areas
+    # Calculate intersecting area of subplot polygons
     int <- sf::st_intersection(gid, x)
     int$int_area <- units::drop_units(sf::st_area(int)) * 0.0001
+
+    # Calculate area of subplot polygons
     gid$area <- units::drop_units(sf::st_area(gid)) * 0.0001
-    gint <- left_join(
+
+    # Join intersecting and total area
+    gint <- dplyr::left_join(
       gid[,c(names(gid)[1], "area")], 
       sf::st_drop_geometry(int[,c(names(int)[1], "int_area")]),
       by = names(gid)[1])
     gint$int_area[is.na(gint$int_area)] <- 0
-    gint$area_prop <- round(gint$int_area, 2) / round(gint$area, 2)
 
+    # Calculate proportional coverage to four decimal places (1 m^2)
+    gint$area_prop <- round(gint$int_area, 4) / round(gint$area, 4)
+
+    # Exclude subplots with less than 1 m^2 overlap
+    gfil <- gint[gint$area_prop > 0,!names(gint) == "row_id"]
+
+    # Add ID values
     if (!is.null(name)) {
-      gint <- st_sf(data.frame(sf::st_drop_geometry(x[i,name]), gint))
+      gfil <- st_sf(data.frame(sf::st_drop_geometry(x[i,name]), gfil))
     }
 
-    gint
+    # Add subplot IDs
+    gout <- cbind(subplot_id = seq_len(nrow(gfil)), gfil)
+
+    gout
   }))
 
   # Return

@@ -10,15 +10,20 @@
 #' @export
 #' 
 isSFType <- function(x, type = NULL) {
-  inherits(x, c("sf", "sfc")) && 
-    all(sf::st_geometry_type(x, by_geometry = FALSE) %in% type) | is.null(type)
+  inherits(x, c("sf", "sfc")) && (is.null(type) |
+    all(sf::st_geometry_type(x, by_geometry = FALSE) %in% type))
 }
 
-#' Extract specific corner coordinates from sf polygons
+#' Extract corner coordinates from sf polygons
 #'
 #' @param x sf object containing plot polygons, assumes all are rectangular
-#' @param origin vector of corner direction values either "SW", "NW", "NE", "SE"
+#' @param origin corner direction values either "SW", "NW", "NE", "SE". Either
+#'     a single value for all plots, a vector with length equal to the number
+#'     of rows in `x` with a single value per plot, or a list with length equal
+#'     to the number of rows in `x` with a vector of values per plot. If NULL,
+#'     or a vector or list element is NA, all corners are returned.
 #' @param name optional column names in `x` to include in output
+#' @param sf logical, if TRUE, an sf object is returned, otherwise a dataframe
 #'
 #' @return sf object containing corner points 
 #' 
@@ -27,18 +32,18 @@ isSFType <- function(x, type = NULL) {
 #' 
 #' @export
 #' 
-polyCornerExtract <- function(x, corner = "SW", name = NULL) { 
+polyCornerExtract <- function(x, corner = NULL, name = NULL, sf = TRUE) { 
 
   # Check arguments
   if (!is.null(name) && any(!name %in% colnames(x))) {
     stop("All values in 'name' must be columns in 'x'")
   }
 
-  if (!length(corner) %in% c(1, nrow(x))) {
+  if (!is.null(corner) && !length(corner) %in% c(1, nrow(x))) {
     stop("length of 'corner' must be 1 or the number of rows in 'x'")
   }
 
-  if (!all(corner %in% c("SW", "NW", "NE", "SE"))) {
+  if (!is.null(corner) && !all(corner %in% c("SW", "NW", "NE", "SE"))) {
     stop("all values in 'corner' must be 'SW', 'NW', 'NE', or 'SE'")
   }
 
@@ -47,7 +52,11 @@ polyCornerExtract <- function(x, corner = "SW", name = NULL) {
   }
 
   # Repeat corner direction if necessary
-  if (length(corner) == 1) { 
+  if (!is.null(corner) && !inherits(corner, "list")) {
+    corner <- list(corner)
+  }
+
+  if (length(corner) == 1) {
     corner <- rep(corner, nrow(x))
    }
 
@@ -58,32 +67,49 @@ polyCornerExtract <- function(x, corner = "SW", name = NULL) {
 
     # Extract corner coordinates
     xc <- as.data.frame(sf::st_coordinates(sf::st_union(xsel)))
-    xc$sum <- xc$X + xc$Y
-    xc$diff <- xc$X - xc$Y
-    xc$label <- NA_character_
-    xc$label[which.min(xc$sum)] <- "SW"
-    xc$label[which.max(xc$diff)] <- "SE"
-    xc$label[which.max(xc$sum)] <- "NE"
-    xc$label[which.min(xc$diff)] <- "NW"
 
-    # Select chosen corner coordinate
-    xs <- unlist(xc[xc$label == corner[i] & !is.na(xc$label), 1:2])
+    if (!is.null(corner) && !is.na(corner[[i]])) { 
+      xc$sum <- xc$X + xc$Y
+      xc$diff <- xc$X - xc$Y
+      xc$label <- NA_character_
+      xc$label[which.min(xc$sum)] <- "SW"
+      xc$label[which.max(xc$diff)] <- "SE"
+      xc$label[which.max(xc$sum)] <- "NE"
+      xc$label[which.min(xc$diff)] <- "NW"
+
+      # Select chosen corner coordinate(s)
+      xs <- xc[xc$label %in% sort(corner[[i]]) & !is.na(xc$label), 1:2]
+      xs$corner_id <- sort(corner[[i]])
+    } else {
+      xs <- xc
+      xs$corner_id <- seq_len(nrow(xs))
+    } 
 
     # Return selected corner coordinate(s)
-    sf::st_sf(x[i,name], 
-      geometry = sf::st_sfc(sf::st_point(xs), 
-      crs = sf::st_crs(x)))
+    g <- sf::st_sfc(lapply(1:nrow(xs), function(j) {
+        sf::st_point(as.matrix(xs[j,1:2]))
+      }), crs = sf::st_crs(x))
+    d <- sf::st_drop_geometry(x[rep(i, nrow(xs)), name])
+    d$corner_id <- xs$corner_id
+    sf::st_sf(d, geometry = g)
   }))
+
+  if (!sf) { 
+    out <- cbind(sf::st_drop_geometry(out), sf::st_coordinates(out))
+  }
 
   # Return
   return(out)
 }
 
-#' Perform a rotation on an sf object
+#' Perform rotation on geometry objects
 #'
-#' @param x sf object
-#' @param origin sf object with origin of rotation 
+#' @param x either an sf object, a vector of length two with X and Y 
+#'     coordinates, or a matrix with two columns.
+#' @param origin either an sf object with origins of rotation, a vector of
+#'     length two with X and Y coordinates, or a matrix with two columns.
 #' @param angle vector of angle values, in radians
+#' @param sf logical, if TRUE, an sf object is returned, otherwise a dataframe
 #' 
 #' @return
 #'
@@ -91,7 +117,7 @@ polyCornerExtract <- function(x, corner = "SW", name = NULL) {
 #'
 #' @export
 #' 
-rotation <- function(x, origin, angle) { 
+rotation <- function(x, origin, angle, sf = TRUE) { 
 
   # Check arguments
   if (!length(angle) %in% c(1, nrow(x))) {
@@ -102,33 +128,41 @@ rotation <- function(x, origin, angle) {
     stop("all values in 'angle' must be numeric")
   }
 
-  if (!isSFType(x)) { 
-    stop("'x' must be an sf object")
+  if (isSFType(origin) && !isSFType(origin, "POINT")) {
+    stop("'origin' sf objects must contain only POINT")
   }
 
-  if (!isSFType(origin, "POINT")) {
-    stop("'origin' must be an sf object containing only POINT")
-  }
-
-  if (!length(sf::st_geometry(origin)) %in% c(1, nrow(x))) {
+  if (isSFType(origin) && !length(sf::st_geometry(origin)) %in% c(1, nrow(x))) {
     stop("number of geometries in 'origin' must be 1 or the number of rows in 'x'")
   }
 
-  # Repeat corner direction if necessary
-  if (length(angle) == 1) { 
-    angle <- rep(angle, nrow(x))
-   }
+  if (!isSFType(origin) && !nrow(origin) %in% c(1, nrow(x))) {
+    stop("number of geometries in 'origin' must be 1 or the number of rows in 'x'")
+  }
+
+  # Convert origins to matrix if necessary
+  if (isSFType(origin)) {
+    origin <- st_coordinates(origin)[,1:2]
+  }
 
   # Repeat origins of rotation if necessary
-  if (length(sf::st_geometry(origin)) == 1) { 
-    origin <- rep(sf::st_geometry(origin), nrow(x))
-   }
+  if (!isSFType(origin) & !inherits(origin, "matrix")) { 
+    origin <- matrix(rep(origin, nrow(x)), ncol = 2, byrow = TRUE)
+  }
 
-  # Extract geometries
-  xg <- sf::st_geometry(x)
+  # Repeat angles of rotation if necessary
+  if (length(angle) == 1) { 
+    angle <- rep(angle, nrow(x))
+  }
 
-  # Create empty list to fill with rotated geometries
-  rg <- vector("list", length = length(xg))
+  # Convert x to list of matrices if necessary
+  if (!isSFType(x) & !inherits(x, "matrix")) {
+    xm <- list(matrix(x, ncol = 2, byrow = TRUE))
+  }
+
+  if (isSFType(x)) {
+    xm <- lapply(seq_len(nrow(x)), function(i) { sf::st_coordinates(x[i,]) })
+  }
 
   # Define helper functions to do rotation
   rot <- function(a) { 
@@ -141,27 +175,31 @@ rotation <- function(x, origin, angle) {
   }
 
   # For each geometry
-  for (i in seq_along(xg)) {
+  rg <- lapply(seq_along(xm), function(i) {
+    # Rotate coordinates
+    rot_fn(xm[[i]][,1:2], origin[i,], angle[i])
+  })
 
-    # Extract geometries
-    g <- xg[[i]]
-    o <- sf::st_coordinates(origin[i, ])
-    a <- angle[i]
+  # Optionally construct sf object
+  if (sf == TRUE) {
+    rg <- lapply(seq_along(rg), function(i) {
+      switch(as.character(sf::st_geometry_type(x[i,])),
+        POLYGON = sf::st_polygon(rg[i]),
+        LINESTRING = sf::st_linestring(rg[[i]]),
+        POINT = sf::st_point(rg[[i]]),
+        stop("Unsupported geometry type")
+      )
+    })
 
-    # Handle geometry types: POLYGON and MULTIPOLYGON
-    rg[[i]] <- switch(as.character(sf::st_geometry_type(g)),
-      POLYGON = sf::st_polygon(lapply(g, rot_fn, o, a)),
-      MULTIPOLYGON = sf::st_multipolygon(lapply(g, function(p) lapply(p, rot_fn, o, a))),
-      LINESTRING = sf::st_linestring(rot_fn(g, o, a)),
-      MULTILINESTRING = sf::st_multilinestring(lapply(g, rot_fn, o, a)),
-      POINT = sf::st_point(rot_fn(matrix(g, nrow = 1), o, a)),
-      MULTIPOINT = sf::st_multipoint(rot_fn(g, o, a)),
-      stop("Unsupported geometry type")
-    )
+    # Construct output sf object
+    out <- sf::st_sf(st_drop_geometry(x), geometry = sf::st_sfc(rg, crs = sf::st_crs(x)))
+  } else {
+    out <- dplyr::bind_rows(lapply(seq_along(rg), function(i) {
+      cds <- as.data.frame(rg[[i]])
+      names(cds) <- c("X", "Y")
+      cbind(st_drop_geometry(x[i,]), cds)
+    }))
   }
-
-  # Construct output sf object
-  out <- sf::st_sf(x, geometry = sf::st_sfc(rg, crs = sf::st_crs(x)))
 
   # Return
   return(out)
@@ -191,73 +229,27 @@ rotation2 <- function(x, origin, angle) {
   return(xro)
 }
 
-#' Calculate the bearings between pairs of points
-#'
-#' @param x sf points containing origin points
-#' @param y sf points containing end points, in the same row order as `x`
-#' @param name optional column names in `x` and `y` to include in output 
-#' @param deg if TRUE angle returned in degrees rather than radians
-#'
-#' @return numeric vector or dataframe (if name provided) with angles of bearing
-#' 
-#' @export
-#' 
-bearing <- function(x, y, name = NULL, deg = FALSE) {
-
-  # Checks 
-  if (!is.null(name) && any(!name %in% colnames(x))) {
-    stop("All values in 'name' must be columns in 'x' and 'y'")
-  }
-
-  if (!isSFType(x, c("POINT")) | 
-        !isSFType(y, c("POINT"))) { 
-    stop("'x' and 'y' must be sf objects containing only POINT")
-  }
-
-  # Define function to do the calculation
-  bearing_fn <- function(x, y) {
-    theta <- atan2(y[2] - x[2], y[1] - x[1])
-    if (deg) { theta <- theta * 180 / pi }
-    return(theta)
-  }
-
-  # Optionally order x and y by names
-  if (!is.null(name)) { 
-    xkey <- apply(st_drop_geometry(x[,name]), 1, paste, collapse = "::")
-    ykey <- apply(st_drop_geometry(y[,name]), 1, paste, collapse = "::")
-    yord <- y[match(xkey, ykey),]
-    if (any(is.na(yord[,name]))) {
-      stop("Values in 'name' do not match across 'x' and 'y'")
-    }
-  }
-
-  # For each starting point
-  out <- unlist(lapply(seq_len(nrow(x)), function(i) {
-    unname(bearing_fn(sf::st_coordinates(x)[i,], sf::st_coordinates(yord)[i,]))
-  }))
-
-  # Add names
-  if (!is.null(name)) {
-    out <- st_drop_geometry(cbind(x[,name], angle = out))
-  }
-
-  # Return
-  return(out)
-}
-
 #' Split a plot into regular subplots
 #'
-#' @param x sf object containing plot polygons 
+#' @param x sf object containing plot corners as point geometries, or a list of
+#'     dataframes containing corner coordinates
+#' @param rel_x column name with X coordinate of relative corner position in `x`
+#' @param rel_y column name with Y coordinate of relative corner position in `x`
+#' @param loc_x optional column name with X coordinate of corner position in `x`, only required if `x` is not an SF object
+#' @param loc_y optional column name with Y coordinate of corner position in `x`, only required if `x` is not an SF object
 #' @param dim dimensions of subplots, either a single value for square
 #'     subplots, a vector of length two for rectangular subplots with given 
 #'     width and length, or a list of vectors, one for each plot in the same
 #'     row order as `x`.
-#' @param TODO: align alignment of subplots relative to `x`. "north" = true north
+#' @param align alignment of subplots relative to `x`. "north" = true north
 #'     grid overlay, "centre" = centre of plot in orientation of plot edge, "SW", 
 #'     "NW", "NE", or "SE" = to corner of plot in orientation of plot edge.
 #'     Either a single value, a vector of values one for each plot in the same
 #'     row order as `x`, or an sf object containing points defining the
 #'     alignment in the same row order as `x` 
+#' @param warp logical, if true, the subplots can be warped to fit a
+#'     non-perfect polygon, relying instead on the stated plot size in `rel_x`
+#'     and `rel_y`
 #' @param angle optional vector of angle value describing plot orientation
 #'     along bearing edge, in radians. Only needed if align != "north". Either
 #'     a single value or a vector of values, one for each plot in the same row
@@ -272,11 +264,20 @@ bearing <- function(x, y, name = NULL, deg = FALSE) {
 #' 
 #' @export
 #' 
-subplotSplit <- function(x, dim, align = "north", angle = NULL, name = NULL) { 
+subplotSplit <- function(x, rel_x, rel_y, loc_x = NULL, loc_y = NULL, 
+  dim, align = "north", warp = FALSE, angle = NULL, name = NULL) { 
 
   # Check arguments
   if (!is.null(name) && any(!name %in% colnames(x))) {
     stop("All values in 'name' must be columns in 'x'")
+  }
+
+  if (any(!c(rel_x, rel_y) %in% colnames(x))) {
+    stop("'rel_x' and 'rel_y' must be columns in 'x'")
+  }
+
+  if (!isSFType(x) & (is.null(loc_x) | is.null(loc_y))) {
+    stop("If 'x' is not an sf object, 'loc_x' and 'loc_y' must be provided")
   }
 
   if (!length(dim) %in% c(1, 2, nrow(x))) {
@@ -295,8 +296,8 @@ subplotSplit <- function(x, dim, align = "north", angle = NULL, name = NULL) {
     stop("all values in 'dim' must be numeric")
   }
 
-  if (!isSFType(x, c("POLYGON"))) { 
-    stop("'x' must be an sf object containing only POLYGON")
+  if (!isSFType(x, c("POINT"))) { 
+    stop("'x' must be an sf object containing only POINT")
   }
 
   if (!all(align %in% c("north", "centre", "SW", "NW", "NE", "SE"))) {
@@ -567,4 +568,44 @@ subplotSumm <- function(x, group, area, agb, ba, wd) {
       wd_ba_wm = weighted.mean(.data[[wd]], .data[[ba]]),
       ba_ha = sum(.data[[ba]], na.rm = TRUE) / area)
 }
+
+#' Measure polygon edge lengths
+#'
+#' @param x sf object containing polygons
+#'
+#' @return list of unit vectors with lengths of all edges in each polygon
+#' 
+#' @export
+#' 
+polyEdgeLength <- function(x) { 
+  if (!isSFType(x, "POLYGON")) {
+    stop("'x' must be an sf object containing only POLYGONS")
+  }
+
+  # For each polygon
+  out <- lapply(seq_len(nrow(x)), function(i) {
+    # Extract coordinates matrix
+    cds <- st_coordinates(x[i,])[,1:2]
+
+    # Create edge combinations
+    n <- nrow(cds)
+    edges <- cbind(cds[1:(n-1), ], cds[2:n, ])
+
+    # Convert to LINESTRING
+    lines_sf <- st_sfc(lapply(seq_len(nrow(edges)), function(y) { 
+      st_linestring(matrix(c(edges[y,1], edges[y,2], edges[y,3], edges[y,4]), 
+         ncol = 2, byrow = TRUE))
+    }), crs = st_crs(x))
+
+    # Calculate length
+    st_length(lines_sf)
+  })
+
+  # Return
+  return(out)
+}
+
+
+
+
 

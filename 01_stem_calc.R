@@ -1,9 +1,13 @@
-# Create subplot-level summary statistics from tree inventory data
+# Estimate stem-level above-ground woody biomass from tree inventory data
 # John L. Godlee (johngodlee@gmail.com)  
-# Last updated: 2025-06-18# Define directories
+# Last updated: 2025-06-18
 
-indir <- "../dat/clean/panama"
-outdir <- "../dat/clean/panama"
+# Define site ID
+BRM_site <- "Panama Canal"
+
+# Define directories
+indir <- file.path("../../../dat/raw", BRM_site)
+outdir <- file.path("../../../dat/clean", BRM_site)
 
 # Packages
 library(dplyr)

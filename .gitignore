@@ -1,3 +1,6 @@
+# Ignore data directory
+/dat/
+
 # Ignore .ipynb_checkpoints/ directories anywhere in the repo
 **/.ipynb_checkpoints/
 

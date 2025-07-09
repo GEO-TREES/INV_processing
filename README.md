@@ -1,9 +1,12 @@
 # Workflows for processing GEO-TREES plot data
 
-Each R script (`*.R`) is designed to run on a single site containing multiple plots.
+This repository contains code to clean and process tree-inventory data from GEO-TREES sites
 
-* `01_subplot_polys.R` - creates `subplot_polys.gpkg`, containing polygons defining subplots within plots. 
-* `02_subplot_summ.R` - creates `subplot_summ.csv`, containing summary statistics generated for each subplot.
+Each directory in `./sites/` contains scripts to clean data from a single GEO-TREES site.
+
+* `./func.R` - frequently used functions.
+* `00_env.R` - packages to be installed from non-CRAN sources
+* `01_wd.R` - preparation of wood density dataset
 
 To convert R scripts to Jupyter notebooks for deployment on MAAP:
 
@@ -30,3 +33,13 @@ then
 fi
 ```
 
+Outputs from each site include:
+
+* `plots.csv` - Plot metadata table, where each row is a plot. 
+* `census.csv` - Census metadata table, where each row is a census within a plot. 
+* `stems.csv` - Stem measurements table, where each row is a stem measurement. 
+* `polys.gpkg` - Plot polygons.
+* `pts.gpkg` - Points locating the corners of plots, with additional columns describing the stem map coordinate system.
+* `polys_sub.gpkg` - Polygons of 50x50 m (0.25 ha) subplots.
+* `pts_sub.gpkg` - Points locating the corners of 50x50 m (0.25 ha) subplots.
+* `sub_summ.csv` - Subplot summary statistics.

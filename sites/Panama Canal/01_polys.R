@@ -81,8 +81,8 @@ polys <- bind_rows(gigante_poly, bci50ha_poly, ctfssmall_poly,
 
 # Cast polygons to points
 polys_pts <- st_cast(polys, "POINT") %>% 
-  dplyr::select(Plot_name) %>% 
-  group_by(Plot_name) %>%
+  dplyr::select(BRM_site, Plot_name) %>% 
+  group_by(BRM_site, Plot_name) %>%
   slice_head(n = -1) %>% 
   mutate(corner_id = row_number()) %>% 
   mutate(

@@ -38,17 +38,18 @@ s_clean <- s %>%
     x_rel,
     y_rel, 
     diam,
-    family,
     genus,
     species)
 
 s2_clean <- s2 %>% 
   filter(
     as.numeric(DBH) != -9,
-    Status %in% c("alive", "broken below"),
     PlotName %in% c("bci", "P12", "P14", "P06", "P15", "elcharco", "metrop", 
       "soberania", "FincaRoubik", "sherman")) %>% 
   mutate(
+    alive = ifelse(Status %in% c("alive", "broken below"), 1, 0),
+    broken = ifelse(Status == "broken below", 1, 0),
+    missing = ifelse(Status == "missing", 1, 0),
     Plot_name = case_when(
       PlotName == "bci" ~ "BCI 50 ha plot",
       PlotName == "elcharco" ~ "ElCharco",
@@ -74,7 +75,6 @@ s2_clean <- s2 %>%
     x_rel, 
     y_rel,
     diam,
-    family = Family, 
     genus = Genus,
     species = SpeciesName) 
 
@@ -86,7 +86,7 @@ s_all <- bind_rows(s_clean, s2_clean) %>%
   filter(is.finite(x_rel), is.finite(y_rel), is.finite(diam)) %>% 
   mutate(
     census_id = paste(BRM_site, Plot_name, 2023, sep = "_"),
-    measurement_id = paste(BRM_site, Plot_name, census_date, row_number(), sep = "_"),
+    measurement_id = paste(census_id, row_number(), sep = "_"),
     taxon_name_orig = paste(genus, species),
     taxon_name_orig = gsub("NA NA", "Indet indet", taxon_name_orig)) %>% 
   dplyr::select(
@@ -98,7 +98,6 @@ s_all <- bind_rows(s_clean, s2_clean) %>%
     x_rel,
     y_rel,
     diam,
-    taxon_family_orig = family,
     taxon_name_orig) 
 
 # Check all columns in stems table

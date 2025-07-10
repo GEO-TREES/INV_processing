@@ -15,7 +15,7 @@ outdir <- "../../dat/sites/Panama Canal/04_wd"
 # Import data 
 taxa <- read.csv("../../dat/sites/Panama Canal/03_taxa/taxa.csv")
 stems <- read.csv("../../dat/sites/Panama Canal/02_stem_fmt/stems.csv")
-wd <- read.csv("../../dat/01_wd/wd_raw/wd.csv")
+wd <- read.csv("../../dat/01_wd/wd.csv")
 
 # Join taxonomy data to stem data
 stems_taxa <- left_join(stems, taxa, by = "measurement_id")
@@ -24,8 +24,8 @@ stems_taxa <- left_join(stems, taxa, by = "measurement_id")
 wd_out <- wdGen(stems_taxa, wd, 
   regional = FALSE,
   measurement_id = "measurement_id",
-  site_id = "BRM_site",
-  plot_id = "Plot_name",
+  site_id = "site_id",
+  plot_id = "plot_name",
   family = "taxon_family_acc",
   genus = "taxon_genus_acc",
   species = "taxon_species_acc",

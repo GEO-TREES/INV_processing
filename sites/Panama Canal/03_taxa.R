@@ -3,7 +3,7 @@
 # Last updated: 2025-07-09
 
 # Define site ID
-BRM_site <- "Panama Canal"
+site_id <- "Panama Canal"
 
 # Define directories
 indir <- "../../dat/sites/Panama Canal/02_stem_fmt"
@@ -62,7 +62,7 @@ s_taxa <- merge(s, taxa, by = "taxon_name_orig", all.x = TRUE, sort = FALSE)
 stopifnot(all(!is.na(s_taxa$taxon_name_acc[!is.na(s_taxa$taxon_name_sanit)])))
 
 # Add site name to lookup
-lookup_out <- cbind(BRM_site = BRM_site, lookup)
+lookup_out <- cbind(site_id = site_id, lookup)
 
 # Write appended lookup table to file
 write.csv(lookup, file.path(outdir, "lookup.csv"), row.names = FALSE)

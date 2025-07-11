@@ -19,11 +19,11 @@ p_cent <- st_centroid(polys) %>%
   st_transform(4326) %>% 
   cbind(., st_coordinates(.)) %>% 
   st_drop_geometry() %>% 
-  dplyr::select(plot_name, X, Y)
+  dplyr::select(plot_id, X, Y)
 
 # Add plot centres to stem data
 s_cent <- s %>% 
-  left_join(., p_cent, by = "plot_name")
+  left_join(., p_cent, by = "plot_id")
 
 stopifnot(all(!is.na(s_cent$X)))
 stopifnot(all(!is.na(s_cent$Y)))
@@ -37,3 +37,4 @@ out <- s_cent %>%
 
 # Write to file
 write.csv(out, file.path(outdir, "height.csv"), row.names = FALSE)
+

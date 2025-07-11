@@ -12,8 +12,8 @@ site_id <- "Panama Canal"
 indir <- "../../dat/sites/Panama Canal/raw"
 outdir <- "../../dat/sites/Panama Canal/02_stem_fmt"
 
-# Import stem column descriptions
-stems_cols <- read.csv("../../dat/templates/stem_fmt_cols.csv")
+# Import column descriptions
+stems_cols <- read.csv("../../dat/templates/stems_cols.csv")
 
 # Import stem data from Gigante
 # c/o Suzanne Lao, Helene Muller-Landau
@@ -34,12 +34,12 @@ s_clean <- s %>%
     alive = 1,
     census_date = format(as.Date(as.character(date23), format = "%Y%m%d"), "%Y-%m-%d"),
     diam = dbh23 / 10,
-    plot_name = "Gigante fertilization plot",
+    plot_id = "Gigante fertilization plot",
     x_rel = as.numeric(gx23),
     y_rel = as.numeric(gy23)
   ) %>% 
   dplyr::select(
-    plot_name, 
+    plot_id, 
     census_date,
     stem_id = tag,
     x_rel,
@@ -66,7 +66,7 @@ s2_clean <- s2 %>%
     liana = 0,
     missing = 0,
     fallen = ifelse(grepl("Y", ListOfTSM), 1, 0),
-    plot_name = case_when(
+    plot_id = case_when(
       PlotName == "bci" ~ "BCI 50 ha plot",
       PlotName == "elcharco" ~ "ElCharco",
       PlotName == "metrop" ~ "Metrop",
@@ -78,15 +78,15 @@ s2_clean <- s2 %>%
     x_rel = as.numeric(PX),
     y_rel = as.numeric(PY),
     x_rel = case_when(
-      plot_name == "San Lorenzo B" ~ x_rel - 140,
+      plot_id == "San Lorenzo B" ~ x_rel - 140,
       TRUE ~ x_rel),
     y_rel = case_when(
-      plot_name == "San Lorenzo B" ~ y_rel - 40,
+      plot_id == "San Lorenzo B" ~ y_rel - 40,
       TRUE ~ y_rel),
     pom = as.numeric(HOM)
   ) %>% 
   dplyr::select(
-    plot_name, 
+    plot_id, 
     census_date = ExactDate,
     subplot_id = QuadratID,
     stem_id = StemID,
@@ -105,24 +105,28 @@ s2_clean <- s2 %>%
 # Join stems tables
 # Add metadata to stems
 s_all <- bind_rows(s_clean, s2_clean) %>% 
-  mutate(site_id) %>% 
-  filter(is.finite(x_rel), is.finite(y_rel), is.finite(diam)) %>% 
   mutate(
+    site_id,
+    census_id = 2023,
     height = NA_real_,
-    measurement_id = paste(site_id, plot_name, stem_id, row_number(), sep = ":"),
-    stem_id = paste(site_id, plot_name, stem_id, sep = ":"),
-    census_id = paste(site_id, plot_name, 2023, sep = ":"),
-    plot_id = paste(site_id, plot_name, sep = ":"),
     taxon_name_orig = paste(genus, species),
-    taxon_name_orig = gsub("NA NA", "Indet indet", taxon_name_orig)) %>% 
+    taxon_name_orig = gsub("NA NA", "Indet indet", taxon_name_orig)) %>%
+  group_by(site_id, plot_id, census_id, stem_id) %>% 
+  mutate(measurement_id = paste(row_number(), sep = ":")) %>% 
+  ungroup() %>% 
+  mutate(
+    measurement_id = paste(site_id, plot_id, census_id, stem_id, measurement_id, sep = ":"),
+    stem_id = paste(site_id, plot_id, census_id, stem_id, sep = ":"),
+    census_id = paste(site_id, plot_id, census_id, sep = ":"),
+    plot_id = paste(site_id, plot_id, sep = ":")
+  ) %>% 
   dplyr::select(
     site_id,
-    plot_name,
     plot_id,
-    census_date,
     census_id,
     stem_id,
     measurement_id,
+    census_date,
     x_rel,
     y_rel,
     diam,

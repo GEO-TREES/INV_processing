@@ -29,9 +29,9 @@ polys_sub_area <- st_drop_geometry(polys_sub)
 polys_sub_area$area_ha <- units::drop_units(st_area(polys_sub)) * 0.0001
 
 subs_summ <- stems_all %>% 
-  left_join(., polys_sub_area, by = "subplot_ID") %>% 
+  left_join(., polys_sub_area, by = c("plot_id", "subplot_id")) %>% 
   filter(alive == 1) %>%
-  group_by(subplot_ID, census_id, area_ha) %>% 
+  group_by(site_id, plot_id, subplot_id, census_id, area_ha) %>% 
   summarise(
     ba_sum = sum(ba, na.rm = TRUE),
     ba_ge5_sum = sum(ba[diam >= 5], na.rm = TRUE),

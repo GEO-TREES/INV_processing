@@ -7,7 +7,7 @@ library(dplyr)
 library(sf)
 
 # Define site ID
-BRM_site <- "Bicuar"
+site_id <- "Bicuar"
 
 # Source functions
 source("../../func.R")
@@ -19,9 +19,9 @@ outdir <- "../../dat/sites/Bicuar/01_polys"
 # Import plot corners
 pts <- read_sf(file.path(indir, "plot_corners.shp")) %>% 
   mutate(
-    BRM_site = BRM_site,
+    site_id = site_id,
     corner_id = gsub(".*[0-9]+", "", name)) %>%
-  dplyr::select(BRM_site, Plot_name = plot_name, corner_id) %>% 
+  dplyr::select(site_id, plot_name, corner_id) %>% 
   st_transform(., crs = 32733) %>% 
   mutate(
     x_rel = case_when(
@@ -36,7 +36,7 @@ pts <- read_sf(file.path(indir, "plot_corners.shp")) %>%
 
 # Create polygons
 polys <- pts %>% 
-  group_by(BRM_site, Plot_name) %>% 
+  group_by(site_id, plot_name) %>% 
   summarise() %>% 
   st_convex_hull() %>% 
   mutate(

@@ -4,6 +4,7 @@
 
 # Packages
 library(dplyr)
+library(tidyr)
 
 # Define site ID
 BRM_site <- "Bicuar"
@@ -23,9 +24,12 @@ p <- read.csv(file.path(indir, "plots.csv"))
 # Prepare stem data 
 s_clean <- s %>% 
   left_join(., unique(p[,c("plot_id", "plot_name")]), by = "plot_id") %>% 
+  group_by(plot_name, stem_id) %>% 
+  arrange(census_date) %>% 
+  fill(x_grid, y_grid, .direction = "down") %>% 
+  ungroup() %>% 
   filter(grepl("2024", census_date)) %>% 
-  rename(
-    Plot_name = plot_name) %>% 
+  rename(Plot_name = plot_name) %>% 
   mutate(
     BRM_site = BRM_site,
     census_id = paste(BRM_site, Plot_name, 2024, sep = "_"),

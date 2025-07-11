@@ -45,7 +45,7 @@ stems_subs <- bind_rows(lapply(pts_sub_split, function(dat) {
   out$area_ha <- polys_sub_area$area_ha[
     match(dat$subplot_ID[1], polys_sub_area$subplot_ID)][rep(1, nrow(out))]
   out
-}))
+})) 
 
 subs_summ <- stems_subs %>% 
   group_by(subplot_ID, census_id, area_ha) %>% 
@@ -103,7 +103,8 @@ subs_summ <- stems_subs %>%
     meanWD_ge5_mean = mean(meanWD[diam >= 5], na.rm = TRUE),
     meanWD_ge10_mean = mean(meanWD[diam >= 10], na.rm = TRUE),
     meanWD_ge20_mean = mean(meanWD[diam >= 20], na.rm = TRUE)) %>% 
-  mutate(across(starts_with(c("ba_", "agb_")), ~.x / area_ha, .names = "{.col}_ha")) 
+  mutate(across(starts_with(c("ba_", "agb_")), ~.x / area_ha, .names = "{.col}_ha"))  %>% 
+  filter(!is.na(census_id))
 
 write.csv(subs_summ, file.path(outdir, "sub_summ.csv"), row.names = FALSE)
 

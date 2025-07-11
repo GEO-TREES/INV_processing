@@ -60,7 +60,7 @@ polyCornerExtract <- function(x, corner = NULL, name = NULL, sf = TRUE) {
     stop("length of 'corner' must be 1 or the number of rows in 'x'")
   }
 
-  if (!is.null(corner) && !all(corner %in% c("SW", "NW", "NE", "SE"))) {
+  if (!is.null(corner) && !all(unlist(corner) %in% c("SW", "NW", "NE", "SE"))) {
     stop("all values in 'corner' must be 'SW', 'NW', 'NE', or 'SE'")
   }
 
@@ -85,18 +85,20 @@ polyCornerExtract <- function(x, corner = NULL, name = NULL, sf = TRUE) {
     # Extract corner coordinates
     xc <- as.data.frame(sf::st_coordinates(sf::st_union(xsel)))
 
-    if (!is.null(corner) && !is.na(corner[[i]])) { 
+    if (!is.null(corner) && any(!is.na(corner[[i]]))) { 
+
       xc$sum <- xc$X + xc$Y
       xc$diff <- xc$X - xc$Y
-      xc$label <- NA_character_
-      xc$label[which.min(xc$sum)] <- "SW"
-      xc$label[which.max(xc$diff)] <- "SE"
-      xc$label[which.max(xc$sum)] <- "NE"
-      xc$label[which.min(xc$diff)] <- "NW"
+      xc$corner_id <- NA_character_
+      xc$corner_id[which.min(xc$diff)] <- "NW" 
+      xc$corner_id[which.min(xc$sum)] <- "SW" 
+      xc$corner_id[which.max(xc$diff)] <- "SE" 
+      xc$corner_id[which.max(xc$sum)] <- "NE" 
 
       # Select chosen corner coordinate(s)
-      xs <- xc[xc$label %in% sort(corner[[i]]) & !is.na(xc$label), 1:2]
-      xs$corner_id <- sort(corner[[i]])
+      xs <- xc[
+        xc$corner_id %in% sort(corner[[i]]) & !is.na(xc$corner),
+        c("X", "Y", "corner_id")]
     } else {
       xs <- xc
       xs$corner_id <- seq_len(nrow(xs))

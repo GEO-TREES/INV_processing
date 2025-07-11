@@ -47,4 +47,5 @@ Icon?
 *.RData
 *.Ruserdata
 .Rproj.user/
+Rplots.pdf
 

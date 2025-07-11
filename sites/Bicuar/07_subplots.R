@@ -12,6 +12,7 @@ outdir <- "../../dat/sites/Bicuar/07_subplots"
 
 # Import data 
 p <- read_sf("../../dat/sites/Bicuar/01_polys/pts.gpkg")
+s <- read.csv("../../dat/sites/Bicuar/02_stem_fmt/stems.csv")
 
 # Clean polygon data
 p_clean <- p %>% 
@@ -23,9 +24,12 @@ check_plot <- check_plot_coord(
   corner_data = p_clean,
   proj_coord = c("X", "Y"),  
   rel_coord = c("x_rel", "y_rel"),
-  plot_ID = "Plot_name",
+  plot_ID = "plot_id",
   trust_GPS_corners = TRUE,
-  draw_plot = FALSE)
+  draw_plot = FALSE,
+  tree_data = s, 
+  tree_coords = c("x_rel", "y_rel"),
+  tree_plot_ID = "plot_id")
 
 # Define subplot dimensions
 subplot_dim <- c(50, 50)
@@ -38,10 +42,14 @@ subplots <- divide_plot(
   corner_plot_ID = "plot_ID",
   grid_size = subplot_dim, 
   grid_tol = 1,
-  centred_grid = TRUE)
+  centred_grid = TRUE,
+  tree_data = check_plot$tree_data, 
+  tree_coords = c("x_rel", "y_rel"),
+  tree_plot_ID = "plot_ID")
 
 # Create subplot corner sf points
-pts_sub <- st_as_sf(subplots, coords = c("x_proj", "y_proj"), crs = st_crs(p))
+pts_sub <- st_as_sf(subplots$sub_corner_coord, 
+  coords = c("x_proj", "y_proj"), crs = st_crs(p))
 
 # Create subplot polygons
 polys_sub <- pts_sub %>% 
@@ -49,9 +57,35 @@ polys_sub <- pts_sub %>%
   summarise() %>% 
   st_convex_hull() 
 
+# Extract stem coordinates
+stem_coords <- subplots$tree_data %>% 
+  dplyr::select(
+    measurement_id,
+    x_proj,
+    y_proj,
+    subplot_ID) %>% 
+  st_as_sf(., coords = c("x_proj", "y_proj"), crs = st_crs(p))
+
+# Rename columns for output
+pts_sub_out <- pts_sub %>% 
+  rename(
+    plot_id = corner_plot_ID,
+    subplot_id = subplot_ID)
+
+polys_sub_out <- polys_sub %>% 
+  rename(
+    plot_id = corner_plot_ID,
+    subplot_id = subplot_ID)
+
+stem_coords_out <- stem_coords %>% 
+  rename(subplot_id = subplot_ID)
+
 # Write subplot points to file
-st_write(pts_sub, file.path(outdir, "pts_sub.gpkg"), delete_dsn = TRUE)
+st_write(pts_sub_out, file.path(outdir, "pts_sub.gpkg"), delete_dsn = TRUE)
 
 # Write subplot polygons to file
-st_write(polys_sub, file.path(outdir, "polys_sub.gpkg"), delete_dsn = TRUE)
+st_write(polys_sub_out, file.path(outdir, "polys_sub.gpkg"), delete_dsn = TRUE)
+
+# Write global stem coordinates to file
+st_write(stem_coords_out, file.path(outdir, "stem_coords.gpkg"), delete_dsn = TRUE)
 

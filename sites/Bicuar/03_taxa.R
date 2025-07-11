@@ -3,7 +3,7 @@
 # Last updated: 2025-07-09
 
 # Define site ID
-BRM_site <- "Bicuar"
+site_id <- "Bicuar"
 
 # Define directories
 indir <- "../../dat/sites/Bicuar/02_stem_fmt"
@@ -38,7 +38,7 @@ s_taxa <- merge(s, taxa, by = "taxon_name_orig", all.x = TRUE, sort = FALSE)
 stopifnot(all(!is.na(s_taxa$taxon_name_acc[!is.na(s_taxa$taxon_name_sanit)])))
 
 # Add site name to lookup
-lookup_out <- cbind(BRM_site = BRM_site, lookup)
+lookup_out <- cbind(site_id = site_id, lookup)
 
 # Write appended lookup table to file
 write.csv(lookup, file.path(outdir, "lookup.csv"), row.names = FALSE)
@@ -52,5 +52,4 @@ taxa_out <- s_taxa %>%
 
 # Write stem taxonomic information to file
 write.csv(taxa_out, file.path(outdir, "taxa.csv"), row.names = FALSE)
-
 

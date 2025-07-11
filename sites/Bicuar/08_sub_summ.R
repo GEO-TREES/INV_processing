@@ -14,41 +14,24 @@ stems <- read.csv("../../dat/sites/Bicuar/02_stem_fmt/stems.csv")
 biomass <- read.csv("../../dat/sites/Bicuar/06_biomass/biomass.csv")
 height <- read.csv("../../dat/sites/Bicuar/05_height/height.csv")
 wd <- read.csv("../../dat/sites/Bicuar/04_wd/wd.csv")
-
-pts_sub <- st_read("../../dat/sites/Bicuar/07_subplots/pts_sub.gpkg")
-polys_sub <- st_read("../../dat/sites/Bicuar/07_subplots/polys_sub.gpkg")
+stems_coords <- st_read("../../dat/sites/Panama Canal/07_subplots/stem_coords.gpkg")
+polys_sub <- st_read("../../dat/sites/Panama Canal/07_subplots/polys_sub.gpkg")
 
 # Combine stem dataframes
 stems_all <- stems %>% 
   left_join(., biomass, by = "measurement_id") %>% 
   left_join(., height, by = "measurement_id") %>% 
-  left_join(., wd, by = "measurement_id") 
+  left_join(., wd, by = "measurement_id") %>%
+  left_join(., stems_coords, by = "measurement_id", relationship = "many-to-many")
 
 # Calculate area of each subplot
-polys_sub_area <- polys_sub %>% 
-  mutate(area_ha = units::drop_units(st_area(polys_sub)) * 0.0001) %>% 
-  dplyr::select(subplot_ID, area_ha) %>% 
-  st_drop_geometry()
+polys_sub_area <- st_drop_geometry(polys_sub)
+polys_sub_area$area_ha <- units::drop_units(st_area(polys_sub)) * 0.0001
 
-# Split subplot points by subplot ID
-pts_sub_split <- split(pts_sub, pts_sub$subplot_ID)
-
-# Assign stems to subplots
-stems_subs <- bind_rows(lapply(pts_sub_split, function(dat) {
-  out <- stems_all[
-     stems_all$Plot_name == dat$corner_plot_ID[1] & 
-       stems_all$x_rel <= max(dat$x_rel) & 
-       stems_all$x_rel >= min(dat$x_rel) & 
-       stems_all$y_rel <= max(dat$y_rel) & 
-       stems_all$y_rel >= min(dat$y_rel),]
-  out$subplot_ID <- dat$subplot_ID[rep(1, nrow(out))]
-  out$area_ha <- polys_sub_area$area_ha[
-    match(dat$subplot_ID[1], polys_sub_area$subplot_ID)][rep(1, nrow(out))]
-  out
-})) 
-
-subs_summ <- stems_subs %>% 
-  group_by(subplot_ID, census_id, area_ha) %>% 
+subs_summ <- stems_all %>% 
+  left_join(., polys_sub_area, by = c("plot_id", "subplot_id")) %>% 
+  filter(alive == 1) %>%
+  group_by(site_id, plot_id, subplot_id, census_id, area_ha) %>% 
   summarise(
     ba_sum = sum(ba, na.rm = TRUE),
     ba_ge5_sum = sum(ba[diam >= 5], na.rm = TRUE),
@@ -103,7 +86,7 @@ subs_summ <- stems_subs %>%
     meanWD_ge5_mean = mean(meanWD[diam >= 5], na.rm = TRUE),
     meanWD_ge10_mean = mean(meanWD[diam >= 10], na.rm = TRUE),
     meanWD_ge20_mean = mean(meanWD[diam >= 20], na.rm = TRUE)) %>% 
-  mutate(across(starts_with(c("ba_", "agb_")), ~.x / area_ha, .names = "{.col}_ha"))  %>% 
+  mutate(across(starts_with(c("ba_", "agb_")), ~.x / area_ha, .names = "{.col}_ha")) %>% 
   filter(!is.na(census_id))
 
 write.csv(subs_summ, file.path(outdir, "sub_summ.csv"), row.names = FALSE)

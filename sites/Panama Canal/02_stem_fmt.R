@@ -112,7 +112,7 @@ s_all <- bind_rows(s_clean, s2_clean) %>%
     taxon_name_orig = paste(genus, species),
     taxon_name_orig = gsub("NA NA", "Indet indet", taxon_name_orig)) %>%
   group_by(site_id, plot_id, census_id, stem_id) %>% 
-  mutate(measurement_id = paste(row_number(), sep = ":")) %>% 
+  mutate(measurement_id = row_number()) %>% 
   ungroup() %>% 
   mutate(
     measurement_id = paste(site_id, plot_id, census_id, stem_id, measurement_id, sep = ":"),

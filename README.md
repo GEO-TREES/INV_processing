@@ -2,11 +2,21 @@
 
 This repository contains code to clean and process tree-inventory data from GEO-TREES sites
 
-Each directory in `./sites/` contains scripts to clean data from a single GEO-TREES site.
-
 * `./func.R` - frequently used functions.
-* `wd_prep.R` - preparation of wood density dataset
-* 
+* `./wd_prep.R` - preparation of wood density dataset
+* `./zz_site_run.R` - run scripts in order to process a single site
+* `./05_wd.R` - extract wood density data for each measurement
+* `./06_height.R` - estimate stem height for each measurement
+* `./07_biomass.R` - estimate woody biomass for each measurement
+* `./08_stem_out.R` - create master stem measurement table
+* `./09_sub_summ.R` - summarise subplot measurements
+
+Each directory in `./sites/` contains additional scripts to clean data from each GEO-TREES site:
+
+* `./*/01_polys.R` - create plot polygons
+* `./*/02_stem_fmt.R` - clean stem measurement data
+* `./*/03_taxa.R` - correct taxonomic information
+* `./*/04_subplots.R` - create subplots in each plot
 
 Install packages from non-CRAN sources:
 
@@ -41,9 +51,9 @@ fi
 
 Outputs from each site include:
 
-* `plots.csv` - Plot metadata table, where each row is a plot. 
-* `census.csv` - Census metadata table, where each row is a census within a plot. 
-* `stems.csv` - Stem measurements table, where each row is a stem measurement. 
+* TODO: `plots.csv` - Plot metadata table, where each row is a plot. 
+* TODO: `census.csv` - Census metadata table, where each row is a census within a plot. 
+* `stems_all.gpkg` - Stem measurements table, where each row is a stem measurement. 
 * `polys.gpkg` - Plot polygons.
 * `pts.gpkg` - Points locating the corners of plots, with additional columns describing the stem map coordinate system.
 * `polys_sub.gpkg` - Polygons of 50x50 m (0.25 ha) subplots.

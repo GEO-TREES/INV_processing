@@ -3,19 +3,19 @@
 # Last updated: 2025-06-18
 
 # Define directories
-outdir <- "../../dat/sites/Panama Canal/06_biomass"
+# outdir <- "./dat/sites/Panama Canal/06_biomass"
 
 # Packages
 library(dplyr)
 library(BIOMASS)
 
 # Source functions
-source("../../func.R")
+source("./func.R")
 
 # Import data
-stems <- read.csv("../../dat/sites/Panama Canal/02_stem_fmt/stems.csv")
-wd <- read.csv("../../dat/sites/Panama Canal/04_wd/wd.csv")
-height <- read.csv("../../dat/sites/Panama Canal/05_height/height.csv")
+# stems <- read.csv("./dat/sites/Panama Canal/02_stem_fmt/stems.csv")
+# wd <- read.csv("./dat/sites/Panama Canal/04_wd/wd.csv")
+# height <- read.csv("./dat/sites/Panama Canal/05_height/height.csv")
 
 # Combine dataframes
 stems_all <- stems %>% 
@@ -40,4 +40,5 @@ out <- stems_all %>%
 
 # Write summarised data to file
 write.csv(out, file.path(outdir, "biomass.csv"), row.names = FALSE)
+
 

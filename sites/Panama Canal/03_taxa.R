@@ -2,6 +2,9 @@
 # John L. Godlee (johngodlee@gmail.com)  
 # Last updated: 2025-07-09
 
+# Packages
+library(dplyr)
+
 # Define site ID
 site_id <- "Panama Canal"
 

@@ -1,3 +1,21 @@
+# Define function to run scripts from own working directory 
+run_fn <- function(x) {
+  stopifnot(file.exists(x))
+  pwd <- getwd()
+  setwd(dirname(normalizePath(x)))
+  tryCatch(
+    {
+      source(basename(x))
+    },
+    error = function(e) { 
+      message("Error while running '", x, "': ", e$message)
+    }, 
+    finally = {
+      setwd(pwd)
+    }
+  )
+}
+
 #' Get valid UTM zone from latitude and longitude in WGS84 decimal degrees
 #'
 #' @param x vector of longitude coordinates in decimal degrees
@@ -1158,4 +1176,3 @@ wdGen <- function(x, wd_data, regional = FALSE,
   # Return dataframe
   return(out)
 }
-

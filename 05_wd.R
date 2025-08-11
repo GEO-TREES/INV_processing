@@ -7,15 +7,15 @@ library(dplyr)
 library(BIOMASS)
 
 # Source functions
-source("../../func.R")
+source("./func.R")
 
 # Define directories
-outdir <- "../../dat/sites/Bicuar/04_wd"
+# outdir <- "./dat/sites/Panama Canal/04_wd"
 
 # Import data 
-taxa <- read.csv("../../dat/sites/Bicuar/03_taxa/taxa.csv")
-stems <- read.csv("../../dat/sites/Bicuar/02_stem_fmt/stems.csv")
-wd <- read.csv("../../dat/01_wd/wd.csv")
+# taxa <- read.csv("./dat/sites/Panama Canal/03_taxa/taxa.csv")
+# stems <- read.csv("./dat/sites/Panama Canal/02_stem_fmt/stems.csv")
+wd <- read.csv("./dat/01_wd/wd.csv")
 
 # Join taxonomy data to stem data
 stems_taxa <- left_join(stems, taxa, by = "measurement_id")
@@ -34,4 +34,5 @@ wd_out <- wdGen(stems_taxa, wd,
 
 # Write to file
 write.csv(wd_out, file.path(outdir, "wd.csv"), row.names = FALSE)
+
 

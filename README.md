@@ -5,8 +5,14 @@ This repository contains code to clean and process tree-inventory data from GEO-
 Each directory in `./sites/` contains scripts to clean data from a single GEO-TREES site.
 
 * `./func.R` - frequently used functions.
-* `00_env.R` - packages to be installed from non-CRAN sources
-* `01_wd.R` - preparation of wood density dataset
+* `wd_prep.R` - preparation of wood density dataset
+* 
+
+Install packages from non-CRAN sources:
+
+```r
+remotes::install_github('umr-amap/BIOMASS')
+```
 
 To convert R scripts to Jupyter notebooks for deployment on MAAP:
 

@@ -8,11 +8,11 @@ library(sf)
 library(BIOMASS)
 
 # Define directories
-outdir <- "../../dat/sites/Bicuar/07_subplots"
+outdir <- "../../dat/sites/Panama Canal/04_subplots"
 
 # Import data 
-p <- read_sf("../../dat/sites/Bicuar/01_polys/pts.gpkg")
-s <- read.csv("../../dat/sites/Bicuar/02_stem_fmt/stems.csv")
+p <- read_sf("../../dat/sites/Panama Canal/01_polys/pts.gpkg")
+s <- read.csv("../../dat/sites/Panama Canal/02_stem_fmt/stems.csv")
 
 # Clean polygon data
 p_clean <- p %>% 
@@ -88,4 +88,3 @@ st_write(polys_sub_out, file.path(outdir, "polys_sub.gpkg"), delete_dsn = TRUE)
 
 # Write global stem coordinates to file
 st_write(stem_coords_out, file.path(outdir, "stem_coords.gpkg"), delete_dsn = TRUE)
-

@@ -8,11 +8,11 @@ library(sf)
 library(BIOMASS)
 
 # Define directories
-outdir <- "../../dat/sites/Panama Canal/05_height"
+# outdir <- "./dat/sites/Panama Canal/05_height"
 
 # Import data
-s <- read.csv("../../dat/sites/Panama Canal/02_stem_fmt/stems.csv")
-polys <- st_read("../../dat/sites/Panama Canal/01_polys/polys.gpkg")
+# stems <- read.csv("./dat/sites/Panama Canal/02_stem_fmt/stems.csv")
+# polys <- st_read("./dat/sites/Panama Canal/01_polys/polys.gpkg")
 
 # Extract plot centres
 p_cent <- st_centroid(polys) %>% 
@@ -22,7 +22,7 @@ p_cent <- st_centroid(polys) %>%
   dplyr::select(plot_id, X, Y)
 
 # Add plot centres to stem data
-s_cent <- s %>% 
+s_cent <- stems %>% 
   left_join(., p_cent, by = "plot_id")
 
 stopifnot(all(!is.na(s_cent$X)))
@@ -37,4 +37,5 @@ out <- s_cent %>%
 
 # Write to file
 write.csv(out, file.path(outdir, "height.csv"), row.names = FALSE)
+
 

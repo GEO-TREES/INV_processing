@@ -7,30 +7,26 @@ library(dplyr)
 library(sf)
 
 # Define directories
-outdir <- "../../dat/sites/Panama Canal/08_sub_summ"
+# outdir <- "./dat/sites/Panama Canal/09_sub_summ"
 
 # Import data
-stems <- read.csv("../../dat/sites/Panama Canal/02_stem_fmt/stems.csv")
-biomass <- read.csv("../../dat/sites/Panama Canal/06_biomass/biomass.csv")
-height <- read.csv("../../dat/sites/Panama Canal/05_height/height.csv")
-wd <- read.csv("../../dat/sites/Panama Canal/04_wd/wd.csv")
-stems_coords <- st_read("../../dat/sites/Panama Canal/07_subplots/stem_coords.gpkg")
-polys_sub <- st_read("../../dat/sites/Panama Canal/07_subplots/polys_sub.gpkg")
-
-# Combine stem dataframes
-stems_all <- stems %>% 
-  left_join(., biomass, by = "measurement_id") %>% 
-  left_join(., height, by = "measurement_id") %>% 
-  left_join(., wd, by = "measurement_id") %>% 
-  left_join(., stems_coords, by = "measurement_id", relationship = "many-to-many")
+# stems_all <- st_read("./dat/sites/Panama Canal/08_stem_out/stems_all.gpkg")
+# polys_sub <- st_read("./dat/sites/Panama Canal/07_subplots/polys_sub.gpkg")
 
 # Calculate area of each subplot
 polys_sub_area <- st_drop_geometry(polys_sub)
 polys_sub_area$area_ha <- units::drop_units(st_area(polys_sub)) * 0.0001
 
 subs_summ <- stems_all %>% 
+  st_drop_geometry() %>% 
   left_join(., polys_sub_area, by = c("plot_id", "subplot_id")) %>% 
-  filter(alive == 1) %>%
+  filter(
+    alive == 1,
+    broken == 0, 
+    fallen == 0,
+    missing == 0,
+    liana == 0,
+    !is.na(subplot_id)) %>%
   group_by(site_id, plot_id, subplot_id, census_id, area_ha) %>% 
   summarise(
     ba_sum = sum(ba, na.rm = TRUE),
@@ -89,3 +85,4 @@ subs_summ <- stems_all %>%
   mutate(across(starts_with(c("ba_", "agb_")), ~.x / area_ha, .names = "{.col}_ha")) 
 
 write.csv(subs_summ, file.path(outdir, "sub_summ.csv"), row.names = FALSE)
+

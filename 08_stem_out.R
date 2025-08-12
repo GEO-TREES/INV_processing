@@ -15,7 +15,7 @@ library(sf)
 # height <- read.csv("./dat/sites/Panama Canal/05_height/height.csv")
 # wd <- read.csv("./dat/sites/Panama Canal/04_wd/wd.csv")
 # taxa <- read.csv("./dat/sites/Panama Canal/03_taxa/taxa.csv")
-# stems_coords <- st_read("./dat/sites/Panama Canal/07_subplots/stem_coords.gpkg")
+# stems_coords <- st_read("./dat/sites/Panama Canal/04_subplots/stem_coords_centre.gpkg")
 
 # Combine stem dataframes
 stems_all <- stems %>% 

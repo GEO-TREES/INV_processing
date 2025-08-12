@@ -48,38 +48,46 @@ ctfssmall_poly <- read_sf(file.path(indir, "CTFS_Plots_Polygons.shp")) %>%
   dplyr::select(plot_id, area_reported_ha, perim_reported_m) 
 
 # San Lorenzo plot
-sanlorenzo_poly <- read_sf(file.path(indir, "Sherman_Study_Plot.shp")) %>% 
+sanlorenzo_poly <- read_sf(file.path(indir, "san_lorenzo.shp")) %>% 
   mutate(
-    plot_id = "San Lorenzo",
+    plot_id = c("San Lorenzo B", "San Lorenzo A"),
     area_reported_ha = Shape_Area * 0.0001) %>% 
   dplyr::select(plot_id, area_reported_ha) %>% 
-  st_transform(., st_crs(gigante_poly))
+  st_transform(., st_crs(gigante_poly)) %>% 
+  st_cast(., "POINT") %>% 
+  mutate(corner_id = as.character(row_number())) %>% 
+  filter(corner_id %in% c(
+    10, 9, 12, 11, 
+    1, 3, 4, 5)) %>% 
+  group_by(plot_id) %>% 
+  summarise() %>% 
+  st_cast(., "POLYGON")
 
 # Define cutting line 
-sanlorenzo_points <- sanlorenzo_poly %>% 
-  st_cast(., "POINT") %>% 
-  mutate(id = row_number())
+# sanlorenzo_points <- sanlorenzo_poly %>% 
+#   st_cast(., "POINT") %>% 
+#   mutate(id = row_number())
 
-ggplot() + 
-geom_sf(data = sanlorenzo_points, aes(colour = as.factor(id)))
+# ggplot() + 
+# geom_sf(data = sanlorenzo_points, aes(colour = as.factor(id)))
 
-sanlorenzo_a_poly <- sanlorenzo_points[c(4, 5, 6, 7, 4),] %>% 
-  st_combine() %>% 
-  st_cast(., "POLYGON") %>% 
-  st_sf() %>% 
-  mutate(plot_id = "San Lorenzo A") %>% 
-  relocate(plot_id)
-
-sanlorenzo_b_poly <- sanlorenzo_points[c(1, 2, 3, 8, 1),] %>% 
-  st_combine() %>% 
-  st_cast(., "POLYGON") %>% 
-  st_sf() %>% 
-  mutate(plot_id = "San Lorenzo B") %>% 
-  relocate(plot_id)
+#sanlorenzo_a_poly <- sanlorenzo_points[c(4, 5, 6, 7, 4),] %>% 
+#  st_combine() %>% 
+#  st_cast(., "POLYGON") %>% 
+#  st_sf() %>% 
+#  mutate(plot_id = "San Lorenzo A") %>% 
+#  relocate(plot_id)
+#
+#sanlorenzo_b_poly <- sanlorenzo_points[c(1, 2, 3, 8, 1),] %>% 
+#  st_combine() %>% 
+#  st_cast(., "POLYGON") %>% 
+#  st_sf() %>% 
+#  mutate(plot_id = "San Lorenzo B") %>% 
+#  relocate(plot_id)
 
 # Combine all polys 
 polys <- bind_rows(gigante_poly, bci50ha_poly, ctfssmall_poly, 
-  sanlorenzo_a_poly, sanlorenzo_b_poly) %>%
+  sanlorenzo_poly) %>%
   relocate(geometry, .after = last_col()) %>% 
   mutate(
     site_id,
@@ -130,14 +138,14 @@ pts <- st_cast(polys, "POINT") %>%
       plot_id == "Panama Canal:P15" & corner_id == 2 ~ 100,
       plot_id == "Panama Canal:P15" & corner_id == 3 ~ 100,
       plot_id == "Panama Canal:P15" & corner_id == 4 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 1 ~ 140,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 2 ~ 140,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 3 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 4 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 1 ~ 100,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 2 ~ 100,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 3 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 4 ~ 0,
+      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 1 ~ 0,
+      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 2 ~ 0,
+      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 3 ~ 140,
+      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 4 ~ 140,
+      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 1 ~ 0,
+      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 2 ~ 0,
+      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 3 ~ 100,
+      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 4 ~ 100,
       plot_id == "Panama Canal:Soberania" & corner_id == 1 ~ 0,
       plot_id == "Panama Canal:Soberania" & corner_id == 2 ~ 100,
       plot_id == "Panama Canal:Soberania" & corner_id == 3 ~ 100,
@@ -180,10 +188,10 @@ pts <- st_cast(polys, "POINT") %>%
       plot_id == "Panama Canal:P15" & corner_id == 2 ~ 0,
       plot_id == "Panama Canal:P15" & corner_id == 3 ~ 100,
       plot_id == "Panama Canal:P15" & corner_id == 4 ~ 100,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 2 ~ 140,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 3 ~ 140,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 4 ~ 0,
+      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 1 ~ 140,
+      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 2 ~ 0,
+      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 3 ~ 0,
+      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 4 ~ 140,
       plot_id == "Panama Canal:San Lorenzo B" & corner_id == 1 ~ 0,
       plot_id == "Panama Canal:San Lorenzo B" & corner_id == 2 ~ 400,
       plot_id == "Panama Canal:San Lorenzo B" & corner_id == 3 ~ 400,

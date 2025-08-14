@@ -1331,7 +1331,10 @@ divide_plot2 <- function(corner_data, rel_coord, proj_coord = NULL, longlat = NU
       Y <- as.numeric(grid_dat[["y_rel"]])
       plot_grid[
         (x_rel == X & y_rel == Y) | (x_rel == X + grid_size[1] & y_rel == Y) | (x_rel == X + grid_size[1] & y_rel == Y + grid_size[2]) | (x_rel == X & y_rel == Y + grid_size[2]),
-        .(subplot_ID = paste(corner_plot_ID, (X-min(plot_grid$x_rel)) / grid_size[1], (Y-min(plot_grid$y_rel)) / grid_size[2], sep = "_"),x_rel, y_rel)]
+        .(subplot_ID = paste0(
+          corner_plot_ID, ":", 
+          (X-min(plot_grid$x_rel)) / grid_size[1], "_",
+          (Y-min(plot_grid$y_rel)) / grid_size[2]), x_rel, y_rel)]
     }))
     
     # Sorting rows 

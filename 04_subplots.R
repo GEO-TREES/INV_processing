@@ -8,6 +8,8 @@ library(sf)
 library(BIOMASS)
 library(data.table)
 
+source("./func.R")
+
 # Define directories
 # outdir <- "./dat/sites/Panama Canal/04_subplots"
 

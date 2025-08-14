@@ -51,6 +51,7 @@ subplots_list <- lapply(align_vec, function(i) {
     tree_plot_ID = "plot_ID")
   out[[1]]$subplot_ID <- paste(out[[1]]$subplot_ID, i, sep = "_")
   out[[2]]$subplot_ID <- paste(out[[2]]$subplot_ID, i, sep = "_")
+  out[[2]] <- out[[2]][out[[2]]$subplot_ID != paste0("NA_", i),]
   out
 })
 names(subplots_list) <- align_vec
@@ -93,15 +94,31 @@ out_list <- lapply(names(subplots_list), function(i) {
 })
 names(out_list) <- names(subplots_list)
 
-# Write data to files
-lapply(names(out_list), function(i) {
-  # Write subplot points to file
-  st_write(out_list[[i]][[1]], file.path(outdir, paste0("pts_sub_", i, ".gpkg")), delete_dsn = TRUE)
+# Combine lists of polygons and points
+pts_sub <- bind_rows(lapply(out_list, "[[", 1))
 
-  # Write subplot polygons to file
-  st_write(out_list[[i]][[2]], file.path(outdir, paste0("polys_sub_", i, ".gpkg")), delete_dsn = TRUE)
+polys_sub <- bind_rows(lapply(out_list, "[[", 2))
 
-  # Write global stem coordinates to file
-  st_write(out_list[[i]][[3]], file.path(outdir, paste0("stem_coords_", i, ".gpkg")), delete_dsn = TRUE)
-})
+# Combine lists of stem coordinates
+stems_coords_only <- bind_rows(lapply(out_list, "[[", 3)) %>% 
+  group_by(measurement_id) %>% 
+  mutate(row = row_number()) %>%
+  filter(row == 1) %>% 
+  dplyr::select(measurement_id) 
 
+stems_subplots <- bind_rows(lapply(out_list, "[[", 3)) %>% 
+  st_drop_geometry() %>% 
+  group_by(measurement_id) %>% 
+  summarise(subplot_id_vec = paste(subplot_id, collapse = ";"))
+
+stems_sub <- right_join(stems_coords_only, stems_subplots) %>% 
+  relocate(measurement_id, subplot_id_vec)
+
+# Write subplot points to file
+st_write(pts_sub, file.path(outdir, "pts_sub.gpkg"), delete_dsn = TRUE)
+
+# Write subplot polygons to file
+st_write(polys_sub, file.path(outdir, "polys_sub.gpkg"), delete_dsn = TRUE)
+
+# Write global stem coordinates to file
+st_write(stems_sub, file.path(outdir, "stems_coords.gpkg"), delete_dsn = TRUE)

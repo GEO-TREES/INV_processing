@@ -4,6 +4,7 @@
 
 # Packages
 library(dplyr)
+library(tidyr)
 library(sf)
 
 # Define directories
@@ -11,7 +12,7 @@ library(sf)
 
 # Import data
 # stems_all <- st_read("./dat/sites/Panama Canal/08_stem_out/stems_all.gpkg")
-# polys_sub <- st_read("./dat/sites/Panama Canal/07_subplots/polys_sub.gpkg")
+# polys_sub <- st_read("./dat/sites/Panama Canal/04_subplots/polys_sub.gpkg")
 
 # Calculate area of each subplot
 polys_sub_area <- st_drop_geometry(polys_sub)
@@ -19,6 +20,8 @@ polys_sub_area$area_ha <- units::drop_units(st_area(polys_sub)) * 0.0001
 
 subs_summ <- stems_all %>% 
   st_drop_geometry() %>% 
+  separate_longer_delim(subplot_id_vec, ";") %>% 
+  rename(subplot_id = subplot_id_vec) %>% 
   left_join(., polys_sub_area, by = c("plot_id", "subplot_id")) %>% 
   filter(
     alive == 1,
@@ -84,5 +87,9 @@ subs_summ <- stems_all %>%
     meanWD_ge20_mean = mean(meanWD[diam >= 20], na.rm = TRUE)) %>% 
   mutate(across(starts_with(c("ba_", "agb_")), ~.x / area_ha, .names = "{.col}_ha")) 
 
-write.csv(subs_summ, file.path(outdir, "sub_summ.csv"), row.names = FALSE)
+# Combine with polygons
+polys_summ <- right_join(polys_sub, subs_summ, by = c("plot_id", "subplot_id"))
+
+# Write to file
+st_write(polys_summ, file.path(outdir, "sub_summ.gpkg"), delete_dsn = TRUE)
 

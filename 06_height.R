@@ -8,7 +8,7 @@ library(sf)
 library(BIOMASS)
 
 # Define directories
-# outdir <- "./dat/sites/Panama Canal/05_height"
+# outdir <- "./dat/sites/Panama Canal/06_height"
 
 # Import data
 # stems <- read.csv("./dat/sites/Panama Canal/02_stem_fmt/stems.csv")
@@ -29,7 +29,9 @@ stopifnot(all(!is.na(s_cent$X)))
 stopifnot(all(!is.na(s_cent$Y)))
 
 # Retrieve stem heights using plot locations
-s_cent$height_pred <- retrieveH(s_cent$diam, coord = s_cent[,c("X", "Y")])$H
+s_cent$height_pred <- retrieveH(
+  D = s_cent$diam, 
+  coord = s_cent[,c("X", "Y")])$H
 
 # Create output dataframe
 out <- s_cent %>% 

@@ -10,10 +10,10 @@ site_id <- "Panama Canal"
 
 # Define directories
 indir <- "../../dat/sites/Panama Canal/raw"
-outdir <- "../../dat/sites/Panama Canal/02_stem_fmt"
+outdir <- "../../dat/sites/Panama Canal/02_stem"
 
 # Import column descriptions
-stems_cols <- read.csv("../../dat/templates/stems_cols.csv")
+stem_cols <- read.csv("../../dat/templates/stem_cols.csv")
 
 # Import stem data from Gigante
 # c/o Suzanne Lao, Helene Muller-Landau
@@ -140,10 +140,10 @@ s_all <- bind_rows(s_clean, s2_clean) %>%
     liana)
 
 # Check all columns in stems table
-stopifnot(all(colnames(s_all) == stems_cols$column_name))
+stopifnot(all(colnames(s_all) == stem_cols$column_name))
 
 # Check measurment IDs are unique
 stopifnot(all(!duplicated(s_all$measurement_id)))
 
 # Write data to file
-write.csv(s_all, file.path(outdir, "stems.csv"), row.names = FALSE)
+write.csv(s_all, file.path(outdir, "stem.csv"), row.names = FALSE)

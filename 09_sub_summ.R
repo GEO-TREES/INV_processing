@@ -8,27 +8,28 @@ library(tidyr)
 library(sf)
 library(BIOMASS)
 library(parallel)
+library(units)
 
 # Define directories
-# outdir <- "./dat/sites/Panama Canal/09_sub_summ"
+# outdir <- "./dat/sites/Panama Canal/09_sub_out"
 
 # Import data
-# stems_all <- st_read("./dat/sites/Panama Canal/08_stem_out/stems_all.gpkg")
-# polys_sub <- st_read("./dat/sites/Panama Canal/04_subplots/polys_sub.gpkg")
+# stem_summ <- st_read("./dat/sites/Panama Canal/08_stem_summ/stem_summ.gpkg")
+# sub_poly <- st_read("./dat/sites/Panama Canal/04_subplots/sub_poly.gpkg")
 
 # Calculate area of each subplot
-polys_sub_area <- st_drop_geometry(polys_sub)
-polys_sub_area$area_ha <- units::drop_units(st_area(polys_sub)) * 0.0001
+sub_poly_area <- st_drop_geometry(sub_poly)
+sub_poly_area$area_ha <- st_area(sub_poly) * 0.0001
 
 # Extract subplot centres
-sub_cent <- st_centroid(polys_sub) %>% 
+sub_cent <- st_centroid(sub_poly) %>% 
   st_transform(4326) %>% 
   cbind(., st_coordinates(.)) %>% 
   st_drop_geometry() %>% 
   dplyr::select(subplot_id, longitude = X, latitude = Y)
 
 # Prepare stem dataframe
-stems_all_sub <- stems_all %>% 
+stem_summ_sub <- stem_summ %>% 
   st_drop_geometry() %>% 
   separate_longer_delim(subplot_id_vec, ";") %>% 
   rename(subplot_id = subplot_id_vec) %>% 
@@ -40,25 +41,42 @@ stems_all_sub <- stems_all %>%
     liana == 0,
     !is.na(subplot_id)) %>%
   left_join(., sub_cent, by = "subplot_id") %>% 
-  left_join(., polys_sub_area, by = c("plot_id", "subplot_id"))
+  left_join(., sub_poly_area, by = c("plot_id", "subplot_id"))
 
 # Split stem dataframe (D >= 10 cm) by subplot
-stems_all_sub_ge10 <- stems_all_sub %>% 
+stem_summ_sub_ge10 <- stem_summ_sub %>% 
   filter(diam >= 10)
-stems_all_sub_ge10_split <- split(stems_all_sub_ge10, stems_all_sub_ge10$subplot_id)
+stem_summ_sub_ge10_split <- split(stem_summ_sub_ge10, stem_summ_sub_ge10$subplot_id)
+
+# Define number of simulations
+nsim <- 1000
 
 # Run AGB MC error propagation
-subs_length <- length(stems_all_sub_ge10_split)
-sub_agb_mc <- mclapply(seq_along(stems_all_sub_ge10_split), function(x) { 
-  message(paste0(x, "/", subs_length, " - ", names(stems_all_sub_ge10_split)[x]))
-  AGBmonteCarlo(
-    D = stems_all_sub_ge10_split[[x]]$diam,
-    WD = stems_all_sub_ge10_split[[x]]$meanWD,
-    coord = stems_all_sub_ge10_split[[x]][,c("longitude", "latitude")],
-    Dpropag = "chave2004",
-    errWD = stems_all_sub_ge10_split[[x]]$sdWD)
-}, mc.cores = min(detectCores(), 10))
-names(sub_agb_mc) <- names(stems_all_sub_ge10_split)
+subs_length <- length(stem_summ_sub_ge10_split)
+sub_agb_mc <- lapply(seq_along(stem_summ_sub_ge10_split), function(x) { 
+  message(paste0(x, "/", subs_length, " - ", names(stem_summ_sub_ge10_split)[x]))
+  if (nrow(stem_summ_sub_ge10_split[[x]]) < 2) {
+    agb <- computeAGB(
+      D = stem_summ_sub_ge10_split[[x]]$diam,
+      WD = stem_summ_sub_ge10_split[[x]]$meanWD,
+      coord = stem_summ_sub_ge10_split[[x]][,c("longitude", "latitude")])
+    list(
+      "meanAGB" = agb,
+      "medAGB" = agb,
+      "sdAGB" = NA_real_,
+      "credibilityAGB" = c("2.5%" = NA_real_, "97.5%" = NA_real_),
+      "AGB_simu" = NA_real_)
+  } else {
+    AGBmonteCarlo(
+      D = stem_summ_sub_ge10_split[[x]]$diam,
+      WD = stem_summ_sub_ge10_split[[x]]$meanWD,
+      coord = stem_summ_sub_ge10_split[[x]][,c("longitude", "latitude")],
+      Dpropag = "chave2004",
+      errWD = stem_summ_sub_ge10_split[[x]]$sdWD,
+      n = nsim)
+  }
+})
+names(sub_agb_mc) <- names(stem_summ_sub_ge10_split)
 
 # Extract summary statistics from AGB MC error propagation simulations
 sub_agb_mc_summ <- bind_rows(lapply(names(sub_agb_mc), function(x) { 
@@ -67,12 +85,13 @@ sub_agb_mc_summ <- bind_rows(lapply(names(sub_agb_mc), function(x) {
     agb_ge10_sum_mc_mean = sub_agb_mc[[x]]$meanAGB,
     agb_ge10_sum_mc_median = sub_agb_mc[[x]]$medAGB,
     agb_ge10_sum_mc_sd = sub_agb_mc[[x]]$sdAGB,
+    agb_ge10_sum_mc_se = sub_agb_mc[[x]]$sdAGB / nsim,
     agb_ge10_sum_mc_ci2.5 = unname(sub_agb_mc[[x]]$credibilityAGB[1]),
     agb_ge10_sum_mc_ci97.5 = unname(sub_agb_mc[[x]]$credibilityAGB[2]))
 }))
 
 # Calculate simple AGB estimates
-subs_summ <- stems_all_sub %>% 
+subs_summ <- stem_summ_sub %>% 
   group_by(site_id, plot_id, subplot_id, census_id, area_ha) %>% 
   summarise(
     ba_sum = sum(ba, na.rm = TRUE),
@@ -129,10 +148,15 @@ subs_summ <- stems_all_sub %>%
     meanWD_ge10_mean = mean(meanWD[diam >= 10], na.rm = TRUE),
     meanWD_ge20_mean = mean(meanWD[diam >= 20], na.rm = TRUE)) %>% 
   left_join(., sub_agb_mc_summ, by = "subplot_id") %>% 
-  mutate(across(starts_with(c("ba_", "agb_")), ~.x / area_ha, .names = "{.col}_ha")) 
+  mutate(
+    across(starts_with(c("ba_", "agb_")), ~.x / area_ha, .names = "{.col}_ha"),
+    across(
+      .cols = where(~ inherits(.x, "units")), 
+      .fns = drop_units),
+    across(everything(), ~ifelse(.x == -Inf, NA_real_, .x)))
 
 # Combine with polygons
-polys_summ <- right_join(polys_sub, subs_summ, by = c("plot_id", "subplot_id"))
+polys_summ <- right_join(sub_poly, subs_summ, by = c("plot_id", "subplot_id"))
 
 # Write to file
 st_write(polys_summ, file.path(outdir, "sub_summ.gpkg"), delete_dsn = TRUE)

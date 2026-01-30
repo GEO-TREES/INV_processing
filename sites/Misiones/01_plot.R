@@ -14,7 +14,7 @@ source("../../func.R")
 
 # Define directories
 indir <- "../../dat/sites/Misiones/raw"
-outdir <- "../../dat/sites/Misiones/01_polys"
+outdir <- "../../dat/sites/Misiones/01_plot"
 
 # Import plot corners
 unzip(file.path(indir, "parcela_ubicacion_campo.kmz"), exdir = indir)
@@ -49,8 +49,8 @@ pts <- polyCornerExtract(polys,
   relocate(geometry, .after = last_col())
 
 # Write polygons to file
-st_write(polys, file.path(outdir, "polys.gpkg"), delete_dsn = TRUE)
+st_write(polys, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
 
 # Write origin points to file
-st_write(pts, file.path(outdir, "pts.gpkg"), delete_dsn = TRUE)
+st_write(pts, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
 

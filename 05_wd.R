@@ -13,15 +13,15 @@ source("./func.R")
 # outdir <- "./dat/sites/Panama Canal/04_wd"
 
 # Import data 
-# taxa <- read.csv("./dat/sites/Panama Canal/03_taxa/taxa.csv")
-# stems <- read.csv("./dat/sites/Panama Canal/02_stem_fmt/stems.csv")
+# stem_taxa <- read.csv("./dat/sites/Panama Canal/03_taxa/stem_taxa.csv")
+# stem <- read.csv("./dat/sites/Panama Canal/02_stem/stem.csv")
 wd <- read.csv("./dat/01_wd/wd.csv")
 
 # Join taxonomy data to stem data
-stems_taxa <- left_join(stems, taxa, by = "measurement_id")
+stem_taxa_all <- left_join(stem, stem_taxa, by = "measurement_id")
 
 # Estimate wood density for each stem measurement
-wd_out <- wdGen(stems_taxa, wd, 
+wd_out <- wdGen(stem_taxa_all, wd, 
   regional = FALSE,
   measurement_id = "measurement_id",
   site_id = "site_id",
@@ -33,6 +33,6 @@ wd_out <- wdGen(stems_taxa, wd,
   wd_region = "wd_region")
 
 # Write to file
-write.csv(wd_out, file.path(outdir, "wd.csv"), row.names = FALSE)
+write.csv(wd_out, file.path(outdir, "stem_wd.csv"), row.names = FALSE)
 
 

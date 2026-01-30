@@ -15,11 +15,11 @@ source("../../func.R")
 
 # Define directories
 indir <- "../../dat/sites/Panama Canal/raw"
-outdir <- "../../dat/sites/Panama Canal/01_polys"
+outdir <- "../../dat/sites/Panama Canal/01_plot"
 
 # Import column descriptions
-polys_cols <- read.csv("../../dat/templates/polys_cols.csv")
-pts_cols <- read.csv("../../dat/templates/pts_cols.csv")
+poly_cols <- read.csv("../../dat/templates/poly_cols.csv")
+pt_cols <- read.csv("../../dat/templates/pt_cols.csv")
 
 # Read in plot polygons as sf objects
 # Gigante plot
@@ -205,11 +205,11 @@ pts <- st_cast(polys, "POINT") %>%
   relocate(geometry, .after = last_col())
 
 # Check all columns in output objects
-stopifnot(all(colnames(polys) == polys_cols$column_name))
-stopifnot(all(colnames(pts) == pts_cols$column_name))
+stopifnot(all(colnames(polys) == poly_cols$column_name))
+stopifnot(all(colnames(pts) == pt_cols$column_name))
 
 # Write polygons to file
-st_write(polys, file.path(outdir, "polys.gpkg"), delete_dsn = TRUE)
+st_write(polys, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
 
 # Write origin points to file
-st_write(pts, file.path(outdir, "pts.gpkg"), delete_dsn = TRUE)
+st_write(pts, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)

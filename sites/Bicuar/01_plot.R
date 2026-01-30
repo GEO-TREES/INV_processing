@@ -14,14 +14,14 @@ source("../../func.R")
 
 # Define directories
 indir <- "../../dat/sites/Bicuar/raw"
-outdir <- "../../dat/sites/Bicuar/01_polys"
+outdir <- "../../dat/sites/Bicuar/01_plot"
 
 # Import column descriptions
-polys_cols <- read.csv("../../dat/templates/polys_cols.csv")
-pts_cols <- read.csv("../../dat/templates/pts_cols.csv")
+poly_cols <- read.csv("../../dat/templates/poly_cols.csv")
+pt_cols <- read.csv("../../dat/templates/pt_cols.csv")
 
 # Import plot corners
-pts <- read_sf(file.path(indir, "plot_corners.shp")) %>% 
+pt <- read_sf(file.path(indir, "plot_corners.shp")) %>% 
   mutate(
     site_id,
     plot_id = paste(site_id, plot_name, sep = ":"),
@@ -40,22 +40,22 @@ pts <- read_sf(file.path(indir, "plot_corners.shp")) %>%
   relocate(geometry, .after = last_col())
 
 # Create polygons
-polys <- pts %>% 
+poly <- pt %>% 
   group_by(site_id, plot_id) %>% 
   summarise() %>% 
   st_convex_hull() %>% 
+  ungroup() %>% 
   mutate(
     area_reported_ha = 1,
     perim_reported_m = 400) %>% 
   relocate(geometry, .after = last_col())
 
 # Check all columns in output objects
-stopifnot(all(colnames(polys) == polys_cols$column_name))
-stopifnot(all(colnames(pts) == pts_cols$column_name))
+stopifnot(all(colnames(poly) == poly_cols$column_name))
+stopifnot(all(colnames(pt) == pt_cols$column_name))
 
 # Write polygons to file
-st_write(polys, file.path(outdir, "polys.gpkg"), delete_dsn = TRUE)
+st_write(poly, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
 
-# Write origin points to file
-st_write(pts, file.path(outdir, "pts.gpkg"), delete_dsn = TRUE)
-
+# Write corner points to file
+st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)

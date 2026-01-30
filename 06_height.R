@@ -11,18 +11,18 @@ library(BIOMASS)
 # outdir <- "./dat/sites/Panama Canal/06_height"
 
 # Import data
-# stems <- read.csv("./dat/sites/Panama Canal/02_stem_fmt/stems.csv")
-# polys <- st_read("./dat/sites/Panama Canal/01_polys/polys.gpkg")
+# stem <- read.csv("./dat/sites/Panama Canal/02_stem/stem.csv")
+# plot_poly <- st_read("./dat/sites/Panama Canal/01_plot/plot_poly.gpkg")
 
 # Extract plot centres
-p_cent <- st_centroid(polys) %>% 
+p_cent <- st_centroid(plot_poly) %>% 
   st_transform(4326) %>% 
   cbind(., st_coordinates(.)) %>% 
   st_drop_geometry() %>% 
   dplyr::select(plot_id, X, Y)
 
 # Add plot centres to stem data
-s_cent <- stems %>% 
+s_cent <- stem %>% 
   left_join(., p_cent, by = "plot_id")
 
 stopifnot(all(!is.na(s_cent$X)))
@@ -38,6 +38,20 @@ out <- s_cent %>%
   dplyr::select(measurement_id, height_pred)
 
 # Write to file
-write.csv(out, file.path(outdir, "height.csv"), row.names = FALSE)
+write.csv(out, file.path(outdir, "stem_height.csv"), row.names = FALSE)
+
+# Extract valid height field measurements
+s_height <- s_cent %>% 
+  filter(
+    !is.na(diam),
+    !is.na(height),
+    alive == 1,
+    broken == 0,
+    fallen == 0,
+    liana == 0,
+    missing == 0)
+
+# Write valid height measurements to file
+write.csv(s_height, file.path(outdir, "stem_height_meas.csv"), row.names = FALSE)
 
 

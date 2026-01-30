@@ -11,10 +11,10 @@ site_id <- "Bicuar"
 
 # Define directories
 indir <- "../../dat/sites/Bicuar/raw"
-outdir <- "../../dat/sites/Bicuar/02_stem_fmt"
+outdir <- "../../dat/sites/Bicuar/02_stem"
 
 # Import stem column descriptions
-stems_cols <- read.csv("../../dat/templates/stems_cols.csv")
+stem_cols <- read.csv("../../dat/templates/stem_cols.csv")
 
 # Import data
 s <- read.csv(file.path(indir, "stems.csv"))
@@ -68,7 +68,7 @@ s_clean <- s %>%
     liana)
 
 # Check all columns in stems table
-stopifnot(all(colnames(s_clean) == stems_cols$column_name))
+stopifnot(all(colnames(s_clean) == stem_cols$column_name))
 
 # Write data to file
-write.csv(s_clean, file.path(outdir, "stems.csv"), row.names = FALSE)
+write.csv(s_clean, file.path(outdir, "stem.csv"), row.names = FALSE)

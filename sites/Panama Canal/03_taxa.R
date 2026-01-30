@@ -9,14 +9,14 @@ library(dplyr)
 site_id <- "Panama Canal"
 
 # Define directories
-indir <- "../../dat/sites/Panama Canal/02_stem_fmt"
+indir <- "../../dat/sites/Panama Canal/02_stem"
 outdir <- "../../dat/sites/Panama Canal/03_taxa"
 
 # Source functions
 source("../../func.R")
 
 # Import stem data
-s <- read.csv(file.path(indir, "stems.csv"))
+s <- read.csv(file.path(indir, "stem.csv"))
 
 # Import WFO data
 WorldFlora::WFO.remember("../../dat/wfo_raw/classification.csv")
@@ -78,5 +78,5 @@ taxa_out <- s_taxa %>%
     -ends_with("_orig"))
 
 # Write stem taxonomic information to file
-write.csv(taxa_out, file.path(outdir, "taxa.csv"), row.names = FALSE)
+write.csv(taxa_out, file.path(outdir, "stem_taxa.csv"), row.names = FALSE)
 

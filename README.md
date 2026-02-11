@@ -5,18 +5,18 @@ This repository contains code to clean and process tree-inventory data from GEO-
 * `./func.R` - frequently used functions.
 * `./wd_prep.R` - preparation of wood density dataset
 * `./zz_site.R` - run scripts in order to process a single site
-* `./04_sub.R` - create subplots in each plot
+* `./03_taxa.R` - correct taxonomic information
+* `./04_quad.R` - create quadrats in each plot
 * `./05_wd.R` - estimate wood density for each stem measurement
 * `./06_height.R` - estimate stem height for each stem measurement
 * `./07_agb.R` - estimate above-ground woody biomass for each stem measurement
 * `./08_stem_summ.R` - create master stem measurement table
-* `./09_sub_summ.R` - summarise subplot measurements
+* `./09_quad_summ.R` - summarise quadrat measurements
 
 Each directory in `./sites/` contains additional scripts to clean data from each GEO-TREES site:
 
 * `./*/01_plot.R` - create plot polygons, format plot metadata
 * `./*/02_stem.R` - clean stem measurement data
-* `./*/03_taxa.R` - correct taxonomic information
  
 Key outputs from each site include:
 
@@ -26,8 +26,8 @@ Key outputs from each site include:
     * `plot_pt.gpkg` - Points locating the corners of plots, with additional columns describing the stem map coordinate system.
 * `08_stem_summ.R`:
     * `stem_summ.gpkg` - Combined stem-level dataset
-* `09_sub_summ.R`:
-    * `sub_summ.gpkg` - Combined subplot-level dataset
+* `09_quad_summ.R`:
+    * `quad_summ.gpkg` - Combined quadrat-level dataset
 
 
 Install packages from non-CRAN sources:

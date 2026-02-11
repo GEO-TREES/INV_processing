@@ -6,34 +6,33 @@
 library(dplyr)
 library(sf)
 
-# Define site ID
-site_id <- "Bicuar"
-
 # Source functions
 source("../../func.R")
+
+# Define site ID
+site_id <- "Bicuar"
 
 # Define directories
 indir <- "../../dat/sites/Bicuar/raw"
 outdir <- "../../dat/sites/Bicuar/01_plot"
 
 # Import column descriptions
-poly_cols <- read.csv("../../dat/templates/poly_cols.csv")
-pt_cols <- read.csv("../../dat/templates/pt_cols.csv")
+poly_cols <- read.csv("../../templates/poly_cols.csv")
+pt_cols <- read.csv("../../templates/pt_cols.csv")
 
 # Import plot corners
 pt <- read_sf(file.path(indir, "plot_corners.shp")) %>% 
   mutate(
     site_id,
-    plot_id = paste(site_id, plot_name, sep = ":"),
     corner_id = gsub(".*[0-9]+", "", name)) %>%
-  dplyr::select(site_id, plot_id, corner_id) %>% 
+  dplyr::select(site_id, plot_id = plot_name, corner_id) %>% 
   st_transform(., crs = 32733) %>% 
   mutate(
-    x_rel = case_when(
+    x_rel_m = case_when(
       corner_id %in% c("SW", "NW") ~ 0,
       corner_id %in% c("SE", "NE") ~ 100,
       TRUE ~ NA_real_),
-    y_rel = case_when(
+    y_rel_m = case_when(
       corner_id %in% c("SW", "SE") ~ 0,
       corner_id %in% c("NW", "NE") ~ 100,
       TRUE ~ NA_real_)) %>% 
@@ -51,8 +50,12 @@ poly <- pt %>%
   relocate(geometry, .after = last_col())
 
 # Check all columns in output objects
-stopifnot(all(colnames(poly) == poly_cols$column_name))
-stopifnot(all(colnames(pt) == pt_cols$column_name))
+colCheck(poly, poly_cols)
+colCheck(pt, pt_cols)
+
+# Check values
+polyValCheck(poly)
+ptValCheck(pt)
 
 # Write polygons to file
 st_write(poly, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)

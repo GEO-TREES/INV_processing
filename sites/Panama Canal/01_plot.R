@@ -7,19 +7,19 @@ library(dplyr)
 library(ggplot2)
 library(sf)
 
-# Define site ID
-site_id <- "Panama Canal"
-
 # Source functions
 source("../../func.R")
+
+# Define site ID
+site_id <- "Panama Canal"
 
 # Define directories
 indir <- "../../dat/sites/Panama Canal/raw"
 outdir <- "../../dat/sites/Panama Canal/01_plot"
 
 # Import column descriptions
-poly_cols <- read.csv("../../dat/templates/poly_cols.csv")
-pt_cols <- read.csv("../../dat/templates/pt_cols.csv")
+poly_cols <- read.csv("../../templates/poly_cols.csv")
+pt_cols <- read.csv("../../templates/pt_cols.csv")
 
 # Read in plot polygons as sf objects
 # Gigante plot
@@ -42,7 +42,7 @@ ctfssmall_poly <- read_sf(file.path(indir, "CTFS_Plots_Polygons.shp")) %>%
   mutate(
     plot_id = DESC_,
     area_reported_ha = AREA_HA,
-    perim_reported_m = Perimeter) %>% 
+    perim_reported_m = as.numeric(Perimeter)) %>% 
   filter(plot_id %in% c("P06", "P12", "P14", "P15", "ElCharco", 
     "FincaRoubik", "Metrop", "Soberania")) %>%
   dplyr::select(plot_id, area_reported_ha, perim_reported_m) 
@@ -89,9 +89,7 @@ sanlorenzo_poly <- read_sf(file.path(indir, "san_lorenzo.shp")) %>%
 polys <- bind_rows(gigante_poly, bci50ha_poly, ctfssmall_poly, 
   sanlorenzo_poly) %>%
   relocate(geometry, .after = last_col()) %>% 
-  mutate(
-    site_id,
-    plot_id = paste(site_id, plot_id, sep = ":")) %>% 
+  mutate(site_id) %>% 
   relocate(site_id, .before = everything())
 
 # Cast polygons to points
@@ -99,114 +97,118 @@ pts <- st_cast(polys, "POINT") %>%
   dplyr::select(site_id, plot_id) %>% 
   group_by(site_id, plot_id) %>%
   slice_head(n = -1) %>% 
-  mutate(corner_id = row_number()) %>% 
+  mutate(corner_id = as.character(row_number())) %>% 
   mutate(
-    x_rel = case_when(
-      plot_id == "Panama Canal:BCI 50 ha plot" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:BCI 50 ha plot" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:BCI 50 ha plot" & corner_id == 3 ~ 1000,
-      plot_id == "Panama Canal:BCI 50 ha plot" & corner_id == 4 ~ 1000,
-      plot_id == "Panama Canal:ElCharco" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:ElCharco" & corner_id == 2 ~ 100,
-      plot_id == "Panama Canal:ElCharco" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:ElCharco" & corner_id == 4 ~ 0,
-      plot_id == "Panama Canal:FincaRoubik" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:FincaRoubik" & corner_id == 2 ~ 100,
-      plot_id == "Panama Canal:FincaRoubik" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:FincaRoubik" & corner_id == 4 ~ 0,
-      plot_id == "Panama Canal:Gigante fertilization plot" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:Gigante fertilization plot" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:Gigante fertilization plot" & corner_id == 3 ~ 480,
-      plot_id == "Panama Canal:Gigante fertilization plot" & corner_id == 4 ~ 480,
-      plot_id == "Panama Canal:Metrop" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:Metrop" & corner_id == 2 ~ 100,
-      plot_id == "Panama Canal:Metrop" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:Metrop" & corner_id == 4 ~ 0,
-      plot_id == "Panama Canal:P06" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:P06" & corner_id == 2 ~ 100,
-      plot_id == "Panama Canal:P06" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:P06" & corner_id == 4 ~ 0,
-      plot_id == "Panama Canal:P12" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:P12" & corner_id == 2 ~ 100,
-      plot_id == "Panama Canal:P12" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:P12" & corner_id == 4 ~ 0,
-      plot_id == "Panama Canal:P14" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:P14" & corner_id == 2 ~ 100,
-      plot_id == "Panama Canal:P14" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:P14" & corner_id == 4 ~ 0,
-      plot_id == "Panama Canal:P15" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:P15" & corner_id == 2 ~ 100,
-      plot_id == "Panama Canal:P15" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:P15" & corner_id == 4 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 3 ~ 140,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 4 ~ 140,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 4 ~ 100,
-      plot_id == "Panama Canal:Soberania" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:Soberania" & corner_id == 2 ~ 100,
-      plot_id == "Panama Canal:Soberania" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:Soberania" & corner_id == 4 ~ 0,
+    x_rel_m = case_when(
+      plot_id == "BCI 50 ha plot" & corner_id == 1 ~ 0,
+      plot_id == "BCI 50 ha plot" & corner_id == 2 ~ 0,
+      plot_id == "BCI 50 ha plot" & corner_id == 3 ~ 1000,
+      plot_id == "BCI 50 ha plot" & corner_id == 4 ~ 1000,
+      plot_id == "ElCharco" & corner_id == 1 ~ 0,
+      plot_id == "ElCharco" & corner_id == 2 ~ 100,
+      plot_id == "ElCharco" & corner_id == 3 ~ 100,
+      plot_id == "ElCharco" & corner_id == 4 ~ 0,
+      plot_id == "FincaRoubik" & corner_id == 1 ~ 0,
+      plot_id == "FincaRoubik" & corner_id == 2 ~ 100,
+      plot_id == "FincaRoubik" & corner_id == 3 ~ 100,
+      plot_id == "FincaRoubik" & corner_id == 4 ~ 0,
+      plot_id == "Gigante fertilization plot" & corner_id == 1 ~ 0,
+      plot_id == "Gigante fertilization plot" & corner_id == 2 ~ 0,
+      plot_id == "Gigante fertilization plot" & corner_id == 3 ~ 480,
+      plot_id == "Gigante fertilization plot" & corner_id == 4 ~ 480,
+      plot_id == "Metrop" & corner_id == 1 ~ 0,
+      plot_id == "Metrop" & corner_id == 2 ~ 100,
+      plot_id == "Metrop" & corner_id == 3 ~ 100,
+      plot_id == "Metrop" & corner_id == 4 ~ 0,
+      plot_id == "P06" & corner_id == 1 ~ 0,
+      plot_id == "P06" & corner_id == 2 ~ 100,
+      plot_id == "P06" & corner_id == 3 ~ 100,
+      plot_id == "P06" & corner_id == 4 ~ 0,
+      plot_id == "P12" & corner_id == 1 ~ 0,
+      plot_id == "P12" & corner_id == 2 ~ 100,
+      plot_id == "P12" & corner_id == 3 ~ 100,
+      plot_id == "P12" & corner_id == 4 ~ 0,
+      plot_id == "P14" & corner_id == 1 ~ 0,
+      plot_id == "P14" & corner_id == 2 ~ 100,
+      plot_id == "P14" & corner_id == 3 ~ 100,
+      plot_id == "P14" & corner_id == 4 ~ 0,
+      plot_id == "P15" & corner_id == 1 ~ 0,
+      plot_id == "P15" & corner_id == 2 ~ 100,
+      plot_id == "P15" & corner_id == 3 ~ 100,
+      plot_id == "P15" & corner_id == 4 ~ 0,
+      plot_id == "San Lorenzo A" & corner_id == 1 ~ 0,
+      plot_id == "San Lorenzo A" & corner_id == 2 ~ 0,
+      plot_id == "San Lorenzo A" & corner_id == 3 ~ 140,
+      plot_id == "San Lorenzo A" & corner_id == 4 ~ 140,
+      plot_id == "San Lorenzo B" & corner_id == 1 ~ 0,
+      plot_id == "San Lorenzo B" & corner_id == 2 ~ 0,
+      plot_id == "San Lorenzo B" & corner_id == 3 ~ 100,
+      plot_id == "San Lorenzo B" & corner_id == 4 ~ 100,
+      plot_id == "Soberania" & corner_id == 1 ~ 0,
+      plot_id == "Soberania" & corner_id == 2 ~ 100,
+      plot_id == "Soberania" & corner_id == 3 ~ 100,
+      plot_id == "Soberania" & corner_id == 4 ~ 0,
       TRUE ~ NA_real_),
-    y_rel = case_when(
-      plot_id == "Panama Canal:BCI 50 ha plot" & corner_id == 1 ~ 500,
-      plot_id == "Panama Canal:BCI 50 ha plot" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:BCI 50 ha plot" & corner_id == 3 ~ 0,
-      plot_id == "Panama Canal:BCI 50 ha plot" & corner_id == 4 ~ 500,
-      plot_id == "Panama Canal:ElCharco" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:ElCharco" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:ElCharco" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:ElCharco" & corner_id == 4 ~ 100,
-      plot_id == "Panama Canal:FincaRoubik" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:FincaRoubik" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:FincaRoubik" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:FincaRoubik" & corner_id == 4 ~ 100,
-      plot_id == "Panama Canal:Gigante fertilization plot" & corner_id == 1 ~ 800,
-      plot_id == "Panama Canal:Gigante fertilization plot" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:Gigante fertilization plot" & corner_id == 3 ~ 0,
-      plot_id == "Panama Canal:Gigante fertilization plot" & corner_id == 4 ~ 800,
-      plot_id == "Panama Canal:Metrop" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:Metrop" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:Metrop" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:Metrop" & corner_id == 4 ~ 100,
-      plot_id == "Panama Canal:P06" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:P06" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:P06" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:P06" & corner_id == 4 ~ 100,
-      plot_id == "Panama Canal:P12" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:P12" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:P12" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:P12" & corner_id == 4 ~ 100,
-      plot_id == "Panama Canal:P14" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:P14" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:P14" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:P14" & corner_id == 4 ~ 100,
-      plot_id == "Panama Canal:P15" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:P15" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:P15" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:P15" & corner_id == 4 ~ 100,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 1 ~ 140,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 3 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo A" & corner_id == 4 ~ 140,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 2 ~ 400,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 3 ~ 400,
-      plot_id == "Panama Canal:San Lorenzo B" & corner_id == 4 ~ 0,
-      plot_id == "Panama Canal:Soberania" & corner_id == 1 ~ 0,
-      plot_id == "Panama Canal:Soberania" & corner_id == 2 ~ 0,
-      plot_id == "Panama Canal:Soberania" & corner_id == 3 ~ 100,
-      plot_id == "Panama Canal:Soberania" & corner_id == 4 ~ 100,
+    y_rel_m = case_when(
+      plot_id == "BCI 50 ha plot" & corner_id == 1 ~ 500,
+      plot_id == "BCI 50 ha plot" & corner_id == 2 ~ 0,
+      plot_id == "BCI 50 ha plot" & corner_id == 3 ~ 0,
+      plot_id == "BCI 50 ha plot" & corner_id == 4 ~ 500,
+      plot_id == "ElCharco" & corner_id == 1 ~ 0,
+      plot_id == "ElCharco" & corner_id == 2 ~ 0,
+      plot_id == "ElCharco" & corner_id == 3 ~ 100,
+      plot_id == "ElCharco" & corner_id == 4 ~ 100,
+      plot_id == "FincaRoubik" & corner_id == 1 ~ 0,
+      plot_id == "FincaRoubik" & corner_id == 2 ~ 0,
+      plot_id == "FincaRoubik" & corner_id == 3 ~ 100,
+      plot_id == "FincaRoubik" & corner_id == 4 ~ 100,
+      plot_id == "Gigante fertilization plot" & corner_id == 1 ~ 800,
+      plot_id == "Gigante fertilization plot" & corner_id == 2 ~ 0,
+      plot_id == "Gigante fertilization plot" & corner_id == 3 ~ 0,
+      plot_id == "Gigante fertilization plot" & corner_id == 4 ~ 800,
+      plot_id == "Metrop" & corner_id == 1 ~ 0,
+      plot_id == "Metrop" & corner_id == 2 ~ 0,
+      plot_id == "Metrop" & corner_id == 3 ~ 100,
+      plot_id == "Metrop" & corner_id == 4 ~ 100,
+      plot_id == "P06" & corner_id == 1 ~ 0,
+      plot_id == "P06" & corner_id == 2 ~ 0,
+      plot_id == "P06" & corner_id == 3 ~ 100,
+      plot_id == "P06" & corner_id == 4 ~ 100,
+      plot_id == "P12" & corner_id == 1 ~ 0,
+      plot_id == "P12" & corner_id == 2 ~ 0,
+      plot_id == "P12" & corner_id == 3 ~ 100,
+      plot_id == "P12" & corner_id == 4 ~ 100,
+      plot_id == "P14" & corner_id == 1 ~ 0,
+      plot_id == "P14" & corner_id == 2 ~ 0,
+      plot_id == "P14" & corner_id == 3 ~ 100,
+      plot_id == "P14" & corner_id == 4 ~ 100,
+      plot_id == "P15" & corner_id == 1 ~ 0,
+      plot_id == "P15" & corner_id == 2 ~ 0,
+      plot_id == "P15" & corner_id == 3 ~ 100,
+      plot_id == "P15" & corner_id == 4 ~ 100,
+      plot_id == "San Lorenzo A" & corner_id == 1 ~ 140,
+      plot_id == "San Lorenzo A" & corner_id == 2 ~ 0,
+      plot_id == "San Lorenzo A" & corner_id == 3 ~ 0,
+      plot_id == "San Lorenzo A" & corner_id == 4 ~ 140,
+      plot_id == "San Lorenzo B" & corner_id == 1 ~ 0,
+      plot_id == "San Lorenzo B" & corner_id == 2 ~ 400,
+      plot_id == "San Lorenzo B" & corner_id == 3 ~ 400,
+      plot_id == "San Lorenzo B" & corner_id == 4 ~ 0,
+      plot_id == "Soberania" & corner_id == 1 ~ 0,
+      plot_id == "Soberania" & corner_id == 2 ~ 0,
+      plot_id == "Soberania" & corner_id == 3 ~ 100,
+      plot_id == "Soberania" & corner_id == 4 ~ 100,
       TRUE ~ NA_real_)
     ) %>% 
   relocate(geometry, .after = last_col())
 
 # Check all columns in output objects
-stopifnot(all(colnames(polys) == poly_cols$column_name))
-stopifnot(all(colnames(pts) == pt_cols$column_name))
+colCheck(polys, poly_cols)
+colCheck(pts, pt_cols)
+
+# Check values
+polyValCheck(polys)
+ptValCheck(pts)
 
 # Write polygons to file
 st_write(polys, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)

@@ -29,13 +29,13 @@ stopifnot(all(!is.na(s_cent$X)))
 stopifnot(all(!is.na(s_cent$Y)))
 
 # Retrieve stem heights using plot locations
-s_cent$height_pred <- retrieveH(
-  D = s_cent$diam, 
+s_cent$height_m_pred <- retrieveH(
+  D = s_cent$diam_cm, 
   coord = s_cent[,c("X", "Y")])$H
 
 # Create output dataframe
 out <- s_cent %>% 
-  dplyr::select(measurement_id, height_pred)
+  dplyr::select(record_id, height_m_pred)
 
 # Write to file
 write.csv(out, file.path(outdir, "stem_height.csv"), row.names = FALSE)
@@ -43,13 +43,14 @@ write.csv(out, file.path(outdir, "stem_height.csv"), row.names = FALSE)
 # Extract valid height field measurements
 s_height <- s_cent %>% 
   filter(
-    !is.na(diam),
-    !is.na(height),
-    alive == 1,
-    broken == 0,
-    fallen == 0,
-    liana == 0,
-    missing == 0)
+    !is.na(diam_cm),
+    !is.na(height_m),
+    alive == TRUE,
+    broken == FALSE,
+    fallen == FALSE,
+    liana == FALSE,
+    missing == FALSE) %>% 
+  dplyr::select(record_id, diam_cm, height_m)
 
 # Write valid height measurements to file
 write.csv(s_height, file.path(outdir, "stem_height_meas.csv"), row.names = FALSE)

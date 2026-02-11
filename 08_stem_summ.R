@@ -15,15 +15,15 @@ library(sf)
 # stem_height <- read.csv("./dat/sites/Panama Canal/06_height/stem_height.csv")
 # stem_wd <- read.csv("./dat/sites/Panama Canal/05_wd/stem_wd.csv")
 # stem_taxa <- read.csv("./dat/sites/Panama Canal/03_taxa/stem_taxa.csv")
-# stem_pt <- st_read("./dat/sites/Panama Canal/04_sub/stem_pt.gpkg")
+# stem_pt <- st_read("./dat/sites/Panama Canal/04_quad/stem_pt.gpkg")
 
 # Combine stem dataframes
 stem_summ <- stem %>% 
-  left_join(., stem_agb, by = "measurement_id") %>% 
-  left_join(., stem_height, by = "measurement_id") %>% 
-  left_join(., stem_wd, by = "measurement_id") %>% 
-  left_join(., stem_taxa, by = "measurement_id") %>% 
-  left_join(., stem_pt, by = "measurement_id") %>% 
+  left_join(., stem_agb, by = "record_id") %>% 
+  left_join(., stem_height, by = "record_id") %>% 
+  left_join(., stem_wd, by = "record_id") %>% 
+  left_join(., stem_taxa, by = "record_id") %>% 
+  left_join(., stem_pt, by = "record_id") %>% 
   st_sf()
 
 # Write to file

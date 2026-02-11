@@ -27,25 +27,25 @@ p_cent <- st_centroid(plot_poly) %>%
 
 # Combine dataframes
 stem_all <- stem %>% 
-  left_join(., stem_wd, by = "measurement_id") %>% 
-  left_join(., stem_height, by = "measurement_id") %>% 
+  left_join(., stem_wd, by = "record_id") %>% 
+  left_join(., stem_height, by = "record_id") %>% 
   left_join(., p_cent, by = "plot_id")
 
 # Estimate stem biomass (Mg)
-stem_all$agb <- computeAGB(
-  D = stem_all$diam,
+stem_all$agb_Mg <- computeAGB(
+  D = stem_all$diam_cm,
   WD = stem_all$meanWD,
   coord = stem_all[,c("longitude", "latitude")])
 
 # Calculate basal area (m^2)
-stem_all$ba <- pi * (stem_all$diam / 2)^2 / 10000 
+stem_all$ba_m2 <- pi * (stem_all$diam_cm / 2)^2 / 10000 
 
 # Create output dataframe
 out <- stem_all %>% 
   dplyr::select(
-    measurement_id, 
-    agb,
-    ba)
+    record_id, 
+    agb_Mg,
+    ba_m2)
 
 # Write summarised data to file
 write.csv(out, file.path(outdir, "stem_agb.csv"), row.names = FALSE)

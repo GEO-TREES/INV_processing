@@ -18,21 +18,20 @@ source("./func.R")
 wd <- read.csv("./dat/01_wd/wd.csv")
 
 # Join taxonomy data to stem data
-stem_taxa_all <- left_join(stem, stem_taxa, by = "measurement_id")
+stem_taxa_all <- left_join(stem, stem_taxa, by = "record_id")
 
 # Estimate wood density for each stem measurement
-wd_out <- wdGen(stem_taxa_all, wd, 
-  regional = FALSE,
-  measurement_id = "measurement_id",
-  site_id = "site_id",
-  plot_id = "plot_id",
-  family = "taxon_family_acc",
-  genus = "taxon_genus_acc",
-  species = "taxon_species_acc",
-  wd = "wd", 
-  wd_region = "wd_region")
+wd_all <- getWoodDensity(
+  genus = stem_taxa_all$taxon_genus_acc, 
+  species = stem_taxa_all$taxon_epithet_acc,
+  stand = stem_taxa_all$plot_id,
+  family = stem_taxa_all$taxon_family_acc,
+  region = "World",
+  addWoodDensity = NULL,
+  verbose = TRUE)
+
+wd_out <- cbind(record_id = stem_taxa$record_id, wd_all)
 
 # Write to file
 write.csv(wd_out, file.path(outdir, "stem_wd.csv"), row.names = FALSE)
-
 

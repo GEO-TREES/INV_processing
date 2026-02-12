@@ -7,7 +7,6 @@ library(dplyr)
 library(tidyr)
 library(sf)
 library(BIOMASS)
-library(parallel)
 library(units)
 
 # Define directories

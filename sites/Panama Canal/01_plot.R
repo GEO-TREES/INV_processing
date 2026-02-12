@@ -4,7 +4,6 @@
 
 # Packages
 library(dplyr)
-library(ggplot2)
 library(sf)
 
 # Source functions

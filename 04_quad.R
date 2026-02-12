@@ -6,7 +6,6 @@
 library(dplyr)
 library(sf)
 library(BIOMASS)
-library(data.table)
 
 source("./func.R")
 

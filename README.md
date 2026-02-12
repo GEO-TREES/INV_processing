@@ -1,9 +1,13 @@
 # Workflows for processing GEO-TREES tree inventory data
 
-This repository contains code to clean and process tree inventory data from GEO-TREES sites
+This repository contains code to clean and process tree inventory data from GEO-TREES sites.
 
-* `./zz_site.R` - run scripts in order to process a single site
-* `./zz_site_all.R` - process all sites listed as "complete" in `./dat/site_status.csv`
+Each directory in `./sites/` contains scripts to perform initial cleaning on raw data from each GEO-TREES site:
+
+* `./*/01_plot.R` - create plot polygons, format plot metadata
+* `./*/02_stem.R` - clean stem measurement data
+
+In the root directory there are additional scripts which process data from any site:
 
 * `./03_taxa.R` - correct taxonomic information
 * `./04_quad.R` - create quadrats in each plot
@@ -13,15 +17,13 @@ This repository contains code to clean and process tree inventory data from GEO-
 * `./08_stem_summ.R` - create master stem measurement table
 * `./09_quad_summ.R` - summarise quadrat measurements
 
+* `./zz_site.R` - run scripts in order to process a single site
+* `./zz_site_all.R` - process all sites listed as "complete" in `./dat/site_status.csv`
+
 * `./func.R` - frequently used functions
 * `./zz_wd_prep.R` - prepare wood density dataset
 * `./zz_renv.R` - prepare reproducible R environment
 
-Each directory in `./sites/` contains additional scripts to perform initial cleaning on raw data from each GEO-TREES site:
-
-* `./*/01_plot.R` - create plot polygons, format plot metadata
-* `./*/02_stem.R` - clean stem measurement data
- 
 Key outputs from each site include:
 
 * `01_plot.R`:

@@ -20,9 +20,11 @@ In the root directory there are additional scripts which process data from any s
 * `./zz_site.R` - run scripts in order to process a single site
 * `./zz_site_all.R` - process all sites listed as "complete" in `./dat/site_status.csv`
 
-* `./func.R` - frequently used functions
 * `./zz_wd_prep.R` - prepare wood density dataset
 * `./zz_renv.R` - prepare reproducible R environment
+
+* `./func.R` - frequently used functions
+
 
 Key outputs from each site include:
 

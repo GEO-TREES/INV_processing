@@ -1,6 +1,6 @@
-# Workflows for processing GEO-TREES plot data
+# Workflows for processing GEO-TREES tree inventory data
 
-This repository contains code to clean and process tree-inventory data from GEO-TREES sites
+This repository contains code to clean and process tree inventory data from GEO-TREES sites
 
 * `./zz_site.R` - run scripts in order to process a single site
 * `./zz_site_all.R` - process all sites listed as "complete" in `./dat/site_status.csv`

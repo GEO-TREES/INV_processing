@@ -41,6 +41,7 @@ s_clean <- s %>%
     x_rel_m = as.numeric(gx23),
     y_rel_m = as.numeric(gy23),
     stem_id = tag,
+    census_id = as.integer(1),
     taxon_name = paste(genus, species)) %>% 
   dplyr::select(any_of(stem_cols$column_name))
 
@@ -74,14 +75,17 @@ s2_clean <- s2 %>%
       plot_id == "San Lorenzo B" ~ y_rel_m - 40,
       TRUE ~ y_rel_m),
     pom_m = as.numeric(HOM),
-    taxon_name = paste(Genus, SpeciesName)
+    taxon_name = paste(Genus, SpeciesName),
+    census_id = as.integer(PlotCensusNumber)
   ) %>% 
   rename(
-    census_id = PlotCensusNumber,
-    census_date = ExactDate,
+    measurement_date = ExactDate,
     subplot_id = QuadratID,
     stem_id = StemID,
     tree_id = TreeID) %>% 
+  group_by(plot_id, census_id) %>% 
+  mutate(census_date = as.character(mean(as.Date(measurement_date), na.rm = TRUE))) %>% 
+  ungroup() %>% 
   dplyr::select(any_of(stem_cols$column_name))
 
 # Join stems tables

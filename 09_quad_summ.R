@@ -41,10 +41,13 @@ stem_summ_quad <- stem_summ %>%
   left_join(., quad_cent, by = "quadrat_id") %>% 
   left_join(., quad_poly_area, by = c("plot_id", "quadrat_id"))
 
-# Split stem dataframe (D >= 10 cm) by quadrat
+# Filter stems to thoe aove 
 stem_summ_quad_ge10 <- stem_summ_quad[stem_summ_quad$diam_cm >= 10,]
 
-stem_summ_quad_ge10_split <- split(stem_summ_quad_ge10, stem_summ_quad_ge10$quadrat_id)
+# Split stem dataframe by quadrat and census
+stem_summ_quad_ge10_split <- split(stem_summ_quad_ge10, 
+  list(stem_summ_quad_ge10$quadrat_id, stem_summ_quad_ge10$census_id), 
+  drop = TRUE, sep = "::")
 
 # Define number of simulations
 nsim <- 1000
@@ -79,7 +82,8 @@ names(quad_agb_mc) <- names(stem_summ_quad_ge10_split)
 # Extract summary statistics from AGB MC error propagation simulations
 quad_agb_mc_summ <- bind_rows(lapply(names(quad_agb_mc), function(x) { 
   data.frame(
-    quadrat_id = x,
+    quadrat_id = gsub("::.*", "", x),
+    census_id = gsub(".*::", "", x),
     agb_ge10_sum_mc_mean = quad_agb_mc[[x]]$meanAGB,
     agb_ge10_sum_mc_median = quad_agb_mc[[x]]$medAGB,
     agb_ge10_sum_mc_sd = quad_agb_mc[[x]]$sdAGB,
@@ -92,6 +96,10 @@ quad_agb_mc_summ <- bind_rows(lapply(names(quad_agb_mc), function(x) {
 quad_summ <- stem_summ_quad %>% 
   group_by(site_id, plot_id, quadrat_id, census_id, area_ha) %>% 
   summarise(
+    n_stem = n(),
+    n_stem_ge5 = sum(diam_cm >= 5, na.rm = TRUE),
+    n_stem_ge10 = sum(diam_cm >= 10, na.rm = TRUE),
+    n_stem_ge20 = sum(diam_cm >= 20, na.rm = TRUE),
     ba_m2_sum = sum(ba_m2, na.rm = TRUE),
     ba_m2_ge5_sum = sum(ba_m2[diam_cm >= 5], na.rm = TRUE),
     ba_m2_ge10_sum = sum(ba_m2[diam_cm >= 10], na.rm = TRUE),
@@ -147,11 +155,15 @@ quad_summ <- stem_summ_quad %>%
     meanWD_ge20_mean = mean(meanWD[diam_cm >= 20], na.rm = TRUE)) %>% 
   left_join(., quad_agb_mc_summ, by = "quadrat_id") %>% 
   mutate(
-    across(starts_with(c("ba_m2_", "agb_Mg")), ~.x / area_ha, .names = "{.col}_ha"),
     across(
-      .cols = where(~ inherits(.x, "units")), 
+      starts_with(c("n_stem_", "ba_m2_", "agb_Mg")), 
+      ~.x / area_ha, .names = "{.col}_ha"),
+    across(
+      .cols = where(~inherits(.x, "units")), 
       .fns = drop_units),
-    across(everything(), ~ifelse(.x == -Inf, NA_real_, .x)))
+    across(
+      everything(), 
+      ~ifelse(.x == -Inf, NA_real_, .x)))
 
 # Combine with polygons
 polys_summ <- right_join(quad_poly, quad_summ, by = c("plot_id", "quadrat_id"))

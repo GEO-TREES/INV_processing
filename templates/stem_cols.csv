@@ -2,18 +2,19 @@
 record_id,integer,"ID of the stem measurement record, unique within the site",NA
 site_id,character,GEO-TREES site name,NA
 plot_id,character,"Plot name, unique within the site",NA
-census_id,integer,Census number. E.g. '3' for the third census,NA
-census_date,character,"The date of the census. This can be either YYYY, YYYY-MM, or YYYY-MM-DD.",NA
+census_id,integer,Census number. E.g. '3' for the third census in that plot,NA
+census_date,character,"The mid-date of the census. This can be either YYYY, YYYY-MM, or YYYY-MM-DD",NA
 subplot_id,character,"Subplot name, unique within the plot",NA
-tree_id,character,"Unique identifier for trees within a plot, normally the first `stem_id` within the tree.",NA
-stem_id,character,Unique identifier for stems within a plot. Normally the tag ID if the plot has tags.,NA
+tree_id,character,"Unique identifier for trees within a plot, normally the first `stem_id` within the tree",NA
+stem_id,character,Unique identifier for stems within a plot. Normally the tag ID if the plot has tags,NA
 measurement_id,integer,Measurement number. If a stem has multiple measurements within a single census,NA
+measurement_date,character,"The date of the measurement. This can be either YYYY, YYYY-MM, or YYYY-MM-DD",NA
 x_rel_m,numeric,X coordinate of the stem relative to the plot (m),m
 y_rel_m,numeric,Y coordinate of the stem relative to the plot (m),m
 diam_cm,numeric,Stem diameter measurement in cm to one decimal place (nearest mm),cm
 pom_m,numeric,"The height at which `diam_cm` was measured, in metres to one decimal place (nearest 10 cm)",m
 height_m,numeric,"The height of the tree, in metres to one decimal place (nearest 10 cm)",m
-taxon_name,character,"Taxonomic name of the stem, provided by the data originator.",NA
+taxon_name,character,"Taxonomic name of the stem, provided by the data originator",NA
 alive,logical,Is the stem alive?,NA
 broken,logical,Is the stem broken or snapped above the POM?,NA
 fallen,logical,Is the stem fallen to the ground and not supporting its own weight?,NA

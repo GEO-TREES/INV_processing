@@ -77,7 +77,7 @@ s_clean <- s %>%
     x_rel_m = Xfield,
     y_rel_m = Yfield,
     census_id = CensusYear,
-    census_date = CensusDate,
+    measurement_date = CensusDate,
     alive = CodeAlive) %>% 
   mutate(
     site_id,
@@ -97,6 +97,9 @@ s_clean <- s %>%
     agb_allometry = NA_character_) %>% 
   group_by(plot_id) %>% 
   mutate(census_id = dense_rank(census_id)) %>% 
+  ungroup() %>% 
+  group_by(plot_id, census_id) %>% 
+  mutate(census_date = format(mean(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
   group_by(plot_id, stem_id, census_id) %>% 
   mutate(measurement_id = row_number()) %>% 

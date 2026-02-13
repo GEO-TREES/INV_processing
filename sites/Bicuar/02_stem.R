@@ -30,9 +30,9 @@ s_clean <- s %>%
   arrange(census_date) %>% 
   fill(x_grid, y_grid, .direction = "down") %>% 
   ungroup() %>% 
-  filter(grepl("2024", census_date)) %>% 
   dplyr::select(-plot_id) %>% 
   rename(
+    measurement_date = census_date,
     plot_id = plot_name,
     x_rel_m = x_grid,
     y_rel_m = y_grid,
@@ -41,8 +41,8 @@ s_clean <- s %>%
     height_m = height, 
     taxon_name = species_name_clean) %>% 
   mutate(
+    census_id = as.numeric(gsub("-.*", "", measurement_date)),
     site_id = site_id,
-    census_id = as.integer(3),
     alive = ifelse(stem_status %in% c("a", "r"), TRUE, FALSE),
     broken = ifelse(grepl("b|p", stem_mode), TRUE, FALSE),
     fallen = ifelse(grepl("f", stem_mode), TRUE, FALSE),
@@ -50,9 +50,18 @@ s_clean <- s %>%
     liana = ifelse(grepl("w", stem_mode), TRUE, FALSE), 
     agb_allometry = NA_character_,
     subplot_id = as.character(subplot_id)) %>% 
+  group_by(plot_id, census_id) %>% 
+  mutate(census_date = as.character(mean(as.Date(measurement_date), na.rm = TRUE))) %>% 
+  ungroup() %>% 
+  group_by(plot_id) %>% 
+  mutate(census_id = dense_rank(census_id)) %>% 
+  ungroup() %>% 
   group_by(plot_id, census_id, stem_id) %>% 
   mutate(measurement_id = row_number()) %>% 
   ungroup() %>% 
+  mutate(
+    census_date = gsub("-01-01", "", census_date),
+    measurement_date = gsub("-01-01", "", measurement_date)) %>% 
   mutate(record_id = row_number()) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 

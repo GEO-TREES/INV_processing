@@ -9,6 +9,7 @@ runFn <- function(x) {
     },
     error = function(e) { 
       message("Error while running '", x, "': ", e$message)
+      stop(e)
     }, 
     finally = {
       setwd(pwd)

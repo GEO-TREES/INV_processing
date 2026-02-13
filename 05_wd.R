@@ -22,11 +22,10 @@ stem_taxa_all <- left_join(stem, stem_taxa, by = "record_id")
 
 # Estimate wood density for each stem measurement
 wd_all <- getWoodDensity(
-  genus = stem_taxa_all$taxon_genus_acc, 
-  species = stem_taxa_all$taxon_epithet_acc,
+  genus = stem_taxa_all$genusAccepted, 
+  species = stem_taxa_all$speciesAccepted,
   stand = stem_taxa_all$plot_id,
-  family = stem_taxa_all$taxon_family_acc,
-  region = "World",
+  family = stem_taxa_all$familyAccepted,
   addWoodDensity = NULL,
   verbose = TRUE)
 
@@ -34,4 +33,3 @@ wd_out <- cbind(record_id = stem_taxa$record_id, wd_all)
 
 # Write to file
 write.csv(wd_out, file.path(outdir, "stem_wd.csv"), row.names = FALSE)
-

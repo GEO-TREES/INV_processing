@@ -93,7 +93,6 @@ s_clean <- s %>%
     broken = NA,
     fallen = ifelse(MeasCode == 12 , TRUE, FALSE),
     missing = NA,
-    liana = NA,
     agb_allometry = NA_character_) %>% 
   group_by(plot_id) %>% 
   mutate(census_id = dense_rank(census_id)) %>% 

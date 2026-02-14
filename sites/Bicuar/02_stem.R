@@ -47,7 +47,6 @@ s_clean <- s %>%
     broken = ifelse(grepl("b|p", stem_mode), TRUE, FALSE),
     fallen = ifelse(grepl("f", stem_mode), TRUE, FALSE),
     missing = ifelse(grepl("v|q", stem_mode), TRUE, FALSE),
-    liana = ifelse(grepl("w", stem_mode), TRUE, FALSE), 
     agb_allometry = NA_character_,
     subplot_id = as.character(subplot_id)) %>% 
   group_by(plot_id, census_id) %>% 

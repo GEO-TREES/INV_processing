@@ -36,7 +36,6 @@ stem_summ_quad <- stem_summ %>%
     broken == FALSE, 
     fallen == FALSE,
     missing == FALSE,
-    liana == FALSE,
     !is.na(quadrat_id)) %>%
   left_join(., quad_cent, by = "quadrat_id") %>% 
   left_join(., quad_poly_area, by = c("plot_id", "quadrat_id"))

@@ -48,7 +48,6 @@ s_height <- s_cent %>%
     alive == TRUE,
     broken == FALSE,
     fallen == FALSE,
-    liana == FALSE,
     missing == FALSE) %>% 
   dplyr::select(record_id, diam_cm, height_m)
 

@@ -33,7 +33,6 @@ s_clean <- s %>%
     broken = ifelse(grepl("X|Q", code23), TRUE, FALSE),  # 
     fallen = ifelse(grepl("Y", code23), TRUE, FALSE),
     missing = FALSE,
-    liana = FALSE,
     alive = TRUE,
     census_date = format(as.Date(as.character(date23), format = "%Y%m%d"), "%Y-%m-%d"),
     diam_cm = dbh23 / 10,
@@ -54,7 +53,6 @@ s2_clean <- s2 %>%
     alive = ifelse(Status %in% c("alive", "broken below"), TRUE, FALSE),
     broken = ifelse(Status == "broken below", TRUE, FALSE),
     missing = ifelse(Status == "missing", TRUE, FALSE),
-    liana = FALSE,
     missing = FALSE,
     fallen = ifelse(grepl("Y", ListOfTSM), TRUE, FALSE),
     plot_id = case_when(

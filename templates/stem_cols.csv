@@ -19,5 +19,4 @@ alive,logical,Is the stem alive?,NA
 broken,logical,Is the stem broken or snapped above the POM?,NA
 fallen,logical,Is the stem fallen to the ground and not supporting its own weight?,NA
 missing,logical,Is the stem missing from this census?,NA
-liana,logical,Is the stem a liana?,NA
 agb_allometry,character,"Recommended above-ground woody biomass allometry, referring to a function in R, e.g. `Chave2014`",NA

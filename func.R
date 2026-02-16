@@ -63,7 +63,7 @@ colCheck <- function(x, cols) {
   }
 }
 
-# Check stem values
+# Check stem table values
 stemValCheck <- function(x) {
   # Record IDs must be unique
   if (any(duplicated(x$record_id))) {
@@ -111,6 +111,7 @@ stemValCheck <- function(x) {
   }
 }
 
+# Check polygon table values
 polyValCheck <- function(x) {
   # Only one site ID per site
   if (length(unique(x$site_id)) > 1) { 
@@ -133,6 +134,7 @@ polyValCheck <- function(x) {
   }
 }
 
+# Check plot corner table values
 ptValCheck <- function(x) {
   # Only one site ID per site
   if (length(unique(x$site_id)) > 1) { 

@@ -7,6 +7,9 @@ Each directory in `./sites/` contains scripts to perform initial cleaning on raw
 * `./*/01_plot.R` - create plot polygons, format plot metadata
 * `./*/02_stem.R` - clean stem measurement data
 
+See `./templates/*` for guidance on which columns should be included in datasets after initial cleaning. 
+
+
 In the root directory there are additional scripts which process data from any site:
 
 * `./03_taxa.R` - correct taxonomic information

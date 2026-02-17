@@ -90,9 +90,9 @@ s_clean <- s %>%
     height_m = NA_real_,
     alive = as.logical(alive),
     taxon_name = paste(trimws(GenusFilled), trimws(SpeciesFilled)),
-    broken = NA,
+    broken = FALSE,
     fallen = ifelse(MeasCode == 12 , TRUE, FALSE),
-    missing = NA,
+    missing = FALSE,
     agb_allometry = NA_character_) %>% 
   group_by(plot_id) %>% 
   mutate(census_id = dense_rank(census_id)) %>% 
@@ -100,7 +100,7 @@ s_clean <- s %>%
   group_by(plot_id, census_id) %>% 
   mutate(census_date = format(mean(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
-  group_by(plot_id, stem_id, census_id) %>% 
+  group_by(plot_id, tree_id, stem_id, census_id) %>% 
   mutate(measurement_id = row_number()) %>% 
   ungroup() %>% 
   filter(as.Date(census_date) > as.Date("2017-01-01")) %>% 

@@ -36,7 +36,7 @@ pt <- read_sf(file.path(indir, "plot_corners.shp")) %>%
       corner_id %in% c("SW", "SE") ~ 0,
       corner_id %in% c("NW", "NE") ~ 100,
       TRUE ~ NA_real_)) %>% 
-  relocate(geometry, .after = last_col())
+    dplyr::select(all_of(pt_cols$column_name))
 
 # Create polygons
 poly <- pt %>% 
@@ -45,9 +45,34 @@ poly <- pt %>%
   st_convex_hull() %>% 
   ungroup() %>% 
   mutate(
-    area_reported_ha = 1,
-    perim_reported_m = 400) %>% 
-  relocate(geometry, .after = last_col())
+    min_diam_thresh_cm = 5,
+    census_id_all = case_when(
+      plot_id == "B1" ~ "1",
+      plot_id == "B2" ~ "1",
+      plot_id == "M1" ~ "1;2",
+      plot_id == "M2" ~ "1;2",
+      plot_id == "M3" ~ "1;2",
+      plot_id == "O1" ~ "1",
+      plot_id == "O2" ~ "1",
+      plot_id == "P1" ~ "1",
+      plot_id == "P10" ~ "1;2;3",
+      plot_id == "P11" ~ "1;2;3",
+      plot_id == "P12" ~ "1;2;3",
+      plot_id == "P13" ~ "1;2;3",
+      plot_id == "P14" ~ "1;2;3",
+      plot_id == "P15" ~ "1;2;3",
+      plot_id == "P16" ~ "1;2",
+      plot_id == "P2" ~ "1;2;3",
+      plot_id == "P3" ~ "1;2;3",
+      plot_id == "P4" ~ "1;2;3",
+      plot_id == "P5" ~ "1;2;3",
+      plot_id == "P6" ~ "1;2;3",
+      plot_id == "P7" ~ "1;2;3",
+      plot_id == "P8" ~ "1;2;3",
+      plot_id == "P9" ~ "1;2;3",
+      TRUE ~ NA_character_)
+    ) %>% 
+    dplyr::select(all_of(poly_cols$column_name))
 
 # Check all columns in output objects
 colCheck(poly, poly_cols)

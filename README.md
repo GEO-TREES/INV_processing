@@ -9,16 +9,18 @@ Each directory in `./sites/` contains scripts to perform initial cleaning on raw
 
 See `./templates/*` for guidance on which columns should be included in datasets after initial cleaning. 
 
-
 In the root directory there are additional scripts which process data from any site:
 
 * `./03_taxa.R` - correct taxonomic information
 * `./04_quad.R` - create quadrats in each plot
 * `./05_wd.R` - estimate wood density for each stem measurement
 * `./06_height.R` - estimate stem height for each stem measurement
-* `./07_agb.R` - estimate above-ground woody biomass for each stem measurement
+* `./07_agb_stem.R` - estimate above-ground woody biomass for each stem measurement
 * `./08_stem_summ.R` - create master stem measurement table
-* `./09_quad_summ.R` - summarise quadrat measurements
+* `./09_stem_fil.R` - filter stem measurements before AGB Monte-Carlo 
+* `./10_agb_mc.R` - AGB Monte-Carlo error propagation
+* `./11_quad_summ.R` - summarise quadrat measurements
+* `./12_brm.R` - Create L2 and L3 datasets
 
 * `./zz_site.R` - run scripts in order to process a single site
 * `./zz_site_all.R` - process all sites listed as "complete" in `./dat/site_status.csv`
@@ -27,7 +29,6 @@ In the root directory there are additional scripts which process data from any s
 * `./zz_renv.R` - prepare reproducible R environment
 
 * `./func.R` - frequently used functions
-
 
 Key outputs from each site include:
 
@@ -39,7 +40,7 @@ Key outputs from each site include:
     * `wfo_cache.rds` - Cache generated from taxonomic name cleaning. Documents choices made by user.
 * `08_stem_summ.R`:
     * `stem_summ.gpkg` - Combined stem-level dataset. Includes data from `03_taxa/stem_taxa.csv`, `04_quad/stem_pt.gpkg`, `05_wd/stem_wd.csv`, `06_height/stem_height.csv`, `07_agb/stem_agb.csv`.
-* `09_quad_summ.R`:
+* `11_quad_summ.R`:
     * `quad_summ.gpkg` - Combined quadrat-level dataset. Includes data from `04_quad/quad_poly.gpkg`, `08_stem_summ/stem_summ.gpkg`.
 
 ## Environment 

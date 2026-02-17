@@ -1,4 +1,7 @@
-# Run scripts from their own working directory 
+#' Helper function to run scripts from their own directory 
+#'
+#' @param x filepath to R script 
+#'
 runFn <- function(x) {
   stopifnot(file.exists(x))
   pwd <- getwd()
@@ -17,7 +20,12 @@ runFn <- function(x) {
   )
 }
 
-# Check columns of a data table against a columns spec table
+#' Check columns of a data table against a columns spec table
+#'
+#' @param x dataframe
+#' @param cols column lookup table with three at least two columns:
+#'     `column_name`, `class`
+#'
 colCheck <- function(x, cols) {
   
   # Check if extra columns in data table not in spec table
@@ -63,7 +71,12 @@ colCheck <- function(x, cols) {
   }
 }
 
-# Check stem table values
+#' Check stem table values
+#' 
+#' Runs various checks on the values in stem measurement table columns 
+#'
+#' @param x dataframe containing stem measurements
+#'
 stemValCheck <- function(x) {
   # Record IDs must be unique
   if (any(duplicated(x$record_id))) {
@@ -111,7 +124,12 @@ stemValCheck <- function(x) {
   }
 }
 
-# Check polygon table values
+#' Check polygon sf object values
+#' 
+#' Runs various checks on the values in polygons sf object columns 
+#'
+#' @param x sf dataframe containing plot polygons
+#'
 polyValCheck <- function(x) {
   # Only one site ID per site
   if (length(unique(x$site_id)) > 1) { 
@@ -123,18 +141,23 @@ polyValCheck <- function(x) {
     stop("NAs in `plot_id` are not allowed")
   }
 
-  # Area reported must be positive
-  if (any(x$area_reported_ha <= 0, na.rm = TRUE)) { 
-    stop("Area reported must be positive")
+  # All plots must have a census_id
+  if (any(is.na(x$census_id_all))) { 
+    stop("NAs in `census_id_all` are not allowed")
   }
 
-  # Perimeter reported must be positive
-  if (any(x$perim_reported_m <= 0, na.rm = TRUE)) { 
-    stop("Perimerter reported must be positive")
+  # All plots must have a positive minimum diameter threshold
+  if (any(is.na(x$min_diam_thresh_cm) | x$min_diam_thresh_cm <= 0)) { 
+    stop("`min_diam_thresh_cm` must be a positive number")
   }
 }
 
-# Check plot corner table values
+#' Check plot corner sf object values
+#' 
+#' Runs various checks on the values in plot corner sf object columns 
+#'
+#' @param x sf dataframe containing plot corner points
+#'
 ptValCheck <- function(x) {
   # Only one site ID per site
   if (length(unique(x$site_id)) > 1) { 
@@ -169,7 +192,12 @@ ptValCheck <- function(x) {
   }
 }
 
-# Import saved WFO cache file
+#' Import saved WFO cache file
+#'
+#' Loads the cache into namespace BIOMASS:::the$wfo_cache
+#'
+#' @param filepath to previously created WFO cache file
+#'
 loadWFOCache <- function(x) {
   wfo_cache <- readRDS(x)
 
@@ -217,4 +245,46 @@ latLong2UTM <- function(x, y) {
 isSFType <- function(x, type = NULL) {
   inherits(x, c("sf", "sfc")) && (is.null(type) |
     all(sf::st_geometry_type(x, by_geometry = FALSE) %in% type))
+}
+
+#' Paste values together, replace NAs with blank, optional separator
+#'
+#' @param ... vectors or dataframe to be pasted together
+#' @param sep separator between adjacent values in vectors
+#' @param collapse separator between sets of values across vectors
+#' @param unique logical, if TRUE duplicated values are removed
+#' @param sort logical, if TRUE values are sorted
+#'
+#' @return character vector 
+#' 
+#' @export
+#' 
+pasteVals <- function(..., sep = "", collapse = NULL, 
+  remna = TRUE, unique = FALSE, sort = FALSE) {
+  ret <-
+    apply(
+      X = cbind(...),
+      MARGIN = 1,
+      FUN = function(x) {
+        if (all(is.na(x))) {
+          NA_character_
+        } else {
+          if (remna) {
+            x <- x[!is.na(x)]
+          }
+          if (unique) {
+            x <- x[!duplicated(x)]
+          }
+          if (sort) {
+            x <- sort(x, na.last = TRUE)
+          }
+          paste(x, collapse = sep)
+        }
+      }
+    )
+  if (!is.null(collapse)) {
+    paste(ret, collapse = collapse)
+  } else {
+    ret
+  }
 }

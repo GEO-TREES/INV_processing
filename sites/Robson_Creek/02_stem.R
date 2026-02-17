@@ -11,11 +11,11 @@ library(readxl)
 source("../../func.R")
 
 # Define site ID
-site_id <- "Robson Creek"
+site_id <- "Robson_Creek"
 
 # Define directories
-indir <- "../../dat/sites/Robson Creek/raw"
-outdir <- "../../dat/sites/Robson Creek/02_stem"
+indir <- "../../dat/sites/Robson_Creek/raw"
+outdir <- "../../dat/sites/Robson_Creek/02_stem"
 
 # Import stem column descriptions
 stem_cols <- read.csv("../../templates/stem_cols.csv")

@@ -1,6 +1,6 @@
 column_name,class,description,units
 site_id,character,GEO-TREES site ID,NA
 plot_id,character,"Plot name, unique within the site",NA
-area_reported_ha,numeric,Area of the plot reported by the data originator (ha),ha
-perim_reported_m,numeric,Perimeter of the plot reported by the data originator (m),m
+census_id_all,character,"Semi-colon ';' separated vector of all census IDs for the plot",NA
+min_diam_thresh_cm,numeric,Minimum Diameter threshold for stem measurements in the plot (cm),m
 geometry,sfc_POLYGON,`sf` geometry data,NA

@@ -10,11 +10,11 @@ library(sf)
 source("../../func.R")
 
 # Define site ID
-site_id <- "Panama Canal"
+site_id <- "Panama_Canal"
 
 # Define directories
-indir <- "../../dat/sites/Panama Canal/raw"
-outdir <- "../../dat/sites/Panama Canal/01_plot"
+indir <- "../../dat/sites/Panama_Canal/raw"
+outdir <- "../../dat/sites/Panama_Canal/01_plot"
 
 # Import column descriptions
 poly_cols <- read.csv("../../templates/poly_cols.csv")
@@ -25,33 +25,31 @@ pt_cols <- read.csv("../../templates/pt_cols.csv")
 gigante_poly <- read_sf(file.path(indir, "Gigante_Fertilization_Plot.shp")) %>% 
   mutate(
     plot_id = "Gigante fertilization plot",
-    area_reported_ha = HECTARES) %>%
-  dplyr::select(plot_id, area_reported_ha) 
+    min_diam_thresh_cm = 10) %>%
+  dplyr::select(plot_id, min_diam_thresh_cm) 
 
 # 50 ha plot of Barro Colorado Island
 bci50ha_poly <- read_sf(file.path(indir, "BCI_50ha.shp")) %>% 
   mutate(
     plot_id = "BCI 50 ha plot",
-    area_reported_ha = AREA) %>%
-  dplyr::select(plot_id, area_reported_ha) 
+    min_diam_thresh_cm = 10) %>%
+  dplyr::select(plot_id, min_diam_thresh_cm) 
 
 # Several 1 ha satellite plots that were also censused in 2023
 # Select only two plots coinciding with ALS acquisition
 ctfssmall_poly <- read_sf(file.path(indir, "CTFS_Plots_Polygons.shp")) %>% 
   mutate(
     plot_id = DESC_,
-    area_reported_ha = AREA_HA,
-    perim_reported_m = as.numeric(Perimeter)) %>% 
+    min_diam_thresh_cm = 10) %>% 
   filter(plot_id %in% c("P06", "P12", "P14", "P15", "ElCharco", 
     "FincaRoubik", "Metrop", "Soberania")) %>%
-  dplyr::select(plot_id, area_reported_ha, perim_reported_m) 
+  dplyr::select(plot_id, min_diam_thresh_cm) 
 
 # San Lorenzo plot
 sanlorenzo_poly <- read_sf(file.path(indir, "san_lorenzo.shp")) %>% 
   mutate(
-    plot_id = c("San Lorenzo B", "San Lorenzo A"),
-    area_reported_ha = Shape_Area * 0.0001) %>% 
-  dplyr::select(plot_id, area_reported_ha) %>% 
+    plot_id = c("San Lorenzo B", "San Lorenzo A")) %>% 
+  dplyr::select(plot_id) %>% 
   st_transform(., st_crs(gigante_poly)) %>% 
   st_cast(., "POINT") %>% 
   mutate(corner_id = as.character(row_number())) %>% 
@@ -60,7 +58,8 @@ sanlorenzo_poly <- read_sf(file.path(indir, "san_lorenzo.shp")) %>%
     1, 3, 4, 5)) %>% 
   group_by(plot_id) %>% 
   summarise() %>% 
-  st_cast(., "POLYGON")
+  st_cast(., "POLYGON") %>% 
+  mutate(min_diam_thresh_cm = 10)
 
 # Define cutting line 
 # sanlorenzo_points <- sanlorenzo_poly %>% 
@@ -87,9 +86,23 @@ sanlorenzo_poly <- read_sf(file.path(indir, "san_lorenzo.shp")) %>%
 # Combine all polys 
 polys <- bind_rows(gigante_poly, bci50ha_poly, ctfssmall_poly, 
   sanlorenzo_poly) %>%
-  relocate(geometry, .after = last_col()) %>% 
-  mutate(site_id) %>% 
-  relocate(site_id, .before = everything())
+  mutate(
+    site_id,
+    census_id_all = case_when(
+      plot_id == "BCI 50 ha plot" ~ "10",
+      plot_id == "ElCharco" ~ "9",
+      plot_id == "FincaRoubik" ~ "8",
+      plot_id == "Gigante fertilization plot" ~ "1",
+      plot_id == "Metrop" ~ "9",
+      plot_id == "P06" ~ "14",
+      plot_id == "P12" ~ "9",
+      plot_id == "P14" ~ "13",
+      plot_id == "P15" ~ "9",
+      plot_id == "San Lorenzo A" ~ "6",
+      plot_id == "San Lorenzo B" ~ "6",
+      plot_id == "Soberania" ~ "9",
+      TRUE ~ NA_character_)) %>% 
+  dplyr::select(all_of(poly_cols$column_name))
 
 # Cast polygons to points
 pts <- st_cast(polys, "POINT") %>% 
@@ -199,7 +212,7 @@ pts <- st_cast(polys, "POINT") %>%
       plot_id == "Soberania" & corner_id == 4 ~ 100,
       TRUE ~ NA_real_)
     ) %>% 
-  relocate(geometry, .after = last_col())
+  dplyr::select(all_of(pt_cols$column_name))
 
 # Check all columns in output objects
 colCheck(polys, poly_cols)

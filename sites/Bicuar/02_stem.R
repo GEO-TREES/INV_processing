@@ -28,7 +28,7 @@ s_clean <- s %>%
   left_join(., unique(p[,c("plot_id", "plot_name")]), by = "plot_id") %>% 
   group_by(plot_name, stem_id) %>% 
   arrange(census_date) %>% 
-  fill(x_grid, y_grid, .direction = "down") %>% 
+  fill(x_grid, y_grid, .direction = "downup") %>% 
   ungroup() %>% 
   dplyr::select(-plot_id) %>% 
   rename(

@@ -24,22 +24,8 @@ pt_cols <- read.csv("../../templates/pt_cols.csv")
 # Import plot metadata
 plot_meta <- read.csv(file.path(indir, "ParacouDescription.csv"))
 
-# # Extract subplot corners
-# subplot_corners <- plot_meta %>% 
-#   pivot_longer(
-#     cols = starts_with("SubPlotL"),
-#     names_to = c(".value", "corner_id"),
-#     names_pattern = "SubPlot(Lat|Lon)(SW|SE|NE|NW)") %>% 
-#   dplyr::select(
-#     plot_id = Plot,
-#     subplot_id = SubPlot,
-#     longitude = Lon,
-#     latitude = Lat)
-# 
-# subplot_corners_sf <- st_as_sf(subplot_corners, coords = c("longitude", "latitude")) 
-
 # Extract plot corners
-plot_corners <- plot_meta %>% 
+pt <- plot_meta %>% 
   pivot_longer(
     cols = starts_with("PlotL"),
     names_to = c(".value", "corner_id"),
@@ -47,46 +33,27 @@ plot_corners <- plot_meta %>%
   dplyr::select(
     plot_id = Plot,
     corner_id,
-    area_reported_ha = PlotArea,
     longitude = Lon,
-    latitude = Lat) %>% 
+    latitude = Lat, 
+    PlotArea) %>% 
   filter(plot_id != "17(Arbocel)") %>% 
-  distinct()
-
-# plot_origin_corner <- plot_meta %>% 
-#   mutate(PlotRefCorner = gsub("SO", "SW", trimws(PlotRefCorner))) %>% 
-#   dplyr::select(
-#     plot_id = Plot,
-#     plot_origin_corner_id = PlotRefCorner) %>% 
-#   filter(plot_id != "17(Arbocel)") %>% 
-#   distinct()
-# all(plot_origin_corner$plot_origin_corner_id == "SW")
-# All plots have XY origin in SW corne corner.
-
-# Extract reported plot areas
-plot_areas <- plot_corners %>% 
-  dplyr::select(plot_id, area_reported_ha) %>% 
-  distinct()
-
-# Create plot corner sf 
-pt <- plot_corners %>% 
+  distinct() %>% 
   st_as_sf(., coords = c("longitude", "latitude"), crs = 4326) %>% 
   st_transform(., crs = 32622) %>%  # UTM 22N
   mutate(
     site_id,
     x_rel_m = case_when(
       corner_id %in% c("SW", "NW") ~ 0,
-      corner_id %in% c("SE", "NE") & area_reported_ha == 6.25 ~ 250,
-      corner_id %in% c("SE", "NE") & area_reported_ha == 25 ~ 500,
+      corner_id %in% c("SE", "NE") & PlotArea == 6.25 ~ 250,
+      corner_id %in% c("SE", "NE") & PlotArea == 25 ~ 500,
       TRUE ~ NA_real_),
     y_rel_m = case_when(
       corner_id %in% c("SW", "SE") ~ 0,
-      corner_id %in% c("NW", "NE") & area_reported_ha == 6.25 ~ 250,
-      corner_id %in% c("NW", "NE") & area_reported_ha == 25 ~ 500,
+      corner_id %in% c("NW", "NE") & PlotArea == 6.25 ~ 250,
+      corner_id %in% c("NW", "NE") & PlotArea == 25 ~ 500,
       TRUE ~ NA_real_)) %>% 
-  dplyr::select(-area_reported_ha) %>% 
-  relocate(geometry, .after = last_col()) %>% 
-  relocate(site_id)
+  dplyr::select(all_of(pt_cols$column_name))
+
 
 # Create polygons
 poly <- pt %>% 
@@ -94,9 +61,25 @@ poly <- pt %>%
   summarise() %>% 
   st_convex_hull() %>% 
   ungroup() %>% 
-  left_join(., plot_areas, by = "plot_id") %>% 
-  mutate(perim_reported_m = NA_real_) %>% 
-  relocate(geometry, .after = last_col())
+  mutate(
+    min_diam_thresh_cm = 10,
+    census_id_all = case_when(
+      plot_id == "2" ~ "23;24;25;26",
+      plot_id == "3" ~ "23;24;25;26",
+      plot_id == "4" ~ "24;25;26;27",
+      plot_id == "5" ~ "23;24;25;26",
+      plot_id == "7" ~ "23;24;25;26",
+      plot_id == "8" ~ "23;24;25;26",
+      plot_id == "9" ~ "23;24;25;26",
+      plot_id == "10" ~ "23;24;25;26",
+      plot_id == "12" ~ "23;24;25;26",
+      plot_id == "13" ~ "21;22;23;24;25;26;27;28",
+      plot_id == "14" ~ "21;22;23;24;25;26;27;28",
+      plot_id == "15" ~ "21;22;23;24;25;26;27;28",
+      plot_id == "16" ~ "7",
+      TRUE ~ NA_character_)) %>%
+  filter(!plot_id %in% c("1", "11", "6")) %>% 
+  dplyr::select(all_of(poly_cols$column_name))
 
 # Check all columns in output objects
 colCheck(poly, poly_cols)

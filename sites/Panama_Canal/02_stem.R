@@ -9,11 +9,11 @@ library(dplyr)
 source("../../func.R")
 
 # Define site ID
-site_id <- "Panama Canal"
+site_id <- "Panama_Canal"
 
 # Define directories
-indir <- "../../dat/sites/Panama Canal/raw"
-outdir <- "../../dat/sites/Panama Canal/02_stem"
+indir <- "../../dat/sites/Panama_Canal/raw"
+outdir <- "../../dat/sites/Panama_Canal/02_stem"
 
 # Import column descriptions
 stem_cols <- read.csv("../../templates/stem_cols.csv")

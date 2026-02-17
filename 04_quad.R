@@ -10,11 +10,14 @@ library(BIOMASS)
 source("./func.R")
 
 # Define directories
-# outdir <- "./dat/sites/Panama Canal/04_quad"
+# outdir <- "./dat/sites/Panama_Canal/04_quad"
 
 # Import data 
-# pt <- read_sf("./dat/sites/Panama Canal/01_plot/plot_pt.gpkg")
-# s <- read.csv("./dat/sites/Panama Canal/02_stem/stem.csv")
+# stem <- read.csv("./dat/sites/Panama_Canal/02_stem/stem.csv")
+# plot_pt <- read_sf("./dat/sites/Panama_Canal/01_plot/plot_pt.gpkg")
+
+# Define quadrat dimensions
+# quad_dim <- c(50, 50)
 
 # Clean polygon data
 pt_clean <- plot_pt %>% 
@@ -33,16 +36,13 @@ plot_check <- check_plot_coord(
   tree_coords = c("x_rel_m", "y_rel_m"),
   tree_plot_ID = "plot_id")
 
-# Define quadrat dimensions
-quad_dim <- c(50, 50)
-
 # Divide plot
 plot_divide <- divide_plot(
   corner_data = plot_check$corner_coord,
   rel_coord = c("x_rel", "y_rel"),
   proj_coord = c("x_proj", "y_proj"),
   longlat = NULL,
-  grid_size = c(50, 50),
+  grid_size = quad_dim,
   grid_tol = 1,
   origin = NULL,
   tree_data = plot_check$tree_data,

@@ -11,11 +11,11 @@ library(readxl)
 source("../../func.R")
 
 # Define site ID
-site_id <- "Robson Creek"
+site_id <- "Robson_Creek"
 
 # Define directories
-indir <- "../../dat/sites/Robson Creek/raw"
-outdir <- "../../dat/sites/Robson Creek/01_plot"
+indir <- "../../dat/sites/Robson_Creek/raw"
+outdir <- "../../dat/sites/Robson_Creek/01_plot"
 
 # Import column descriptions
 poly_cols <- read.csv("../../templates/poly_cols.csv")
@@ -73,15 +73,41 @@ names(poly_list) <- names(all_corners)
 # Create final polygons object
 poly <- st_sf(geometry = st_sfc(poly_list), crs = 32755) %>% 
   mutate(
-    site_id = "Robson Creek",
+    site_id,
     plot_id = as.character(names(poly_list)),
-    area_reported_ha = 1,
-    perim_reported_m = 400,
-    .before = everything())
+    min_diam_thresh_cm = 10,
+    census_id_all = case_when(
+      plot_id == "1" ~ "1;8",
+      plot_id == "2" ~ "2;8",
+      plot_id == "3" ~ "2;8",
+      plot_id == "4" ~ "2",
+      plot_id == "5" ~ "2",
+      plot_id == "6" ~ "2;5;6;7",
+      plot_id == "7" ~ "2;8",
+      plot_id == "8" ~ "3",
+      plot_id == "9" ~ "4",
+      plot_id == "10" ~ "3;8",
+      plot_id == "11" ~ "3",
+      plot_id == "12" ~ "3;8",
+      plot_id == "13" ~ "3",
+      plot_id == "14" ~ "3",
+      plot_id == "15" ~ "3",
+      plot_id == "16" ~ "3",
+      plot_id == "17" ~ "3;8",
+      plot_id == "18" ~ "4",
+      plot_id == "19" ~ "4",
+      plot_id == "20" ~ "4",
+      plot_id == "21" ~ "4",
+      plot_id == "22" ~ "4",
+      plot_id == "23" ~ "4",
+      plot_id == "24" ~ "4;8",
+      plot_id == "25" ~ "4;8",
+      TRUE ~ NA_character_)) %>% 
+  dplyr::select(all_of(poly_cols$column_name))
 
 # Create final corner point object
 pt <- do.call(rbind, all_corners) %>% 
-  mutate(site_id = "Robson Creek", .before = everything()) %>% 
+  mutate(site_id, .before = everything()) %>% 
   mutate(
     x_rel_m = case_when(
       corner_id == "SW" ~ 0,
@@ -95,7 +121,8 @@ pt <- do.call(rbind, all_corners) %>%
       corner_id == "NW" ~ 100,
       corner_id == "NE" ~ 100,
       TRUE ~ NA_real_)) %>% 
-  st_as_sf(., coords = c("X", "Y"), crs = 32755)
+  st_as_sf(., coords = c("X", "Y"), crs = 32755) %>% 
+  dplyr::select(all_of(pt_cols$column_name))
 
 # Check all columns in output objects
 colCheck(poly, poly_cols)

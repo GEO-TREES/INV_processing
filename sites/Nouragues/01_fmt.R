@@ -15,11 +15,16 @@ site_id <- "Nouragues"
 
 # Define directories
 indir <- "../../dat/sites/Nouragues/raw"
-outdir <- "../../dat/sites/Nouragues/01_plot"
+outdir <- "../../dat/sites/Nouragues/01_fmt"
 
 # Import column descriptions
 poly_cols <- read.csv("../../templates/poly_cols.csv")
 pt_cols <- read.csv("../../templates/pt_cols.csv")
+stem_cols <- read.csv("../../templates/stem_cols.csv")
+census_cols <- read.csv("../../templates/census_cols.csv")
+
+# Import stem data
+s <- read.csv(file.path(indir, "2023-09-29_Petit_Plateau2022.csv"))
 
 # Import plot corners
 plot_meta <- read.csv(file.path(indir, "NouraguesDescription.csv"))
@@ -89,19 +94,71 @@ poly <- pt %>%
   summarise() %>% 
   st_convex_hull() %>% 
   ungroup() %>% 
-  mutate(
-    min_diam_thresh_cm = 10,
-    census_id_all = "1") %>% 
   filter(plot_id == "Petit_Plateau") %>%  # TODO:
   dplyr::select(all_of(poly_cols$column_name))
+
+# TODO:
+pt <- pt %>% 
+  filter(plot_id == "Petit_Plateau")
+
+# Prepare stem data 
+s_clean <- s %>% 
+  rename(
+    plot_id = Plot,
+    subplot_id = SubPlot,
+    tree_id = idTree,
+    x_rel_m = Xfield,
+    y_rel_m = Yfield,
+    census_id = CensusYear,
+    measurement_date = CensusDate,
+    alive = CodeAlive) %>% 
+  mutate(
+    site_id,
+    plot_id = as.character(plot_id),
+    subplot_id = as.character(subplot_id),
+    tree_id = as.character(tree_id),
+    stem_id = NA_character_,
+    pom_m = POM * 0.01,
+    diam_cm = CircCorr / pi,
+    height_m = NA_real_,
+    alive = as.logical(alive),
+    GenusFilled = iconv(GenusFilled, "UTF-8", "UTF-8", sub = ""),
+    SpeciesFilled = iconv(SpeciesFilled, "UTF-8", "UTF-8", sub = ""),
+    taxon_name = paste(trimws(GenusFilled), trimws(SpeciesFilled)),
+    broken = FALSE,
+    fallen = ifelse(MeasCode == 12 , TRUE, FALSE),
+    missing = FALSE,
+    agb_allometry = NA_character_) %>% 
+  group_by(plot_id) %>% 
+  mutate(census_id = dense_rank(census_id)) %>% 
+  ungroup() %>% 
+  group_by(plot_id, tree_id, stem_id, census_id) %>% 
+  mutate(measurement_id = row_number()) %>% 
+  ungroup() %>% 
+  mutate(record_id = row_number()) %>% 
+  dplyr::select(all_of(stem_cols$column_name))
+
+census <- s_clean %>% 
+  group_by(plot_id, census_id) %>% 
+  summarise(census_date = format(mean(as.Date(measurement_date)))) %>% 
+  ungroup() %>% 
+  mutate(
+    site_id,
+    min_diam_thresh_cm = 10,
+    census_id_all = "1") %>%
+  dplyr::select(all_of(census_cols$column_name))
 
 # Check all columns in output objects
 colCheck(poly, poly_cols)
 colCheck(pt, pt_cols)
+colCheck(s_clean, stem_cols)
+colCheck(census, census_cols)
 
 # Check values
 polyValCheck(poly)
 ptValCheck(pt)
+stemValCheck(s_clean)
+censusValCheck(census)
 
 # Write polygons to file
 st_write(poly, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
@@ -109,4 +166,9 @@ st_write(poly, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
 
+# Write stem data to file
+write.csv(s_clean, file.path(outdir, "stem.csv"), row.names = FALSE)
+
+# Write census table to file
+write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)
 

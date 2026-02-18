@@ -1,10 +1,11 @@
-# Clean Paracou stem data
+# Clean Paracou plot polygons data
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2026-02-11
 
 # Packages
 library(dplyr)
 library(tidyr)
+library(sf)
 
 # Source functions
 source("../../func.R")
@@ -14,9 +15,12 @@ site_id <- "Paracou"
 
 # Define directories
 indir <- "../../dat/sites/Paracou/raw"
-outdir <- "../../dat/sites/Paracou/02_stem"
+outdir <- "../../dat/sites/Paracou/01_fmt"
 
-# Import stem column descriptions
+# Import column descriptions
+poly_cols <- read.csv("../../templates/poly_cols.csv")
+pt_cols <- read.csv("../../templates/pt_cols.csv")
+census_cols <- read.csv("../../templates/census_cols.csv")
 stem_cols <- read.csv("../../templates/stem_cols.csv")
 
 # Import stem data
@@ -68,6 +72,67 @@ s <- bind_rows(
   s_P8,
   s_P12)
 
+# Import plot metadata
+plot_meta <- read.csv(file.path(indir, "ParacouDescription.csv"))
+
+# p16_subplot_layout <- plot_meta %>% 
+#   filter(Plot == "16") %>% 
+#   pivot_longer(
+#     cols = starts_with("SubPlotL"),
+#     names_to = c(".value", "corner_id"),
+#     names_pattern = "SubPlot(Lat|Lon)(SW|SE|NE|NW)") %>% 
+#   dplyr::select(
+#     subplot_id = SubPlot,
+#     corner_id,
+#     longitude = Lon,
+#     latitude = Lat) %>% 
+#   st_as_sf(., coords = c("longitude", "latitude"), crs = 4326) %>% 
+#   st_transform(., crs = 32622) %>%  # UTM 22N
+#   group_by(subplot_id) %>% 
+#   summarise() %>% 
+#   st_centroid() 
+# ggplot() + geom_sf_label(data = test, aes(label = subplot_id))
+
+# Extract plot corners
+pt <- plot_meta %>% 
+  pivot_longer(
+    cols = starts_with("PlotL"),
+    names_to = c(".value", "corner_id"),
+    names_pattern = "Plot(Lat|Lon)(SW|SE|NE|NW)") %>% 
+  dplyr::select(
+    plot_id = Plot,
+    corner_id,
+    longitude = Lon,
+    latitude = Lat, 
+    PlotArea) %>% 
+  filter(plot_id != "17(Arbocel)") %>% 
+  distinct() %>% 
+  st_as_sf(., coords = c("longitude", "latitude"), crs = 4326) %>% 
+  st_transform(., crs = 32622) %>%  # UTM 22N
+  mutate(
+    site_id,
+    x_rel_m = case_when(
+      corner_id %in% c("SW", "NW") ~ 0,
+      corner_id %in% c("SE", "NE") & PlotArea == 6.25 ~ 250,
+      corner_id %in% c("SE", "NE") & PlotArea == 25 ~ 500,
+      TRUE ~ NA_real_),
+    y_rel_m = case_when(
+      corner_id %in% c("SW", "SE") ~ 0,
+      corner_id %in% c("NW", "NE") & PlotArea == 6.25 ~ 250,
+      corner_id %in% c("NW", "NE") & PlotArea == 25 ~ 500,
+      TRUE ~ NA_real_)) %>% 
+  filter(!plot_id %in% c("1", "11", "6")) %>% 
+  dplyr::select(all_of(pt_cols$column_name))
+
+# Create polygons
+poly <- pt %>% 
+  group_by(site_id, plot_id) %>% 
+  summarise() %>% 
+  st_convex_hull() %>% 
+  ungroup() %>% 
+  filter(!plot_id %in% c("1", "11", "6")) %>% 
+  dplyr::select(all_of(poly_cols$column_name))
+
 # Prepare stem data 
 s_clean <- s %>% 
   rename(
@@ -86,7 +151,7 @@ s_clean <- s %>%
     tree_id = as.character(tree_id),
     stem_id = NA_character_,
     pom_m = POM * 0.01,
-    diam_cm = CircCorr / pi,
+    diam_cm = ifelse(is.na(CircCorr), Circ / pi, CircCorr / pi),
     height_m = NA_real_,
     alive = as.logical(alive),
     taxon_name = paste(trimws(GenusFilled), trimws(SpeciesFilled)),
@@ -97,22 +162,55 @@ s_clean <- s %>%
   group_by(plot_id) %>% 
   mutate(census_id = dense_rank(census_id)) %>% 
   ungroup() %>% 
-  group_by(plot_id, census_id) %>% 
-  mutate(census_date = format(mean(as.Date(measurement_date)))) %>% 
-  ungroup() %>% 
   group_by(plot_id, tree_id, stem_id, census_id) %>% 
   mutate(measurement_id = row_number()) %>% 
   ungroup() %>% 
+  group_by(plot_id, census_id) %>% 
+  mutate(census_date = format(mean(as.Date(measurement_date)))) %>% 
+  ungroup() %>% 
   filter(as.Date(census_date) > as.Date("2017-01-01")) %>% 
   mutate(record_id = row_number()) %>% 
+  mutate(
+    col = (as.numeric(subplot_id) - 1) %% 5,
+    row = 4 - ((as.numeric(subplot_id) - 1) %/% 5),
+    x_rel_m = case_when(
+      plot_id == "16" ~ x_rel_m + 100 * col,
+      TRUE ~ x_rel_m),
+    y_rel_m = case_when(
+      plot_id == "16" ~ y_rel_m + 100 * row,
+      TRUE ~ y_rel_m)) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
+census <- s_clean %>% 
+  group_by(plot_id, census_id) %>% 
+  summarise(census_date = format(mean(as.Date(measurement_date)))) %>% 
+  ungroup() %>% 
+  mutate(
+    site_id,
+    min_diam_thresh_cm = 10) %>% 
+  dplyr::select(all_of(census_cols$column_name))
+
 # Check all columns in output objects
+colCheck(poly, poly_cols)
+colCheck(pt, pt_cols)
 colCheck(s_clean, stem_cols)
+colCheck(census, census_cols)
 
 # Check values
+polyValCheck(poly)
+ptValCheck(pt)
 stemValCheck(s_clean)
+censusValCheck(census)
 
-# Write data to file
+# Write polygons to file
+st_write(poly, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
+
+# Write corner points to file
+st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
+
+# Write stem data to file
 write.csv(s_clean, file.path(outdir, "stem.csv"), row.names = FALSE)
+
+# Write census table to file
+write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)
 

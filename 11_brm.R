@@ -9,12 +9,12 @@ library(sf)
 source("./func.R")
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/12_brm"
+# outdir <- "./dat/sites/Panama_Canal/11_brm"
 
 # Import data
-# stem_fil <- read.csv("./dat/sites/Panama_Canal/09_stem_fil/stem_fil.csv")
-# stem_agb_mc <- read.csv("./dat/sites/Panama_Canal/10_agb_mc/stem_agb_mc.csv")
-# quad_summ <- st_read("./dat/sites/Panama_Canal/11_quad_summ/quad_summ.gpkg")
+# stem_fil <- read.csv("./dat/sites/Panama_Canal/08_stem_fil/stem_fil.csv")
+# stem_agb_mc <- read.csv("./dat/sites/Panama_Canal/9_agb_mc/stem_agb_mc.csv")
+# quad_summ <- st_read("./dat/sites/Panama_Canal/10_quad_summ/quad_summ.gpkg")
 
 # Prepare L2 dataset
 L2 <- stem_fil %>% 

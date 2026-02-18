@@ -10,11 +10,11 @@ library(BIOMASS)
 source("./func.R")
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/04_quad"
+# outdir <- "./dat/sites/Panama_Canal/03_quad"
 
 # Import data 
-# stem <- read.csv("./dat/sites/Panama_Canal/02_stem/stem.csv")
-# plot_pt <- read_sf("./dat/sites/Panama_Canal/01_plot/plot_pt.gpkg")
+# stem <- read.csv("./dat/sites/Panama_Canal/01_fmt/stem.csv")
+# plot_pt <- read_sf("./dat/sites/Panama_Canal/01_fmt/plot_pt.gpkg")
 
 # Define quadrat dimensions
 # quad_dim <- c(50, 50)

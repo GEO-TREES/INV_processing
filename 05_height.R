@@ -8,11 +8,11 @@ library(sf)
 library(BIOMASS)
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/06_height"
+# outdir <- "./dat/sites/Panama_Canal/05_height"
 
 # Import data
-# stem <- read.csv("./dat/sites/Panama_Canal/02_stem/stem.csv")
-# plot_poly <- st_read("./dat/sites/Panama_Canal/01_plot/plot_poly.gpkg")
+# stem <- read.csv("./dat/sites/Panama_Canal/01_fmt/stem.csv")
+# plot_poly <- st_read("./dat/sites/Panama_Canal/01_fmt/plot_poly.gpkg")
 
 # Extract plot centres
 p_cent <- st_centroid(plot_poly) %>% 

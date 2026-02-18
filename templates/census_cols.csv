@@ -1,0 +1,7 @@
+column_name,class,description,units
+site_id,character,GEO-TREES site ID,NA
+plot_id,character,"Plot name, unique within the site",NA
+census_id,integer,Census number. E.g. '3' for the third census in that plot,NA
+census_date,character,"The mid-date of the census. This can be either YYYY, YYYY-MM, or YYYY-MM-DD",NA
+min_diam_thresh_cm,numeric,Minimum Diameter threshold for stem measurements in the plot (cm),m
+

@@ -8,11 +8,10 @@ library(dplyr)
 source("./func.R")
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/09_stem_fil"
+# outdir <- "./dat/sites/Panama_Canal/08_stem_fil"
  
 # Import data
-# stem_summ <- st_read(file.path(site_data, "08_stem_summ/stem_summ.gpkg"))
-# plot_poly <- st_read("./dat/sites/Panama_Canal/01_plot/plot_poly.gpkg")
+# stem_summ <- st_read(file.path(site_data, "07_stem_summ/stem_summ.gpkg"))
 
 # Filter stem data
 stem_fil <- stem_summ %>% 
@@ -22,9 +21,6 @@ stem_fil <- stem_summ %>%
     longitude = X,
     latitude = Y) %>% 
   st_drop_geometry() %>% 
-  left_join(., 
-    st_drop_geometry(plot_poly)[,c("plot_id", "min_diam_thresh_cm")], 
-    by = "plot_id") %>% 
   filter(
     !is.na(diam_cm),
     !is.na(quadrat_id),

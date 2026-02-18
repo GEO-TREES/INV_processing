@@ -3,7 +3,7 @@
 # Last updated: 2025-06-18
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/10_agb_mc"
+# outdir <- "./dat/sites/Panama_Canal/09_agb_mc"
 
 # Packages
 library(dplyr)
@@ -14,9 +14,9 @@ library(BIOMASS)
 source("./func.R")
 
 # Import data
-# stem_fil <- read.csv("./dat/sites/Panama_Canal/09_stem_fil/stem_fil.csv")
-# plot_poly <- st_read("./dat/sites/Panama_Canal/01_plot/plot_poly.gpkg")
-# stem_pt <- st_read("./dat/sites/Panama_Canal/04_quad/stem_pt.gpkg")
+# stem_fil <- read.csv("./dat/sites/Panama_Canal/08_stem_fil/stem_fil.csv")
+# plot_poly <- st_read("./dat/sites/Panama_Canal/01_fmt/plot_poly.gpkg")
+# stem_pt <- st_read("./dat/sites/Panama_Canal/03_quad/stem_pt.gpkg")
 
 # Extract plot centres
 p_cent <- plot_poly %>% 

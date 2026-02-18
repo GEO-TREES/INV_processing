@@ -3,7 +3,7 @@
 # Last updated: 2026-02-16
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/07_agb_stem"
+# outdir <- "./dat/sites/Panama_Canal/06_agb_stem"
 
 # Packages
 library(dplyr)
@@ -13,9 +13,9 @@ library(BIOMASS)
 source("./func.R")
 
 # Import data
-# stem <- read.csv("./dat/sites/Panama_Canal/02_stem/stem.csv")
-# stem_wd <- read.csv("./dat/sites/Panama_Canal/05_wd/stem_wd.csv")
-# stem_height <- read.csv("./dat/sites/Panama_Canal/06_height/stem_height.csv")
+# stem <- read.csv("./dat/sites/Panama_Canal/01_fmt/stem.csv")
+# stem_wd <- read.csv("./dat/sites/Panama_Canal/04_wd/stem_wd.csv")
+# stem_height <- read.csv("./dat/sites/Panama_Canal/05_height/stem_height.csv")
 
 # Estimate stem-level AGB
 stem_agb <- stem %>% 

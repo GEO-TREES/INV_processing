@@ -4,6 +4,7 @@
 
 # Packages
 library(dplyr)
+library(tidyr)
 library(sf)
 library(readxl)
 
@@ -15,11 +16,13 @@ site_id <- "Robson_Creek"
 
 # Define directories
 indir <- "../../dat/sites/Robson_Creek/raw"
-outdir <- "../../dat/sites/Robson_Creek/01_plot"
+outdir <- "../../dat/sites/Robson_Creek/01_fmt"
 
 # Import column descriptions
 poly_cols <- read.csv("../../templates/poly_cols.csv")
 pt_cols <- read.csv("../../templates/pt_cols.csv")
+stem_cols <- read.csv("../../templates/stem_cols.csv")
+census_cols <- read.csv("../../templates/census_cols.csv")
 
 # TODO: Replace when plot coordinates received
 # Import stem data
@@ -74,35 +77,7 @@ names(poly_list) <- names(all_corners)
 poly <- st_sf(geometry = st_sfc(poly_list), crs = 32755) %>% 
   mutate(
     site_id,
-    plot_id = as.character(names(poly_list)),
-    min_diam_thresh_cm = 10,
-    census_id_all = case_when(
-      plot_id == "1" ~ "1;8",
-      plot_id == "2" ~ "2;8",
-      plot_id == "3" ~ "2;8",
-      plot_id == "4" ~ "2",
-      plot_id == "5" ~ "2",
-      plot_id == "6" ~ "2;5;6;7",
-      plot_id == "7" ~ "2;8",
-      plot_id == "8" ~ "3",
-      plot_id == "9" ~ "4",
-      plot_id == "10" ~ "3;8",
-      plot_id == "11" ~ "3",
-      plot_id == "12" ~ "3;8",
-      plot_id == "13" ~ "3",
-      plot_id == "14" ~ "3",
-      plot_id == "15" ~ "3",
-      plot_id == "16" ~ "3",
-      plot_id == "17" ~ "3;8",
-      plot_id == "18" ~ "4",
-      plot_id == "19" ~ "4",
-      plot_id == "20" ~ "4",
-      plot_id == "21" ~ "4",
-      plot_id == "22" ~ "4",
-      plot_id == "23" ~ "4",
-      plot_id == "24" ~ "4;8",
-      plot_id == "25" ~ "4;8",
-      TRUE ~ NA_character_)) %>% 
+    plot_id = as.character(names(poly_list))) %>% 
   dplyr::select(all_of(poly_cols$column_name))
 
 # Create final corner point object
@@ -124,13 +99,77 @@ pt <- do.call(rbind, all_corners) %>%
   st_as_sf(., coords = c("X", "Y"), crs = 32755) %>% 
   dplyr::select(all_of(pt_cols$column_name))
 
+# Prepare stem data 
+s_clean <- s %>% 
+  rename(
+    plot_id = plotID,
+    subplot_id = subplotID,
+    x_rel_m = positionX_Coordinate,
+    y_rel_m = positionY_Coordinate,
+    taxon_name = scientificName,
+    tree_id = plantID,
+    stem_id = stemID,
+    diam_cm = stemDiameter_centimetres,
+    pom_m = stemDiameterPointOfMeasurement_metres,
+    height_m = stemHeight_metres,
+    alive = plantMortality,
+    census_id = year,
+    measurement_date = phenomenonTime) %>% 
+  mutate(
+    site_id = site_id,
+    plot_id = case_when(
+      grepl("core1ha", plot_id) ~ "6",
+      TRUE ~ gsub("Robson Creek, ha ", "", plot_id)),
+    subplot_id = as.character(subplot_id),
+    diam_cm = as.numeric(diam_cm),
+    pom_m = as.numeric(pom_m),
+    height_m = as.numeric(height_m),
+    census_id = dense_rank(census_id),
+    measurement_date = format(measurement_date),
+    alive = case_when(
+      alive == "Alive" ~ TRUE,
+      alive == "Dead" ~ FALSE,
+      is.na(alive) ~ TRUE,
+      TRUE ~ NA),
+    x_rel_m = as.numeric(x_rel_m),
+    y_rel_m = as.numeric(y_rel_m),
+    broken = ifelse(grepl("snapped", plantCondition, ignore.case = TRUE), TRUE, FALSE),
+    fallen = FALSE,  # TODO:
+    missing = FALSE,  # TODO:
+    agb_allometry = NA_character_,
+    subplot_in_plot = (as.numeric(subplot_id) - 1) %% 25,
+    col = subplot_in_plot %% 5,
+    row = subplot_in_plot %/% 5,
+    x_rel_m = col * 20 + x_rel_m,
+    y_rel_m = row * 20 + y_rel_m) %>% 
+  group_by(plot_id, census_id, stem_id) %>% 
+  mutate(measurement_id = row_number()) %>% 
+  ungroup() %>% 
+  group_by(plot_id, census_id) %>% 
+  mutate(census_date = format(mean(as.Date(measurement_date), na.rm = TRUE))) %>% 
+  ungroup() %>% 
+  mutate(record_id = row_number()) %>% 
+  dplyr::select(all_of(stem_cols$column_name))
+
+# Prepare census table
+census <- s_clean %>% 
+  group_by(site_id, plot_id, census_id) %>% 
+  summarise(census_date = format(mean(as.Date(measurement_date), na.rm = TRUE))) %>% 
+  ungroup() %>% 
+  mutate(min_diam_thresh_cm = 10) %>% 
+  dplyr::select(all_of(census_cols$column_name))
+
 # Check all columns in output objects
 colCheck(poly, poly_cols)
 colCheck(pt, pt_cols)
+colCheck(s_clean, stem_cols)
+colCheck(census, census_cols)
 
 # Check values
 polyValCheck(poly)
 ptValCheck(pt)
+stemValCheck(s_clean)
+censusValCheck(census)
 
 # Write polygons to file
 st_write(poly, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
@@ -138,3 +177,8 @@ st_write(poly, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
 
+# Write stem data to file
+write.csv(s_clean, file.path(outdir, "stem.csv"), row.names = FALSE)
+
+# Write census table to file
+write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)

@@ -3,7 +3,6 @@ record_id,integer,"ID of the stem measurement record, unique within the site",NA
 site_id,character,GEO-TREES site name,NA
 plot_id,character,"Plot name, unique within the site",NA
 census_id,integer,Census number. E.g. '3' for the third census in that plot,NA
-census_date,character,"The mid-date of the census. This can be either YYYY, YYYY-MM, or YYYY-MM-DD",NA
 subplot_id,character,"Subplot name, unique within the plot",NA
 tree_id,character,"Unique identifier for trees within a plot, normally the first `stem_id` within the tree",NA
 stem_id,character,Unique identifier for stems within a plot. Normally the tag ID if the plot has tags,NA

@@ -10,15 +10,12 @@ library(BIOMASS)
 library(units)
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/11_quad_summ"
+# outdir <- "./dat/sites/Panama_Canal/10_quad_summ"
 
 # Import data
-# stem_fil <- read.csv("./dat/sites/Panama_Canal/09_stem_fil/stem_fil.csv")
-# quad_poly <- st_read("./dat/sites/Panama_Canal/04_quad/quad_poly.gpkg")
-# quad_agb <- read.csv("./dat/sites/Panama_Canal/10_agb_mc/quad_agb.csv")
-# plot_poly <- st_read("./dat/sites/Panama_Canal/01_plot/plot_poly.gpkg")
-
-# Create quadrat polygon for each census ID
+# stem_fil <- read.csv("./dat/sites/Panama_Canal/08_stem_fil/stem_fil.csv")
+# quad_poly <- st_read("./dat/sites/Panama_Canal/03_quad/quad_poly.gpkg")
+# quad_agb <- read.csv("./dat/sites/Panama_Canal/09_agb_mc/quad_agb.csv")
 
 # Calculate area of each quadrat
 quad_poly_area <- st_drop_geometry(quad_poly)
@@ -27,7 +24,7 @@ quad_poly_area$quadrat_area_ha <- drop_units(st_area(quad_poly)) * 0.0001
 # Calculate quadrat summary values
 quad_summ <- stem_fil %>% 
   st_drop_geometry() %>% 
-  group_by(site_id, plot_id, quadrat_id, census_id) %>% 
+  group_by(site_id, plot_id, quadrat_id, census_id, census_date) %>% 
   summarise(
     n_stem = n(),
     ba_m2_sum = sum(ba_m2, na.rm = TRUE),
@@ -43,7 +40,8 @@ quad_summ <- stem_fil %>%
     height_m_pred_q95 = quantile(height_m_pred, 0.95, na.rm = TRUE),
     lorey_height_m = sum(ba_m2 * height_m_pred, na.rm = TRUE) / sum(ba_m2, na.rm = TRUE),
     meanWD_mean = mean(meanWD, na.rm = TRUE),
-    meanWD_wm_ba = weighted.mean(meanWD, ba_m2)) %>% 
+    meanWD_wm_ba = weighted.mean(meanWD, ba_m2),
+    .groups = "drop_last") %>% 
   ungroup() %>% 
   left_join(., quad_agb, by = c("quadrat_id", "census_id")) %>% 
   left_join(., quad_poly_area, by = c("plot_id", "quadrat_id")) %>% 
@@ -58,16 +56,14 @@ quad_summ <- stem_fil %>%
       everything(), 
       ~ifelse(.x == -Inf, NA_real_, .x))) 
 
-# Fill in quadrats which contain no stems 
+# Add quadrat polygons, fill in quadrats with no trees
 quad_summ_out <- quad_poly %>% 
-  left_join(., st_drop_geometry(plot_poly)[,c("plot_id", "census_id_all")], by = "plot_id") %>% 
-  separate_longer_delim(census_id_all, ";") %>% 
-  st_sf() %>% 
-  mutate(census_id_all = as.integer(census_id_all)) %>% 
-  rename(census_id = census_id_all) %>% 
-  left_join(., quad_summ, by = c("plot_id", "quadrat_id", "census_id")) %>% 
+  left_join(., census, 
+    by = "plot_id",
+    relationship = "many-to-many") %>% 
+  left_join(., quad_summ, 
+    by = c("site_id", "plot_id", "quadrat_id", "census_id", "census_date")) %>% 
   mutate(
-    site_id = ifelse(is.na(site_id), unique(stem_fil$site_id), site_id),
     across(all_of(c(
       "n_stem", 
       "ba_m2_sum",

@@ -15,7 +15,7 @@ library(BIOMASS)
 source("./func.R")
 
 # Import stem data
-# stem <- read.csv("./dat/sites/Panama_Canal/02_stem/stem.csv")
+# stem <- read.csv("./dat/sites/Panama_Canal/01_fmt/stem.csv")
 
 # Load previous cache
 wfo_path <- file.path(outdir, "wfo_cache.rds")

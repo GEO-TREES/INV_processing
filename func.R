@@ -93,11 +93,6 @@ stemValCheck <- function(x) {
     stop("NAs in `plot_id` are not allowed")
   }
 
-  # Census date must be either YYYY, YYYY-MM, YYYY-MM-DD
-  if (any(!grepl("^\\d{4}(-\\d{2}){0,2}$", x$census_date))) {
-    stop("`census_date` must be formatted either YYYY, YYYY-MM, or YYYY-MM-DD")
-  }
-
   # Census number must be positive
   if (any(x$census_id <= 0, na.rm = TRUE)) { 
     stop("`census_id` must be a positive integer")
@@ -140,13 +135,32 @@ polyValCheck <- function(x) {
   if (any(is.na(x$plot_id))) { 
     stop("NAs in `plot_id` are not allowed")
   }
+}
 
-  # All plots must have a census_id
-  if (any(is.na(x$census_id_all))) { 
-    stop("NAs in `census_id_all` are not allowed")
+#' Check census table values
+#'
+#' Runs various checks on the values in census table columns 
+#'
+#' @param x dataframe containing census metadata 
+#' 
+censusValCheck <- function(x) {
+  # All censuses must have a census_id
+  if (any(is.na(x$census_id))) { 
+    stop("NAs in `census_id` are not allowed")
   }
 
-  # All plots must have a positive minimum diameter threshold
+  # All censuses must have a census date
+  if (any(is.na(x$census_date))) { 
+    stop("NAs in `census_date` are not allowed")
+  }
+
+  # Census date must be either YYYY, YYYY-MM, YYYY-MM-DD
+  if (any(!grepl("^\\d{4}(-\\d{2}){0,2}$", x$census_date))) {
+    stop("`census_date` must be formatted either YYYY, YYYY-MM, or YYYY-MM-DD")
+  }
+
+
+  # All censuses must have a positive minimum diameter threshold
   if (any(is.na(x$min_diam_thresh_cm) | x$min_diam_thresh_cm <= 0)) { 
     stop("`min_diam_thresh_cm` must be a positive number")
   }

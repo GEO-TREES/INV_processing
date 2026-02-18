@@ -2,25 +2,27 @@
 
 This repository contains code to clean and process tree inventory data from GEO-TREES sites.
 
-Each directory in `./sites/` contains scripts to perform initial cleaning on raw data from each GEO-TREES site:
+Each directory in `./sites/` contains a `./*/01_fmt.R` script to perform initial cleaning on raw data from each GEO-TREES site. This script produces four files:
 
-* `./*/01_plot.R` - create plot polygons, format plot metadata
-* `./*/02_stem.R` - clean stem measurement data
+* `plot_poly.gpkg` - Plot polygons.
+* `plot_pt.gpkg` - Points locating the corners of plots, with additional columns describing the stem map coordinate system.
+* `census.csv` - Census metadata table, where each row is a census within a plot. 
+* `stem.csv` - Stem measurement table, where each row is a measurement of a stem within a census within a plot.
 
-See `./templates/*` for guidance on which columns should be included in datasets after initial cleaning. 
+See `./templates/*` for guidance on which columns should be included in these files.
 
 In the root directory there are additional scripts which process data from any site:
 
-* `./03_taxa.R` - correct taxonomic information
-* `./04_quad.R` - create quadrats in each plot
-* `./05_wd.R` - estimate wood density for each stem measurement
-* `./06_height.R` - estimate stem height for each stem measurement
-* `./07_agb_stem.R` - estimate above-ground woody biomass for each stem measurement
-* `./08_stem_summ.R` - create master stem measurement table
-* `./09_stem_fil.R` - filter stem measurements before AGB Monte-Carlo 
-* `./10_agb_mc.R` - AGB Monte-Carlo error propagation
-* `./11_quad_summ.R` - summarise quadrat measurements
-* `./12_brm.R` - Create L2 and L3 datasets
+* `./02_taxa.R` - correct taxonomic information
+* `./03_quad.R` - create quadrats in each plot
+* `./04_wd.R` - estimate wood density for each stem measurement
+* `./05_height.R` - estimate stem height for each stem measurement
+* `./06_agb_stem.R` - estimate above-ground woody biomass for each stem measurement
+* `./07_stem_summ.R` - create master stem measurement table
+* `./08_stem_fil.R` - filter stem measurements before AGB Monte-Carlo 
+* `./09_agb_mc.R` - AGB Monte-Carlo error propagation
+* `./10_quad_summ.R` - summarise quadrat measurements
+* `./11_brm.R` - Create L2 and L3 datasets
 
 * `./zz_site.R` - run scripts in order to process a single site
 * `./zz_site_all.R` - process all sites listed as "complete" in `./dat/site_status.csv`
@@ -32,16 +34,15 @@ In the root directory there are additional scripts which process data from any s
 
 Key outputs from each site include:
 
-* `01_plot.R`:
-    * `plot.csv` - Plot metadata table, where each row is a plot. 
-    * `plot_poly.gpkg` - Plot polygons.
-    * `plot_pt.gpkg` - Points locating the corners of plots, with additional columns describing the stem map coordinate system.
-* `03_taxa.R`:
+* `02_taxa.R`:
     * `wfo_cache.rds` - Cache generated from taxonomic name cleaning. Documents choices made by user.
-* `08_stem_summ.R`:
-    * `stem_summ.gpkg` - Combined stem-level dataset. Includes data from `03_taxa/stem_taxa.csv`, `04_quad/stem_pt.gpkg`, `05_wd/stem_wd.csv`, `06_height/stem_height.csv`, `07_agb/stem_agb.csv`.
-* `11_quad_summ.R`:
-    * `quad_summ.gpkg` - Combined quadrat-level dataset. Includes data from `04_quad/quad_poly.gpkg`, `08_stem_summ/stem_summ.gpkg`.
+* `07_stem_summ.R`:
+    * `stem_summ.gpkg` - Combined stem-level dataset. Includes data from `02_taxa/stem_taxa.csv`, `03_quad/stem_pt.gpkg`, `04_wd/stem_wd.csv`, `05_height/stem_height.csv`, `06_agb/stem_agb.csv`.
+* `10_quad_summ.R`:
+    * `quad_summ.gpkg` - Combined quadrat-level dataset. Includes data from `04_quad/quad_poly.gpkg`, `07_stem_summ/stem_summ.gpkg`.
+* `11_brm.R`:
+    * `*_L2.csv` - GEO-TREES L2 tree inventory data product for upload to data.geo-trees.org
+    * `*_L3.csv` - GEO-TREES L3 tree inventory data product for upload to data.geo-trees.org
 
 ## Environment 
 

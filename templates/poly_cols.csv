@@ -1,5 +1,0 @@
-column_name,class,description,units
-site_id,character,GEO-TREES site ID,NA
-plot_id,character,"Plot name, unique within the site",NA
-geometry,sfc_POLYGON,`sf` geometry data,NA
-

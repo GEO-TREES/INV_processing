@@ -10,12 +10,12 @@ library(BIOMASS)
 library(units)
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/10_quad_summ"
+# outdir <- "./dat/sites/PanamaCanal/10_quad_summ"
 
 # Import data
-# stem_fil <- read.csv("./dat/sites/Panama_Canal/08_stem_fil/stem_fil.csv")
-# quad_poly <- st_read("./dat/sites/Panama_Canal/03_quad/quad_poly.gpkg")
-# quad_agb <- read.csv("./dat/sites/Panama_Canal/09_agb_mc/quad_agb.csv")
+# stem_fil <- read.csv("./dat/sites/PanamaCanal/08_stem_fil/stem_fil.csv")
+# quad_poly <- st_read("./dat/sites/PanamaCanal/03_quad/quad_poly.gpkg")
+# quad_agb <- read.csv("./dat/sites/PanamaCanal/09_agb_mc/quad_agb.csv")
 
 # Calculate area of each quadrat
 quad_poly_area <- st_drop_geometry(quad_poly)

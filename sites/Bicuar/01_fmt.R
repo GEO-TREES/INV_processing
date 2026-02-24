@@ -18,7 +18,7 @@ indir <- "../../dat/sites/Bicuar/raw"
 outdir <- "../../dat/sites/Bicuar/01_fmt"
 
 # Import column descriptions
-poly_cols <- read.csv("../../templates/poly_cols.csv")
+plot_cols <- read.csv("../../templates/plot_cols.csv")
 pt_cols <- read.csv("../../templates/pt_cols.csv")
 census_cols <- read.csv("../../templates/census_cols.csv")
 stem_cols <- read.csv("../../templates/stem_cols.csv")
@@ -34,7 +34,6 @@ pt <- plot_corners %>%
     site_id,
     corner_id = gsub(".*[0-9]+", "", name)) %>%
   dplyr::select(site_id, plot_id = plot_name, corner_id) %>% 
-  st_transform(., crs = 32733) %>% 
   mutate(
     x_rel_m = case_when(
       corner_id %in% c("SW", "NW") ~ 0,
@@ -44,27 +43,20 @@ pt <- plot_corners %>%
       corner_id %in% c("SW", "SE") ~ 0,
       corner_id %in% c("NW", "NE") ~ 100,
       TRUE ~ NA_real_)) %>% 
-    dplyr::select(all_of(pt_cols$column_name))
-
-# Create polygons
-poly <- pt %>% 
-  group_by(site_id, plot_id) %>% 
-  summarise() %>% 
-  st_convex_hull() %>% 
-  ungroup()
+  filter(plot_id != "P1") %>% 
+  dplyr::select(all_of(pt_cols$column_name))
 
 # Create census meta-data table
 census <- p %>% 
   dplyr::select(-plot_id) %>% 
   rename(
-    plot_id = plot_name,
-    min_diam_thresh_cm = min_diam_thresh) %>% 
+    plot_id = plot_name) %>% 
   group_by(plot_id) %>% 
   mutate(census_id = dense_rank(census_date)) %>% 
   ungroup() %>% 
   mutate(
-    site_id,
-    min_diam_thresh_cm = as.numeric(min_diam_thresh_cm)) %>% 
+    site_id) %>% 
+  filter(plot_id != "P1") %>% 
   dplyr::select(all_of(census_cols$column_name))
 
 # Prepare stem data 
@@ -101,22 +93,58 @@ s_clean <- s %>%
   ungroup() %>% 
   mutate(measurement_date = gsub("-01-01", "", measurement_date)) %>% 
   mutate(record_id = row_number()) %>% 
+  filter(plot_id != "P1") %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
+# Create plots table
+plots <- census %>% 
+  group_by(site_id, plot_id) %>%
+  summarise(
+    census_date_all = paste(census_date, collapse = ";"),
+    census_date_geotrees = max(census_date)) %>% 
+  ungroup() %>% 
+  mutate(
+    plot_width_m = 100,
+    plot_length_m = 100,
+    plot_slope_deg = NA_real_,
+    plot_aspect_deg = NA_real_,
+    plot_elevation_m = NA_real_,
+    plot_planar = FALSE,
+    notes_plot = NA_character_,
+    meas_diam_min_cm = 5,
+    meas_pom_default_m = 1.3,
+    meas_tree_stem = TRUE,
+    meas_tree_group = TRUE,
+    meas_dead = TRUE,
+    meas_fallen = TRUE,
+    meas_liana = NA,
+    meas_palm = NA,
+    meas_bamboo = NA,
+    meas_protocol = "SEOSAW_v3.6",
+    notes_meas = NA_character_,
+    forest_status = NA_character_,
+    land_use = NA_character_,
+    treatment = NA_character_,
+    treatment_ref = NA_character_,
+    fire_regime = NA_character_,
+    cyclone_regime = NA_character_,
+    flood_regime = NA_character_,
+    earth_regime = NA_character_,
+    herbivory_regime = NA_character_,
+    notes_disturbance = NA_character_) %>% 
+  dplyr::select(all_of(plot_cols$column_name))
+
 # Check all columns in output objects
-colCheck(poly, poly_cols)
+colCheck(plots, plot_cols)
 colCheck(pt, pt_cols)
 colCheck(census, census_cols)
 colCheck(s_clean, stem_cols)
 
 # Check values
-polyValCheck(poly)
+# plotValCheck(plots)
 ptValCheck(pt)
 censusValCheck(census)
 stemValCheck(s_clean)
-
-# Write polygons to file
-st_write(poly, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
 
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
@@ -124,5 +152,8 @@ st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
 # Write census meta-data to file
 write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)
 
-# Write stem data to file
+# Write plot meta-data to file
+write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)
+
+# Write data to file
 write.csv(s_clean, file.path(outdir, "stem.csv"), row.names = FALSE)

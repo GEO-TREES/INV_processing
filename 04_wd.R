@@ -10,11 +10,11 @@ library(BIOMASS)
 source("./func.R")
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/04_wd"
+# outdir <- "./dat/sites/PanamaCanal/04_wd"
 
 # Import data 
-# stem_taxa <- read.csv("./dat/sites/Panama_Canal/02_taxa/stem_taxa.csv")
-# stem <- read.csv("./dat/sites/Panama_Canal/01_fmt/stem.csv")
+# stem_taxa <- read.csv("./dat/sites/PanamaCanal/02_taxa/stem_taxa.csv")
+# stem <- read.csv("./dat/sites/PanamaCanal/01_fmt/stem.csv")
 wd <- read.csv("./dat/01_wd/wd.csv")
 
 # Join taxonomy data to stem data

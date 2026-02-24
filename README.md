@@ -2,11 +2,11 @@
 
 This repository contains code to clean and process tree inventory data from GEO-TREES sites.
 
-Each directory in `./sites/` contains a `./*/01_fmt.R` script to perform initial cleaning on raw data from each GEO-TREES site. This script produces four files:
+Each directory in `./sites/` contains a `./*/01_fmt.R` script to perform initial cleaning on raw data from each GEO-TREES site. This script produces three files:
 
-* `plot_poly.gpkg` - Plot polygons.
 * `plot_pt.gpkg` - Points locating the corners of plots, with additional columns describing the stem map coordinate system.
 * `census.csv` - Census metadata table, where each row is a census within a plot. 
+* `plot.csv` - Plot metadata table, where each row is a plot. 
 * `stem.csv` - Stem measurement table, where each row is a measurement of a stem within a census within a plot.
 
 See `./templates/*` for guidance on which columns should be included in these files.
@@ -14,7 +14,7 @@ See `./templates/*` for guidance on which columns should be included in these fi
 In the root directory there are additional scripts which process data from any site:
 
 * `./02_taxa.R` - correct taxonomic information
-* `./03_quad.R` - create quadrats in each plot
+* `./03_quad.R` - create quadrats in each plot for each census
 * `./04_wd.R` - estimate wood density for each stem measurement
 * `./05_height.R` - estimate stem height for each stem measurement
 * `./06_agb_stem.R` - estimate above-ground woody biomass for each stem measurement

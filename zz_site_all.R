@@ -21,10 +21,10 @@ site_code_dirs <- list.files("./sites/")
 stopifnot(all(site_id_complete %in% site_code_dirs))
 
 # Create vector of quadrat dimensions
-quad_dim_list <- list(
-  c(100, 100),
-  c(50, 50),
-  c(25, 25))
+quad_dim_list <- list(c(50,50))
+#   c(100, 100),
+#   c(50, 50),
+#   c(25, 25))
 
 # For each site
 for (i in site_id_complete) { 

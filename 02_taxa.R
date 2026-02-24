@@ -6,16 +6,16 @@
 library(BIOMASS)
 
 # Define site ID
-# site_id <- "Panama_Canal"
+# site_id <- "PanamaCanal"
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/03_taxa"
+# outdir <- "./dat/sites/PanamaCanal/03_taxa"
 
 # Source functions
 source("./func.R")
 
 # Import stem data
-# stem <- read.csv("./dat/sites/Panama_Canal/01_fmt/stem.csv")
+# stem <- read.csv("./dat/sites/PanamaCanal/01_fmt/stem.csv")
 
 # Load previous cache
 wfo_path <- file.path(outdir, "wfo_cache.rds")

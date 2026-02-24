@@ -12,14 +12,14 @@ library(readxl)
 source("../../func.R")
 
 # Define site ID
-site_id <- "Robson_Creek"
+site_id <- "RobsonCreek"
 
 # Define directories
-indir <- "../../dat/sites/Robson_Creek/raw"
-outdir <- "../../dat/sites/Robson_Creek/01_fmt"
+indir <- "../../dat/sites/RobsonCreek/raw"
+outdir <- "../../dat/sites/RobsonCreek/01_fmt"
 
 # Import column descriptions
-poly_cols <- read.csv("../../templates/poly_cols.csv")
+plot_cols <- read.csv("../../templates/plot_cols.csv")
 pt_cols <- read.csv("../../templates/pt_cols.csv")
 stem_cols <- read.csv("../../templates/stem_cols.csv")
 census_cols <- read.csv("../../templates/census_cols.csv")
@@ -77,8 +77,7 @@ names(poly_list) <- names(all_corners)
 poly <- st_sf(geometry = st_sfc(poly_list), crs = 32755) %>% 
   mutate(
     site_id,
-    plot_id = as.character(names(poly_list))) %>% 
-  dplyr::select(all_of(poly_cols$column_name))
+    plot_id = as.character(names(poly_list)))
 
 # Create final corner point object
 pt <- do.call(rbind, all_corners) %>% 
@@ -97,6 +96,7 @@ pt <- do.call(rbind, all_corners) %>%
       corner_id == "NE" ~ 100,
       TRUE ~ NA_real_)) %>% 
   st_as_sf(., coords = c("X", "Y"), crs = 32755) %>% 
+  st_transform(., 4326) %>% 
   dplyr::select(all_of(pt_cols$column_name))
 
 # Prepare stem data 
@@ -159,26 +159,65 @@ census <- s_clean %>%
   mutate(min_diam_thresh_cm = 10) %>% 
   dplyr::select(all_of(census_cols$column_name))
 
+# Prepare plots table
+plots <- census %>% 
+  group_by(site_id, plot_id) %>% 
+  summarise(
+    census_date_all = paste(census_date, collapse = ";"),
+    census_date_geotrees = max(census_date)) %>% 
+  ungroup() %>% 
+  mutate(census_date_geotrees = ifelse(!grepl("2024", census_date_geotrees), NA_character_, census_date_geotrees)) %>% 
+  mutate(
+    plot_width_m = 100,
+    plot_length_m = 100,
+    plot_slope_deg = NA_real_,
+    plot_aspect_deg = NA_real_,
+    plot_elevation_m = NA_real_,
+    plot_planar = TRUE,
+    notes_plot = NA_character_,
+    meas_diam_min_cm = 10,
+    meas_pom_default_m = 1.3,
+    meas_tree_stem = TRUE,
+    meas_tree_group = TRUE,
+    meas_dead = TRUE,
+    meas_fallen = TRUE,
+    meas_liana = TRUE,
+    meas_palm = TRUE,
+    meas_bamboo = TRUE,
+    meas_protocol = NA_character_,
+    notes_meas = NA_character_,
+    forest_status = NA_character_,
+    land_use = NA_character_,
+    treatment = NA_character_,
+    treatment_ref = NA_character_,
+    fire_regime = NA_character_,
+    cyclone_regime = NA_character_,
+    flood_regime = NA_character_,
+    earth_regime = NA_character_,
+    herbivory_regime = NA_character_,
+    notes_disturbance = NA_character_) %>% 
+  dplyr::select(all_of(plot_cols$column_name))
+
 # Check all columns in output objects
-colCheck(poly, poly_cols)
+colCheck(plots, plot_cols)
 colCheck(pt, pt_cols)
 colCheck(s_clean, stem_cols)
 colCheck(census, census_cols)
 
 # Check values
-polyValCheck(poly)
+# plotValCheck(plots)
 ptValCheck(pt)
 stemValCheck(s_clean)
 censusValCheck(census)
-
-# Write polygons to file
-st_write(poly, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
 
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
 
 # Write stem data to file
 write.csv(s_clean, file.path(outdir, "stem.csv"), row.names = FALSE)
+
+# Write plot meta-data to file
+write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)
 
 # Write census table to file
 write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)

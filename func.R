@@ -158,13 +158,12 @@ censusValCheck <- function(x) {
   if (any(!grepl("^\\d{4}(-\\d{2}){0,2}$", x$census_date))) {
     stop("`census_date` must be formatted either YYYY, YYYY-MM, or YYYY-MM-DD")
   }
-
-
-  # All censuses must have a positive minimum diameter threshold
-  if (any(is.na(x$min_diam_thresh_cm) | x$min_diam_thresh_cm <= 0)) { 
-    stop("`min_diam_thresh_cm` must be a positive number")
-  }
 }
+
+# # All censuses must have a positive minimum diameter threshold
+# if (any(is.na(x$min_diam_thresh_cm) | x$min_diam_thresh_cm <= 0)) { 
+#   stop("`min_diam_thresh_cm` must be a positive number")
+# }
 
 #' Check plot corner sf object values
 #' 
@@ -204,6 +203,17 @@ ptValCheck <- function(x) {
   if (any(is.na(x$y_rel_m))) { 
     stop("NAs in `y_rel_m` are not allowed")
   }
+
+  # Must be SF type
+  if (!isSFType(x, "POINT")) { 
+    stop("Must be sf POINT object")
+  }
+
+  # Must be WGS84 CRS
+  if (sf::st_crs(x) != st_crs(4326)) {
+    stop("Must be WGS84 EPSG:4326")
+  }
+
 }
 
 #' Import saved WFO cache file

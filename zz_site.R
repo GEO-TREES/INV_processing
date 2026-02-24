@@ -3,10 +3,18 @@
 # Last updated: 2026-02-11
 
 # DEFINE SITE NAME
-# site_id <- "Panama_Canal"
+# site_id <- "PanamaCanal"
+
+if (!exists("site_id")) {
+  stop("site_id must be defined")
+}
 
 # DEFINE QUADRAT DIMENSIONS
 # quad_dim <- c(50, 50)
+
+if (!exists("quad_dim")) {
+  stop("quad_dim must be defined")
+}
 
 # Load packages
 library(sf)
@@ -40,13 +48,16 @@ stem_col_class <- setNames(stem_cols$class, stem_cols$column_name)
 census_cols <- read.csv("./templates/census_cols.csv")
 census_col_class <- setNames(census_cols$class, census_cols$column_name)
 
+plot_cols <- read.csv("./templates/plot_cols.csv")
+plot_col_class <- setNames(plot_cols$class, plot_cols$column_name)
+
 # Define site script path
 site_script <- paste0("./sites/", site_id)
 
 # Define site data path
 site_data <- paste0("./dat/sites/", site_id)
 
-# Create output directories
+# Define output directories
 out_dirs <- c(
   "01_fmt",
   "02_taxa",
@@ -60,12 +71,32 @@ out_dirs <- c(
   "10_quad_summ",
   "11_brm"
 )
-for (i in out_dirs) dir.create(file.path(site_data, i), showWarnings = FALSE)
 
 # Optionally wipe existing outputs
-# files_all <- list.files(site_data, recursive = TRUE)
-# files_out <- files_all[grepl("^[0-9]+_", files_all)]
-# file.remove(file.path(site_data, files_out))
+# Prompt the user
+user_input <- readline(prompt = "Do you want to delete previous outputs? (y/n): ")
+
+if (tolower(trimws(user_input)) %in% c("y", "yes")) {
+  message("Deleting previous outputs...")
+  
+  # Delete output files
+  files_all <- list.files(site_data, recursive = TRUE)
+  files_out <- files_all[grepl("^[0-9]+_", files_all)]
+  files_rem <- files_out[!grepl("wfo_cache.rds", files_out)]
+  file.remove(file.path(site_data, files_rem))
+  
+  # Delete output sub-directories
+  site_subdir <- file.path(site_data, out_dirs)
+  dirs_all <- list.dirs(site_subdir, recursive = TRUE)
+  dirs_sub <- dirs_all[!dirs_all %in% c(site_subdir, site_data)]
+  unlink(dirs_sub, recursive = TRUE, expand = FALSE)
+  
+} 
+
+# Create output directories
+for (i in out_dirs) {
+  dir.create(file.path(site_data, i), showWarnings = FALSE)
+}
 
 # Format raw data
 runFn(file.path(site_script, "01_fmt.R"))
@@ -77,7 +108,7 @@ stem <- read.csv(file.path(site_data, "01_fmt/stem.csv"), colClasses = stem_col_
 runFn("./02_taxa.R")
 
 # Split plots into quadrats 
-outdir <- file.path(site_data, "03_quad", paste(quad_dim, collapse = "_"))
+outdir <- file.path(site_data, "03_quad", paste(quad_dim, collapse = "x"))
 dir.create(outdir, showWarnings = FALSE)
 stem <- read.csv(file.path(site_data, "01_fmt/stem.csv"), colClasses = stem_col_class)
 plot_pt <- st_read(file.path(site_data, "01_fmt/plot_pt.gpkg"))
@@ -94,7 +125,7 @@ runFn("./04_wd.R")
 outdir <- file.path(site_data, "05_height")
 dir.create(outdir, showWarnings = FALSE)
 stem <- read.csv(file.path(site_data, "01_fmt/stem.csv"), colClasses = stem_col_class)
-plot_poly <- st_read(file.path(site_data, "01_fmt/plot_poly.gpkg"))
+plot_pt <- st_read(file.path(site_data, "01_fmt/plot_pt.gpkg"))
 runFn("./05_height.R")
 
 # Estimate AGB for every measurement
@@ -106,42 +137,43 @@ stem_height <- read.csv(file.path(site_data, "05_height/stem_height.csv"))
 runFn("./06_agb_stem.R")
 
 # Create master stems table
-outdir <- file.path(site_data, "07_stem_summ", paste(quad_dim, collapse = "_"))
+outdir <- file.path(site_data, "07_stem_summ", paste(quad_dim, collapse = "x"))
 dir.create(outdir, showWarnings = FALSE)
 stem <- read.csv(file.path(site_data, "01_fmt/stem.csv"), colClasses = stem_col_class)
 stem_agb <- read.csv(file.path(site_data, "06_agb_stem/stem_agb.csv"))
 stem_height <- read.csv(file.path(site_data, "05_height/stem_height.csv"))
 stem_wd <- read.csv(file.path(site_data, "04_wd/stem_wd.csv"))
 stem_taxa <- read.csv(file.path(site_data, "02_taxa/stem_taxa.csv"))
-stem_pt <- st_read(file.path(site_data, "03_quad", paste(quad_dim, collapse = "_"), "stem_pt.gpkg"))
+stem_pt <- st_read(file.path(site_data, "03_quad", paste(quad_dim, collapse = "x"), "stem_pt.gpkg"))
 census <- read.csv(file.path(site_data, "01_fmt/census.csv"), colClasses = census_col_class)
+plot <- read.csv(file.path(site_data, "01_fmt/plot.csv"), colClasses = plot_col_class)
 runFn("./07_stem_summ.R")
 
 # Filter stem data for quadrat summaries
-outdir <- file.path(site_data, "08_stem_fil", paste(quad_dim, collapse = "_"))
+outdir <- file.path(site_data, "08_stem_fil", paste(quad_dim, collapse = "x"))
 dir.create(outdir, showWarnings = FALSE)
-stem_summ <- st_read(file.path(site_data, "07_stem_summ", paste(quad_dim, collapse = "_"), "stem_summ.gpkg"))
+stem_summ <- st_read(file.path(site_data, "07_stem_summ", paste(quad_dim, collapse = "x"), "stem_summ.gpkg"))
 runFn("./08_stem_fil.R")
 
 # Run AGB Monte-Carlo error propagation
-outdir <- file.path(site_data, "09_agb_mc", paste(quad_dim, collapse = "_"))
+outdir <- file.path(site_data, "09_agb_mc", paste(quad_dim, collapse = "x"))
 dir.create(outdir, showWarnings = FALSE)
-stem_fil <- read.csv(file.path(site_data, "08_stem_fil", paste(quad_dim, collapse = "_"), "stem_fil.csv"), colClasses = stem_col_class)
-plot_poly <- st_read(file.path(site_data, "01_fmt/plot_poly.gpkg"))
-stem_pt <- st_read(file.path(site_data, "03_quad", paste(quad_dim, collapse = "_"), "stem_pt.gpkg"))
+stem_fil <- read.csv(file.path(site_data, "08_stem_fil", paste(quad_dim, collapse = "x"), "stem_fil.csv"), colClasses = stem_col_class)
+plot_pt <- st_read(file.path(site_data, "01_fmt/plot_pt.gpkg"))
+stem_pt <- st_read(file.path(site_data, "03_quad", paste(quad_dim, collapse = "x"), "stem_pt.gpkg"))
 runFn("./09_agb_mc.R")
 
 # Create master quadrat summary object
-outdir <- file.path(site_data, "10_quad_summ", paste(quad_dim, collapse = "_"))
+outdir <- file.path(site_data, "10_quad_summ", paste(quad_dim, collapse = "x"))
 dir.create(outdir, showWarnings = FALSE)
-stem_fil <- read.csv(file.path(site_data, "08_stem_fil", paste(quad_dim, collapse = "_"), "stem_fil.csv"), colClasses = stem_col_class)
-quad_poly <- st_read(file.path(site_data, "03_quad", paste(quad_dim, collapse = "_"), "quad_poly.gpkg"))
-quad_agb <- read.csv(file.path(site_data, "09_agb_mc", paste(quad_dim, collapse = "_"), "quad_agb.csv"))
+stem_fil <- read.csv(file.path(site_data, "08_stem_fil", paste(quad_dim, collapse = "x"), "stem_fil.csv"), colClasses = c(census_col_class, stem_col_class))
+quad_poly <- st_read(file.path(site_data, "03_quad", paste(quad_dim, collapse = "x"), "quad_poly.gpkg"))
+quad_agb <- read.csv(file.path(site_data, "09_agb_mc", paste(quad_dim, collapse = "x"), "quad_agb.csv"))
 runFn("./10_quad_summ.R")
 
 # Create L2, L3 datasets 
-outdir <- file.path(site_data, "11_brm", paste(quad_dim, collapse = "_"))
+outdir <- file.path(site_data, "11_brm", paste(quad_dim, collapse = "x"))
 dir.create(outdir, showWarnings = FALSE)
-stem_fil <- read.csv(file.path(site_data, "08_stem_fil", paste(quad_dim, collapse = "_"), "stem_fil.csv"), colClasses = stem_col_class)
-quad_summ <- st_read(file.path(site_data, "10_quad_summ", paste(quad_dim, collapse = "_"), "quad_summ.gpkg"))
+stem_fil <- read.csv(file.path(site_data, "08_stem_fil", paste(quad_dim, collapse = "x"), "stem_fil.csv"), colClasses = stem_col_class)
+quad_summ <- st_read(file.path(site_data, "10_quad_summ", paste(quad_dim, collapse = "x"), "quad_summ.gpkg"))
 runFn("./11_brm.R")

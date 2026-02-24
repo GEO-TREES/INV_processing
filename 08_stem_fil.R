@@ -8,7 +8,7 @@ library(dplyr)
 source("./func.R")
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/08_stem_fil"
+# outdir <- "./dat/sites/PanamaCanal/08_stem_fil"
  
 # Import data
 # stem_summ <- st_read(file.path(site_data, "07_stem_summ/stem_summ.gpkg"))
@@ -25,12 +25,12 @@ stem_fil <- stem_summ %>%
     !is.na(diam_cm),
     !is.na(quadrat_id),
     !is.na(census_id),
-    diam_cm >= min_diam_thresh_cm,
+    diam_cm >= meas_diam_min_cm,
     alive == TRUE,
     broken == FALSE, 
     fallen == FALSE,
     missing == FALSE) %>% 
-  dplyr::select(-min_diam_thresh_cm)
+  dplyr::select(-meas_diam_min_cm)
 
 # Write filtered stem data to file
 write.csv(stem_fil, file.path(outdir, "stem_fil.csv"), row.names = FALSE)

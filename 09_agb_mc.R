@@ -3,7 +3,7 @@
 # Last updated: 2025-06-18
 
 # Define directories
-# outdir <- "./dat/sites/Panama_Canal/09_agb_mc"
+# outdir <- "./dat/sites/PanamaCanal/09_agb_mc"
 
 # Packages
 library(dplyr)
@@ -14,21 +14,21 @@ library(BIOMASS)
 source("./func.R")
 
 # Import data
-# stem_fil <- read.csv("./dat/sites/Panama_Canal/08_stem_fil/stem_fil.csv")
-# plot_poly <- st_read("./dat/sites/Panama_Canal/01_fmt/plot_poly.gpkg")
-# stem_pt <- st_read("./dat/sites/Panama_Canal/03_quad/stem_pt.gpkg")
+# stem_fil <- read.csv("./dat/sites/PanamaCanal/08_stem_fil/stem_fil.csv")
+# plot_pt <- st_read("./dat/sites/PanamaCanal/01_fmt/plot_pt.gpkg")
+# stem_pt <- st_read("./dat/sites/PanamaCanal/03_quad/stem_pt.gpkg")
 
 # Extract plot centres
-p_cent <- plot_poly %>% 
+p_cent <- plot_pt %>% 
+  group_by(site_id, plot_id) %>% 
+  summarise() %>% 
   st_centroid() %>% 
-  st_transform(4326) %>% 
   cbind(., st_coordinates(.)) %>% 
   st_drop_geometry() %>% 
-  dplyr::select(plot_id, longitude = X, latitude = Y)
+  dplyr::select(plot_id, X, Y)
 
 # Combine dataframes
 stem_all <- stem_fil %>% 
-  dplyr::select(-longitude, -latitude) %>% 
   left_join(., p_cent, by = "plot_id")
 
 # Split by quadrat
@@ -54,7 +54,7 @@ quad_agb_mc_list <- lapply(seq_along(stem_split), function(x) {
     AGBmonteCarlo(
       D = stem_split[[x]]$diam_cm,
       WD = stem_split[[x]]$meanWD,
-      coord = stem_split[[x]][,c("longitude", "latitude")],
+      coord = stem_split[[x]][,c("X", "Y")],
       Dpropag = "chave2004",
       errWD = stem_split[[x]]$sdWD,
       n = nsim)

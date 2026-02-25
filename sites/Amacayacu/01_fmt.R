@@ -29,12 +29,14 @@ s <- readRDS(file.path(indir, "amacayacu_census4_20260225.rds"))
 q <- read.csv(file.path(indir, "quadrat.20260224.csv"))
 sp <- read.csv(file.path(indir, "species.20260224.csv"))
 p <- read_excel(file.path(indir, "plot_pi.xlsx"))
-pc <- read.csv(file.path(indir, "plot_corners.csv"))
+poly <- st_read(file.path(indir, "poly/Amacayacu_plot_new.shp"))
 
 # Process plot corners
-pt <- pc %>% 
-  rename(
-    corner_id = corner) %>% 
+pt <- poly %>% 
+  st_set_crs(., 4326) %>% 
+  st_cast("POINT") %>% 
+  slice_tail(n = -1) %>% 
+  mutate(corner_id = c("SW", "NW", "NE", "SE")) %>%
   mutate(
     site_id,
     plot_id = "Amacayacu_1",

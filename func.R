@@ -3,6 +3,7 @@
 #' @param x filepath to R script 
 #'
 runFn <- function(x) {
+  message(basename(x))
   stopifnot(file.exists(x))
   pwd <- getwd()
   setwd(dirname(normalizePath(x)))

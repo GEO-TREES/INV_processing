@@ -159,7 +159,7 @@ s_all <- bind_rows(s_clean, recs_clean) %>%
   mutate(record_id = row_number()) %>% 
   mutate(
     taxon_name = case_when(
-    taxon_name == "AN" ~ "Anno.rugu",
+    taxon_name == "AN" ~ "AR",
     taxon_name == "Ca" ~ "CA",
     taxon_name == "camboata blanco" ~ "CB",
     taxon_name == "Ga" ~ "GA",
@@ -167,14 +167,14 @@ s_all <- bind_rows(s_clean, recs_clean) %>%
     taxon_name == "Gy" ~ "GY",
     taxon_name == "MUERTO" ~ NA_character_,
     taxon_name == "myrcine" ~ "Myrsine",
-    taxon_name == "Pereskia aculeata" ~ "",
+    taxon_name == "Pereskia aculeata" ~ "Pereskia aculeata",
     taxon_name == "SY" ~ "SYM",
     taxon_name == "bauhinia" ~ "PB",
     taxon_name == "Bauhinia" ~ "PB",
     taxon_name == "TC" ~ "Tabe.cath",
-    taxon_name == "ZP" ~ "TYG",
+    taxon_name == "ZP" ~ "PZ",
     taxon_name == "Apoyante" ~ NA_character_,
-    taxon_name == "Sola1" ~ "BV",
+    taxon_name == "Sola1" ~ "Solanum",
     taxon_name == "LIANA" ~ NA_character_,
     taxon_name == "Liana" ~ NA_character_,
     TRUE ~ taxon_name)) %>% 

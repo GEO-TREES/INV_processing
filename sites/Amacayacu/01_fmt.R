@@ -25,7 +25,7 @@ census_cols <- read.csv("../../templates/census_cols.csv")
 stem_cols <- read.csv("../../templates/stem_cols.csv")
 
 # Import data
-s <- read.csv(file.path(indir, "amafull_2026-02-24.csv"))
+s <- readRDS(file.path(indir, "amacayacu_census4_20260225.rds"))
 q <- read.csv(file.path(indir, "quadrat.20260224.csv"))
 sp <- read.csv(file.path(indir, "species.20260224.csv"))
 p <- read_excel(file.path(indir, "plot_pi.xlsx"))
@@ -51,10 +51,6 @@ pt <- pc %>%
 
 # Process stem data
 s_clean <- s %>% 
-  pivot_longer(
-    cols = -c(stemtag, stemtag_field, tag, spcode, gx, gy, quadrat), 
-    names_to = c(".value", "time_period"),
-    names_pattern = "([A-Za-z]+)(\\d+)") %>% 
   left_join(., sp, by = "spcode") %>% 
   rename(
     tree_id = tag,
@@ -63,20 +59,19 @@ s_clean <- s %>%
     x_rel_m = gx,
     y_rel_m = gy,
     subplot_id = quadrat, 
-    census_id = time_period,
-    pom_m = hom,
-    measurement_date = date) %>% 
-  filter(!is.na(status)) %>% 
+    pom_m = hom4,
+    measurement_date = date4) %>% 
   mutate(
     site_id, 
-    census_id = as.integer(census_id),
+    census_id = as.integer(4),
     plot_id = "Amacayacu_1",
-    diam_cm = dbh / 10,
+    diam_cm = dbh4 / 10,
     height_m = NA_real_,
-    alive = ifelse(status %in% c("alive", "P"), TRUE, FALSE),
-    fallen = ifelse(grepl("L", codes), TRUE, FALSE),
-    broken = ifelse(grepl("Q", codes), TRUE, FALSE),
-    missing = ifelse(grepl("DD", codes), TRUE, FALSE),
+    measurement_date = as.character(measurement_date),
+    alive = ifelse(status4 %in% c("alive", "P"), TRUE, FALSE),
+    fallen = ifelse(grepl("L", codes4), TRUE, FALSE),
+    broken = ifelse(grepl("Q", codes4), TRUE, FALSE),
+    missing = ifelse(grepl("DD", codes4), TRUE, FALSE),
     agb_allometry = NA_character_) %>% 
   group_by(plot_id, census_id, stem_id) %>% 
   mutate(measurement_id = row_number()) %>% 
@@ -87,7 +82,7 @@ s_clean <- s %>%
 # Create census table
 census <- s_clean %>% 
   group_by(site_id, plot_id, census_id) %>% 
-  summarise(census_date = as.character(mean(as.Date(measurement_date, "%d/%m/%y"), na.rm = TRUE))) %>% 
+  summarise(census_date = as.character(mean(as.Date(measurement_date), na.rm = TRUE))) %>% 
   ungroup() %>% 
   mutate(census_id = as.integer(census_id)) %>% 
   dplyr::select(all_of(census_cols$column_name))
@@ -97,7 +92,7 @@ p_clean <- data.frame(
   site_id,
   plot_id = "Amacayacu_1",
   census_date_geotrees = as.character(census$census_date[census$census_id == 4]),
-  census_date_all = paste(census$census_date, collapse = ";"),
+  census_date_all = "2008-05-17;2014-12-08;2020-06-05;2024-02-27",
   plot_width_m = 500,
   plot_length_m = 500,
   plot_slope_deg = NA_real_,

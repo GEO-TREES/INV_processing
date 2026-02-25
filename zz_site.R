@@ -91,7 +91,9 @@ if (tolower(trimws(user_input)) %in% c("y", "yes")) {
   dirs_sub <- dirs_all[!dirs_all %in% c(site_subdir, site_data)]
   unlink(dirs_sub, recursive = TRUE, expand = FALSE)
   
-} 
+} else if (!tolower(trimws(user_input)) %in% c("", "n")) {
+  stop("User must respond 'y' or 'n'")
+}
 
 # Create output directories
 for (i in out_dirs) {

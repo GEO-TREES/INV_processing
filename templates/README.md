@@ -1,0 +1,11 @@
+# Templates for formatting GEO-TREES L0 tree inventory data products
+
+`./*_cols.csv` files contain column names, descriptions, units and R column classes for each of the GEO-TREES L0 tree inventory data products. These files are also used by the processing workflow to check the validity of these objects. 
+
+* `./census_cols.csv` - Census table
+* `./plot_cols.csv` - Plot meta-data table
+* `./pt_cols.csv` - Plot corner coordinates table
+* `./stem_cols.csv` - Stem measurements table
+
+`./plot_meta.xlsx` contains a template for data owners to record plot-level meta-data for a site.
+

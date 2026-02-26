@@ -128,7 +128,7 @@ for (i in out_dirs) {
 # If S3, copy raw data from S3 bucket to local directory
 if (opt_s3) {
   # Get object list from S3
-  s3_client <- s3(region = "use-west-2")
+  s3_client <- s3(region = "us-west-2")
 
   # Define S3 bucket where MAAP user directories are located
   bucket <- "maap-ops-workspace"
@@ -156,7 +156,7 @@ if (opt_s3) {
 }
 
 # Format raw data
-indir <- rawdir
+indir <- raw_dir
 outdir <- file.path(site_data, "01_fmt")
 runFn(file.path("./sites", site_id, "01_fmt.R"))
 

@@ -15,7 +15,7 @@ source("./func.R")
 # Import data 
 # stem_taxa <- read.csv("./dat/sites/PanamaCanal/02_taxa/stem_taxa.csv")
 # stem <- read.csv("./dat/sites/PanamaCanal/01_fmt/stem.csv")
-wd <- read.csv("./dat/01_wd/wd.csv")
+# wd <- read.csv("./dat/01_wd/wd.csv")
 
 # Join taxonomy data to stem data
 stem_taxa_all <- left_join(stem, stem_taxa, by = "record_id")

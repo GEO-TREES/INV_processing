@@ -178,6 +178,7 @@ outdir <- file.path(site_data, "04_wd")
 dir.create(outdir, showWarnings = FALSE)
 stem <- read.csv(file.path(site_data, "01_fmt/stem.csv"), colClasses = stem_col_class)
 stem_taxa <- read.csv(file.path(site_data, "02_taxa/stem_taxa.csv"))
+wd <- read.csv("./dat/01_wd/wd.csv")
 runFn("./04_wd.R")
 
 # Estimate stem height

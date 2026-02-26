@@ -32,6 +32,13 @@ if (!exists(out_dir)) {
 
 dir.create(out_dir, recursive = TRUE)
 
+# Define S3 directory containing raw (L0) data
+# s3_dir <- "johngodlee/GEO-TREES_PDA/dat/sites/Bicuar/raw"
+
+if (!exists(s3_dir)) {
+  stop("s3_dir must be defined")
+}
+
 # Load packages
 library(sf)
 library(BIOMASS)

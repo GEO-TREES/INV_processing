@@ -26,7 +26,7 @@ stem_agb <- stem %>%
       D = .$diam_cm,
       WD = .$meanWD,
       H = .$height_m_pred),
-    ba_m2 = pi * (.$diam_cm / 2)^2 / 10000) %>% 
+    ba_m2 = base::pi * (.$diam_cm / 2)^2 / 10000) %>% 
   dplyr::select(
     record_id, 
     agb_Mg,

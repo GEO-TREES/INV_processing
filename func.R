@@ -5,18 +5,13 @@
 runFn <- function(x) {
   message(basename(x))
   stopifnot(file.exists(x))
-  pwd <- getwd()
-  setwd(dirname(normalizePath(x)))
   tryCatch(
     {
-      source(basename(x))
+      source(x)
     },
     error = function(e) { 
       message("Error while running '", x, "': ", e$message)
       stop(e)
-    }, 
-    finally = {
-      setwd(pwd)
     }
   )
 }

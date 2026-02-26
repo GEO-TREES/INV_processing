@@ -4,6 +4,7 @@
 
 # Packages
 library(dplyr)
+library(sf)
 
 source("./func.R")
 
@@ -30,7 +31,13 @@ stem_fil <- stem_summ %>%
     broken == FALSE, 
     fallen == FALSE,
     missing == FALSE) %>% 
+  group_by(site_id, plot_id, census_id, tree_id, stem_id) %>% 
+  slice_max(
+    order_by = tibble(pom_m, measurement_date, diam_cm), 
+    n = 1, with_ties = FALSE) %>%
+  ungroup() %>% 
   dplyr::select(-meas_diam_min_cm)
 
 # Write filtered stem data to file
 write.csv(stem_fil, file.path(outdir, "stem_fil.csv"), row.names = FALSE)
+

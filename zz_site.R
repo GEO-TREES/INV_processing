@@ -156,7 +156,7 @@ if (opt_s3) {
 }
 
 # Format raw data
-indir <- rawdir
+indir <- raw_dir
 outdir <- file.path(site_data, "01_fmt")
 runFn(file.path("./sites", site_id, "01_fmt.R"))
 

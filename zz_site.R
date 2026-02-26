@@ -143,16 +143,19 @@ if (opt_s3) {
   # Collect S3 paths from bucket
   shared_objects <- sapply(s3_response$Contents, "[[", "Key")
 
+  # Check files detected
+  if (length(shared_objects) == 0) { 
+    stop("No raw data files detected in S3 bucket")
+  }
+  
   # Retrieve all files
-  catch <- lapply(shared_objects, function(x) {
-    # Construct new key in destination foldert
-    dest_key <- sub(s3_dir, raw_dir, x)
+  for (i in shared_objects) {
+    # Construct new key in destination folder
+    dest_key <- sub(s3_dir, raw_dir, i)
 
     # Copy files to local directory
-    s3_client$download_file(Bucket = bucket, Key = x, Filename = dest_key)
-
-    return(dest_key)
-  })
+    s3_client$download_file(Bucket = bucket, Key = i, Filename = dest_key)
+  }
 }
 
 # Format raw data
@@ -240,4 +243,4 @@ runFn("./11_brm.R")
 
 # Optionally transfer outputs
 
-# Optionally local files
+# Optionally delete local files

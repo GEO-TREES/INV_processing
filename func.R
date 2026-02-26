@@ -313,3 +313,37 @@ pasteVals <- function(..., sep = "", collapse = NULL,
     ret
   }
 }
+
+#' Identify discrete censuses from a vector of measurement dates
+#'
+#' @param x vector of measurement dates, character or Date
+#' @param gap number of days above which consecutive measurement dates will be
+#'     split into different censuses
+#'
+#' @return character vector of census mid-dates (median) for each value in `x`
+#' 
+censusGen <- function(x, gap) {
+  # Store original order and create a working data frame
+  orig_order <- seq_along(x)
+  dat <- data.frame(m_date = as.Date(x), id = orig_order)
+  
+  # Sort by date to identify chronological gaps
+  dat <- dat[order(dat$m_date), ]
+  
+  # Calculate gaps and assign census IDs
+  # diff() on Date returns days
+  # Prepend 0 to keep length consistent
+  gaps <- c(0, diff(dat$m_date))
+  dat$census_id <- cumsum(gaps > gap)
+  
+  # Calculate mid-date (median) per census
+  # Convert to numeric for ave(), then back to Date
+  dat$census_date <- as.character(as.Date(
+    ave(as.numeric(dat$m_date), dat$census_id, FUN = median)))
+  
+  # Restore original order 
+  out <- dat[order(dat$id), "census_date"]
+  
+  # Return
+  return(out)
+}

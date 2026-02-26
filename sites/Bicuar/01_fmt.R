@@ -8,20 +8,20 @@ library(tidyr)
 library(sf)
 
 # Source functions
-source("../../func.R")
+# source("./func.R")
 
 # Define site ID
-site_id <- "Bicuar"
+# site_id <- "Bicuar"
 
 # Define directories
-indir <- "../../dat/sites/Bicuar/raw"
-outdir <- "../../dat/sites/Bicuar/01_fmt"
+# indir <- "./dat/sites/Bicuar/raw"
+# outdir <- "./dat/sites/Bicuar/01_fmt"
 
 # Import column descriptions
-plot_cols <- read.csv("../../templates/plot_cols.csv")
-pt_cols <- read.csv("../../templates/pt_cols.csv")
-census_cols <- read.csv("../../templates/census_cols.csv")
-stem_cols <- read.csv("../../templates/stem_cols.csv")
+# plot_cols <- read.csv("./templates/plot_cols.csv")
+# pt_cols <- read.csv("./templates/pt_cols.csv")
+# census_cols <- read.csv("./templates/census_cols.csv")
+# stem_cols <- read.csv("./templates/stem_cols.csv")
 
 # Import data
 s <- read.csv(file.path(indir, "stems.csv"))

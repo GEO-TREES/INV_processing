@@ -8,20 +8,20 @@ library(tidyr)
 library(sf)
 
 # Source functions
-source("../../func.R")
+# source("./func.R")
 
 # Define site ID
-site_id <- "Paracou"
+# site_id <- "Paracou"
 
 # Define directories
-indir <- "../../dat/sites/Paracou/raw"
-outdir <- "../../dat/sites/Paracou/01_fmt"
+# indir <- "./dat/sites/Paracou/raw"
+# outdir <- "./dat/sites/Paracou/01_fmt"
 
 # Import column descriptions
-plot_cols <- read.csv("../../templates/plot_cols.csv")
-pt_cols <- read.csv("../../templates/pt_cols.csv")
-census_cols <- read.csv("../../templates/census_cols.csv")
-stem_cols <- read.csv("../../templates/stem_cols.csv")
+# plot_cols <- read.csv("./templates/plot_cols.csv")
+# pt_cols <- read.csv("./templates/pt_cols.csv")
+# census_cols <- read.csv("./templates/census_cols.csv")
+# stem_cols <- read.csv("./templates/stem_cols.csv")
 
 # Import stem data
 s_P13 <- read.csv(file.path(indir, "Paracou Biodiversity Plots/2024-08-29_ParacouP13AllYears.csv"))

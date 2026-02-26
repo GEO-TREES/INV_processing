@@ -8,20 +8,20 @@ library(readxl)
 library(sf)
 
 # Define site ID
-site_id <- "Misiones"
+# site_id <- "Misiones"
 
 # Source functions
-source("../../func.R")
+# source("./func.R")
 
 # Define directories
-indir <- "../../dat/sites/Misiones/raw"
-outdir <- "../../dat/sites/Misiones/01_fmt"
+# indir <- "./dat/sites/Misiones/raw"
+# outdir <- "./dat/sites/Misiones/01_fmt"
 
 # Import column descriptions
-plot_cols <- read.csv("../../templates/plot_cols.csv")
-pt_cols <- read.csv("../../templates/pt_cols.csv")
-census_cols <- read.csv("../../templates/census_cols.csv")
-stem_cols <- read.csv("../../templates/stem_cols.csv")
+# plot_cols <- read.csv("./templates/plot_cols.csv")
+# pt_cols <- read.csv("./templates/pt_cols.csv")
+# census_cols <- read.csv("./templates/census_cols.csv")
+# stem_cols <- read.csv("./templates/stem_cols.csv")
 
 # Import stem data 
 s <- read_excel(file.path(indir, "Medicion2024 planilla compartida GEO-TREES.xlsx"), sheet = 2, guess_max = Inf)

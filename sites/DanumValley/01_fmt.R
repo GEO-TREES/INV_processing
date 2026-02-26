@@ -8,20 +8,20 @@ library(tidyr)
 library(sf)
 
 # Source functions
-source("../../func.R")
+# source("./func.R")
 
 # Define site ID
-site_id <- "DanumValley"
+# site_id <- "DanumValley"
 
 # Define directories
-indir <- "../../dat/sites/DanumValley/raw"
-outdir <- "../../dat/sites/DanumValley/01_fmt"
+# indir <- "./dat/sites/DanumValley/raw"
+# outdir <- "./dat/sites/DanumValley/01_fmt"
 
 # Import column descriptions
-stem_cols <- read.csv("../../templates/stem_cols.csv")
-census_cols <- read.csv("../../templates/census_cols.csv")
-plot_cols <- read.csv("../../templates/plot_cols.csv")
-pt_cols <- read.csv("../../templates/pt_cols.csv")
+# stem_cols <- read.csv("./templates/stem_cols.csv")
+# census_cols <- read.csv("./templates/census_cols.csv")
+# plot_cols <- read.csv("./templates/plot_cols.csv")
+# pt_cols <- read.csv("./templates/pt_cols.csv")
 
 # Import data
 s <- read.table(file.path(indir, "ViewFullTable_danum.txt"),

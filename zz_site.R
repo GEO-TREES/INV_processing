@@ -16,9 +16,21 @@ if (!exists("quad_dim")) {
   stop("quad_dim must be defined")
 }
 
+# Define if raw files located in S3
+# opt_s3 <- FALSE
+
+if (!exists("opt_s3")) {
+  stop("opt_s3 must be defined")
+}
+
 # Load packages
 library(sf)
 library(BIOMASS)
+
+# Optionally load S3 package
+if (opt_s3) {
+  library(paws)
+}
 
 # Source functions
 source("./func.R")
@@ -51,11 +63,24 @@ census_col_class <- setNames(census_cols$class, census_cols$column_name)
 plot_cols <- read.csv("./templates/plot_cols.csv")
 plot_col_class <- setNames(plot_cols$class, plot_cols$column_name)
 
-# Define site script path
-site_script <- paste0("./sites/", site_id)
+pt_cols <- read.csv("./templates/pt_cols.csv")
+pt_col_class <- setNames(pt_cols$class, pt_cols$column_name)
+
+# Define data directory paths 
+if (opt_s3) { 
+  # Create local directory for outputs
+  local_dir <- "~/PDA_output/sites"
+} else {
+  local_dir <- "./dat/sites"
+}
 
 # Define site data path
-site_data <- paste0("./dat/sites/", site_id)
+site_data <- file.path(local_dir, site_id)
+dir.create(site_data, recursive = TRUE)
+
+# Define raw directory
+raw_dir <- file.path(site_data, "raw")
+dir.create(raw_dir, showWarnings = FALSE)
 
 # Define output directories
 out_dirs <- c(
@@ -100,8 +125,40 @@ for (i in out_dirs) {
   dir.create(file.path(site_data, i), showWarnings = FALSE)
 }
 
+# If S3, copy raw data from S3 bucket to local directory
+if (opt_s3) {
+  # Get object list from S3
+  s3_client <- s3(region = "use-west-2")
+
+  # Define S3 bucket where MAAP user directories are located
+  bucket <- "maap-ops-workspace"
+
+  # If S3, prompt user for input
+  user_input <- readline(prompt = "Enter maap-ops-workspace S3 path to raw data for this site. E.g. johngodlee/GEO-TREES/data/<SITE>: ")
+  s3_dir <- user_input
+
+  # Identify files in dir_input
+  s3_response <- s3_client$list_objects_v2(Bucket = bucket, Prefix = s3_dir)
+
+  # Collect S3 paths from bucket
+  shared_objects <- sapply(s3_response$Contents, "[[", "Key")
+
+  # Retrieve all files
+  catch <- lapply(shared_objects, function(x) {
+    # Construct new key in destination foldert
+    dest_key <- sub(s3_dir, raw_dir, x)
+
+    # Copy files to local directory
+    s3_client$download_file(Bucket = bucket, Key = x, Filename = dest_key)
+
+    return(dest_key)
+  })
+}
+
 # Format raw data
-runFn(file.path(site_script, "01_fmt.R"))
+indir <- rawdir
+outdir <- file.path(site_data, "01_fmt")
+runFn(file.path("./sites", site_id, "01_fmt.R"))
 
 # Correct taxonomy
 outdir <- file.path(site_data, "02_taxa")
@@ -179,3 +236,7 @@ dir.create(outdir, showWarnings = FALSE)
 stem_fil <- read.csv(file.path(site_data, "08_stem_fil", paste(quad_dim, collapse = "x"), "stem_fil.csv"), colClasses = stem_col_class)
 quad_summ <- st_read(file.path(site_data, "10_quad_summ", paste(quad_dim, collapse = "x"), "quad_summ.gpkg"))
 runFn("./11_brm.R")
+
+# Optionally transfer outputs
+
+# Optionally local files

@@ -9,20 +9,20 @@ library(sf)
 library(readxl)
 
 # Source functions
-source("../../func.R")
+# source("./func.R")
 
 # Define site ID
-site_id <- "Amacayacu"
+# site_id <- "Amacayacu"
 
 # Define directories
-indir <- "../../dat/sites/Amacayacu/raw"
-outdir <- "../../dat/sites/Amacayacu/01_fmt"
-
-# Import column descriptions
-plot_cols <- read.csv("../../templates/plot_cols.csv")
-pt_cols <- read.csv("../../templates/pt_cols.csv")
-census_cols <- read.csv("../../templates/census_cols.csv")
-stem_cols <- read.csv("../../templates/stem_cols.csv")
+# indir <- "./dat/sites/Amacayacu/raw"
+# outdir <- "./dat/sites/Amacayacu/01_fmt"
+ 
+# # Import column descriptions
+# plot_cols <- read.csv("./templates/plot_cols.csv")
+# pt_cols <- read.csv("./templates/pt_cols.csv")
+# census_cols <- read.csv("./templates/census_cols.csv")
+# stem_cols <- read.csv("./templates/stem_cols.csv")
 
 # Import data
 s <- readRDS(file.path(indir, "amacayacu_census4_20260225.rds"))

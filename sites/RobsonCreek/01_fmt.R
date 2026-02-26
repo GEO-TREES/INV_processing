@@ -9,20 +9,20 @@ library(sf)
 library(readxl)
 
 # Source functions
-source("../../func.R")
+# source("./func.R")
 
 # Define site ID
-site_id <- "RobsonCreek"
+# site_id <- "RobsonCreek"
 
 # Define directories
-indir <- "../../dat/sites/RobsonCreek/raw"
-outdir <- "../../dat/sites/RobsonCreek/01_fmt"
+# indir <- "./dat/sites/RobsonCreek/raw"
+# outdir <- "./dat/sites/RobsonCreek/01_fmt"
 
 # Import column descriptions
-plot_cols <- read.csv("../../templates/plot_cols.csv")
-pt_cols <- read.csv("../../templates/pt_cols.csv")
-stem_cols <- read.csv("../../templates/stem_cols.csv")
-census_cols <- read.csv("../../templates/census_cols.csv")
+# plot_cols <- read.csv("./templates/plot_cols.csv")
+# pt_cols <- read.csv("./templates/pt_cols.csv")
+# stem_cols <- read.csv("./templates/stem_cols.csv")
+# census_cols <- read.csv("./templates/census_cols.csv")
 
 # TODO: Replace when plot coordinates received
 # Import stem data

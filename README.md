@@ -2,12 +2,12 @@
 
 This repository contains code to clean and process tree inventory data from GEO-TREES sites.
 
-Each directory in `./sites/` contains a `./*/01_fmt.R` script to perform initial cleaning on raw data from each GEO-TREES site. This script produces three files:
+Each directory in `./sites/` contains a `./*/01_fmt.R` script to perform initial cleaning on raw data from each GEO-TREES site. This script produces four files:
 
-* `plot_pt.gpkg` - Points locating the corners of plots, with additional columns describing the stem map coordinate system.
+* `stem.csv` - Stem measurement table, where each row is a measurement of a stem within a census within a plot.
 * `census.csv` - Census metadata table, where each row is a census within a plot. 
 * `plot.csv` - Plot metadata table, where each row is a plot. 
-* `stem.csv` - Stem measurement table, where each row is a measurement of a stem within a census within a plot.
+* `plot_pt.gpkg` - Points locating the corners of plots, with additional columns describing the stem map coordinate system.
 
 See `./templates/*` for guidance on which columns should be included in these files.
 
@@ -25,8 +25,6 @@ In the root directory there are additional scripts which process data from any s
 * `./11_brm.R` - Create L2 and L3 datasets
 
 * `./zz_site.R` - run scripts in order to process a single site
-* `./zz_site_all.R` - process all sites listed as "complete" in `./dat/site_status.csv`
-
 * `./zz_wd_prep.R` - prepare wood density dataset
 * `./zz_renv.R` - prepare reproducible R environment
 
@@ -34,13 +32,14 @@ In the root directory there are additional scripts which process data from any s
 
 Key outputs from each site include:
 
-* `02_taxa.R`:
+* `./02_taxa.R`:
     * `wfo_cache.rds` - Cache generated from taxonomic name cleaning. Documents choices made by user.
-* `07_stem_summ.R`:
+* `./07_stem_summ.R`:
     * `stem_summ.gpkg` - Combined stem-level dataset. Includes data from `02_taxa/stem_taxa.csv`, `03_quad/stem_pt.gpkg`, `04_wd/stem_wd.csv`, `05_height/stem_height.csv`, `06_agb/stem_agb.csv`.
-* `10_quad_summ.R`:
+* `./10_quad_summ.R`:
     * `quad_summ.gpkg` - Combined quadrat-level dataset. Includes data from `04_quad/quad_poly.gpkg`, `07_stem_summ/stem_summ.gpkg`.
-* `11_brm.R`:
+* `./11_brm.R`:
+    * `*_L1.csv` - GEO-TREES L1 tree inventory data product for upload to data.geo-trees.org
     * `*_L2.csv` - GEO-TREES L2 tree inventory data product for upload to data.geo-trees.org
     * `*_L3.csv` - GEO-TREES L3 tree inventory data product for upload to data.geo-trees.org
 
@@ -55,4 +54,11 @@ The `./.renvignore` file specifies files and directories to be monitored for new
 1. Ensure the package is called in one of the tracked files or directories.
 2. Install the package: `renv::install("package_name")` or `renv::install("user/repo")` for packages on GitHub.
 3. Update the lockfile: `renv::snapshot()`
+
+## Reproducibility
+
+To track data inputs and versions of the processing code, each `L`-level data output is accompanied by an [RO-Crate](https://www.researchobject.org/ro-crate/) JSON file containing this meta-data. `./11_brm.R` contains code to programmatically create these files. These files can be used to precisely reproduce each data output.
+
+A `param.yaml` file is used to track user-defined parameters such as the site name, quadrat dimensions, input and output directories. A copy of this file is placed alongside each `L`-level data output. A template of `param.yaml` is located in `./templates/param.yaml`.
+
 

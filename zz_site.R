@@ -2,72 +2,43 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2026-02-11
 
-# DEFINE SITE NAME
-# site_id <- "PanamaCanal"
-
-if (!exists("site_id")) {
-  stop("site_id must be defined")
-}
-
-# DEFINE QUADRAT DIMENSIONS
-# quad_dim <- c(50, 50)
-
-if (!exists("quad_dim")) {
-  stop("quad_dim must be defined")
-}
-
-# Define if raw files located in S3
-# opt_s3 <- FALSE
-
-if (!exists("opt_s3")) {
-  stop("opt_s3 must be defined")
-}
-
-# Define output data path
-# out_dir <- "~/PDA_output"
-
-if (!exists(out_dir)) {
-  stop("out_dir must be defined")
-}
-
-dir.create(out_dir, recursive = TRUE)
-
-# Define S3 directory containing raw (L0) data
-# s3_dir <- "johngodlee/GEO-TREES_PDA/dat/sites/Bicuar/raw"
-
-if (!exists(s3_dir)) {
-  stop("s3_dir must be defined")
-}
-
 # Load packages
+library(dplyr)
+library(tidyr)
+library(units)
 library(sf)
 library(BIOMASS)
-
-# Optionally load S3 package
-if (opt_s3) {
-  library(paws)
-}
+library(yaml)
+library(rocrateR)
 
 # Source functions
 source("./func.R")
 
-# Create BIOMASS cache
-closeAllConnections()
-BIOMASS_cache <- "./dat/BIOMASS/cache"
-BIOMASS::createCache(BIOMASS_cache)
-BIOMASS_files <- c(
-  "CWD.bil",
-  "bio4.bil",
-  "bio15.bil",
-  "E.bil"
+# Load yaml file with parameters
+param <- read_yaml("./param.yaml")
+
+# Define parameter names
+param_name_vec <- c(
+  "site_id",
+  "acquisition_id",
+  "quad_dim",
+  "opt_s3",
+  "s3_dir",
+  "out_dir",
+  "raw_dir",
+  "product_version"
 )
-for (i in BIOMASS_files) BIOMASS::cacheManager(i)
 
-# Import site status table
-site_status <- read.csv("./dat/site_status.csv")
+# Check all parameters present
+if (all(sort(names(param)) != sort(param_name_vec))) {
+    stop("The following parameters must be named in ./param.yaml: ", 
+      paste(param_name_vec, collapse = ", "))
+}
 
-# Check site name is in sites.csv
-stopifnot(site_id %in% site_status$site_id)
+# Optionally load S3 package
+if (param$opt_s3) {
+  library(paws)
+}
 
 # Import column classes
 stem_cols <- read.csv("./templates/stem_cols.csv")
@@ -82,12 +53,8 @@ plot_col_class <- setNames(plot_cols$class, plot_cols$column_name)
 pt_cols <- read.csv("./templates/pt_cols.csv")
 pt_col_class <- setNames(pt_cols$class, pt_cols$column_name)
 
-# Define raw directory
-raw_dir <- file.path(out_dir, "raw")
-dir.create(raw_dir, showWarnings = FALSE)
-
 # Define output directories
-out_dir_list <- c(
+out_dir_vec <- c(
   "01_fmt",
   "02_taxa",
   "03_quad",
@@ -98,7 +65,9 @@ out_dir_list <- c(
   "08_stem_fil",
   "09_agb_mc",
   "10_quad_summ",
-  "11_brm"
+  "L1",
+  "L2",
+  "L3"
 )
 
 # Optionally wipe existing outputs
@@ -109,15 +78,15 @@ if (tolower(trimws(user_input)) %in% c("y", "yes")) {
   message("Deleting previous outputs...")
   
   # Delete output files
-  files_all <- list.files(out_dir, recursive = TRUE)
+  files_all <- list.files(param$out_dir, recursive = TRUE)
   files_out <- files_all[grepl("^[0-9]+_", files_all)]
   files_rem <- files_out[!grepl("wfo_cache.rds", files_out)]
-  file.remove(file.path(out_dir, files_rem))
+  file.remove(file.path(param$out_dir, files_rem))
   
   # Delete output sub-directories
-  site_subdir <- file.path(out_dir, out_dir_list)
+  site_subdir <- file.path(param$out_dir, out_dir_vec, param$product_version)
   dirs_all <- list.dirs(site_subdir, recursive = TRUE)
-  dirs_sub <- dirs_all[!dirs_all %in% c(site_subdir, out_dir)]
+  dirs_sub <- dirs_all[!dirs_all %in% c(site_subdir, param$out_dir)]
   unlink(dirs_sub, recursive = TRUE, expand = FALSE)
   
 } else if (!tolower(trimws(user_input)) %in% c("", "n")) {
@@ -125,12 +94,12 @@ if (tolower(trimws(user_input)) %in% c("y", "yes")) {
 }
 
 # Create output directories
-for (i in out_dir_list) {
-  dir.create(file.path(out_dir, i), showWarnings = FALSE)
+for (i in out_dir_vec) {
+  dir.create(file.path(param$out_dir, i), showWarnings = FALSE)
 }
 
 # If S3, copy raw data from S3 bucket to local directory
-if (opt_s3) {
+if (param$opt_s3) {
   # Get object list from S3
   s3_client <- s3(region = "us-west-2")
 
@@ -138,7 +107,7 @@ if (opt_s3) {
   bucket <- "maap-ops-workspace"
 
   # Identify files in dir_input
-  s3_response <- s3_client$list_objects_v2(Bucket = bucket, Prefix = s3_dir)
+  s3_response <- s3_client$list_objects_v2(Bucket = bucket, Prefix = param$s3_dir)
 
   # Collect S3 paths from bucket
   shared_objects <- sapply(s3_response$Contents, "[[", "Key")
@@ -151,96 +120,125 @@ if (opt_s3) {
   # Retrieve all files
   for (i in shared_objects) {
     # Construct new key in destination folder
-    dest_key <- sub(s3_dir, raw_dir, i)
+    dest_key <- sub(param$s3_dir, param$raw_dir, i)
 
     # Copy files to local directory
     s3_client$download_file(Bucket = bucket, Key = i, Filename = dest_key)
   }
 }
 
+# Create BIOMASS cache
+closeAllConnections()
+BIOMASS_cache <- "./dat/BIOMASS/cache"
+BIOMASS::createCache(BIOMASS_cache)
+BIOMASS_files <- c(
+  "CWD.bil",
+  "bio4.bil",
+  "bio15.bil",
+  "E.bil"
+)
+for (i in BIOMASS_files) BIOMASS::cacheManager(i)
+
 # Format raw data
-indir <- raw_dir
-outdir <- file.path(out_dir, "01_fmt")
-runFn(file.path("./sites", site_id, "01_fmt.R"))
+indir <- param$raw_dir
+outdir <- file.path(param$out_dir, "01_fmt", param$product_version)
+dir.create(outdir, showWarnings = FALSE)
+runFn(file.path("./sites", param$site_id, "01_fmt.R"))
 
 # Correct taxonomy
-outdir <- file.path(out_dir, "02_taxa")
+outdir <- file.path(param$out_dir, "02_taxa", param$product_version)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(out_dir, "01_fmt/stem.csv"), colClasses = stem_col_class)
+stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+  colClasses = stem_col_class)
+wfo_path <- file.path(outdir, "wfo_cache.rds")
+if (file.exists(wfo_path)) { loadWFOCache(wfo_path) }
 runFn("./02_taxa.R")
 
 # Split plots into quadrats 
-outdir <- file.path(out_dir, "03_quad", paste(quad_dim, collapse = "x"))
+outdir <- file.path(param$out_dir, "03_quad", param$product_version)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(out_dir, "01_fmt/stem.csv"), colClasses = stem_col_class)
-plot_pt <- st_read(file.path(out_dir, "01_fmt/plot_pt.gpkg"))
+stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+  colClasses = stem_col_class)
+plot_pt <- st_read(file.path(param$out_dir, "01_fmt", param$product_version, "plot_pt.gpkg"))
 runFn("./03_quad.R")
 
 # Estimate wood density
-outdir <- file.path(out_dir, "04_wd")
+outdir <- file.path(param$out_dir, "04_wd", param$product_version)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(out_dir, "01_fmt/stem.csv"), colClasses = stem_col_class)
-stem_taxa <- read.csv(file.path(out_dir, "02_taxa/stem_taxa.csv"))
+stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+  colClasses = stem_col_class)
+stem_taxa <- read.csv(file.path(param$out_dir, "02_taxa", param$product_version, "stem_taxa.csv"))
 wd <- read.csv("./dat/01_wd/wd.csv")
 runFn("./04_wd.R")
 
 # Estimate stem height
-outdir <- file.path(out_dir, "05_height")
+outdir <- file.path(param$out_dir, "05_height", param$product_version)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(out_dir, "01_fmt/stem.csv"), colClasses = stem_col_class)
-plot_pt <- st_read(file.path(out_dir, "01_fmt/plot_pt.gpkg"))
+stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+  colClasses = stem_col_class)
+plot_pt <- st_read(file.path(param$out_dir, "01_fmt", param$product_version, "plot_pt.gpkg"))
 runFn("./05_height.R")
 
 # Estimate AGB for every measurement
-outdir <- file.path(out_dir, "06_agb_stem")
+outdir <- file.path(param$out_dir, "06_agb_stem", param$product_version)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(out_dir, "01_fmt/stem.csv"), colClasses = stem_col_class)
-stem_wd <- read.csv(file.path(out_dir, "04_wd/stem_wd.csv"))
-stem_height <- read.csv(file.path(out_dir, "05_height/stem_height.csv"))
+stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+  colClasses = stem_col_class)
+stem_wd <- read.csv(file.path(param$out_dir, "04_wd", param$product_version, "stem_wd.csv"))
+stem_height <- read.csv(file.path(param$out_dir, "05_height", param$product_version, "stem_height.csv"))
 runFn("./06_agb_stem.R")
 
 # Create master stems table
-outdir <- file.path(out_dir, "07_stem_summ", paste(quad_dim, collapse = "x"))
+outdir <- file.path(param$out_dir, "07_stem_summ", param$product_version)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(out_dir, "01_fmt/stem.csv"), colClasses = stem_col_class)
-stem_agb <- read.csv(file.path(out_dir, "06_agb_stem/stem_agb.csv"))
-stem_height <- read.csv(file.path(out_dir, "05_height/stem_height.csv"))
-stem_wd <- read.csv(file.path(out_dir, "04_wd/stem_wd.csv"))
-stem_taxa <- read.csv(file.path(out_dir, "02_taxa/stem_taxa.csv"))
-stem_pt <- st_read(file.path(out_dir, "03_quad", paste(quad_dim, collapse = "x"), "stem_pt.gpkg"))
-census <- read.csv(file.path(out_dir, "01_fmt/census.csv"), colClasses = census_col_class)
-plot <- read.csv(file.path(out_dir, "01_fmt/plot.csv"), colClasses = plot_col_class)
+stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+  colClasses = stem_col_class)
+stem_agb <- read.csv(file.path(param$out_dir, "06_agb_stem", param$product_version, "stem_agb.csv"))
+stem_height <- read.csv(file.path(param$out_dir, "05_height", param$product_version, "stem_height.csv"))
+stem_wd <- read.csv(file.path(param$out_dir, "04_wd", param$product_version, "stem_wd.csv"))
+stem_taxa <- read.csv(file.path(param$out_dir, "02_taxa", param$product_version, "stem_taxa.csv"))
+stem_pt <- st_read(file.path(param$out_dir, "03_quad", param$product_version, "stem_pt.gpkg"))
+census <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "census.csv"), 
+  colClasses = census_col_class)
+plot <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "plot.csv"), 
+  colClasses = plot_col_class)
 runFn("./07_stem_summ.R")
 
 # Filter stem data for quadrat summaries
-outdir <- file.path(out_dir, "08_stem_fil", paste(quad_dim, collapse = "x"))
+outdir <- file.path(param$out_dir, "08_stem_fil", param$product_version)
 dir.create(outdir, showWarnings = FALSE)
-stem_summ <- st_read(file.path(out_dir, "07_stem_summ", paste(quad_dim, collapse = "x"), "stem_summ.gpkg"))
+stem_summ <- st_read(file.path(param$out_dir, "07_stem_summ", param$product_version, "stem_summ.gpkg"))
 runFn("./08_stem_fil.R")
 
 # Run AGB Monte-Carlo error propagation
-outdir <- file.path(out_dir, "09_agb_mc", paste(quad_dim, collapse = "x"))
+outdir <- file.path(param$out_dir, "09_agb_mc", param$product_version)
 dir.create(outdir, showWarnings = FALSE)
-stem_fil <- read.csv(file.path(out_dir, "08_stem_fil", paste(quad_dim, collapse = "x"), "stem_fil.csv"), colClasses = stem_col_class)
-plot_pt <- st_read(file.path(out_dir, "01_fmt/plot_pt.gpkg"))
-stem_pt <- st_read(file.path(out_dir, "03_quad", paste(quad_dim, collapse = "x"), "stem_pt.gpkg"))
+stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", param$product_version, "stem_fil.csv"), 
+  colClasses = stem_col_class)
+plot_pt <- st_read(file.path(param$out_dir, "01_fmt", param$product_version, "plot_pt.gpkg"))
+stem_pt <- st_read(file.path(param$out_dir, "03_quad", param$product_version, "stem_pt.gpkg"))
 runFn("./09_agb_mc.R")
 
 # Create master quadrat summary object
-outdir <- file.path(out_dir, "10_quad_summ", paste(quad_dim, collapse = "x"))
+outdir <- file.path(param$out_dir, "10_quad_summ", param$product_version)
 dir.create(outdir, showWarnings = FALSE)
-stem_fil <- read.csv(file.path(out_dir, "08_stem_fil", paste(quad_dim, collapse = "x"), "stem_fil.csv"), colClasses = c(census_col_class, stem_col_class))
-quad_poly <- st_read(file.path(out_dir, "03_quad", paste(quad_dim, collapse = "x"), "quad_poly.gpkg"))
-quad_agb <- read.csv(file.path(out_dir, "09_agb_mc", paste(quad_dim, collapse = "x"), "quad_agb.csv"))
+stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", param$product_version, "stem_fil.csv"), 
+  colClasses = c(census_col_class, stem_col_class))
+quad_poly <- st_read(file.path(param$out_dir, "03_quad", param$product_version, "quad_poly.gpkg"))
+quad_agb <- read.csv(file.path(param$out_dir, "09_agb_mc", param$product_version, "quad_agb.csv"))
 runFn("./10_quad_summ.R")
 
-# Create L2, L3 datasets 
-outdir <- file.path(out_dir, "11_brm", paste(quad_dim, collapse = "x"))
-dir.create(outdir, showWarnings = FALSE)
-stem_fil <- read.csv(file.path(out_dir, "08_stem_fil", paste(quad_dim, collapse = "x"), "stem_fil.csv"), colClasses = stem_col_class)
-quad_summ <- st_read(file.path(out_dir, "10_quad_summ", paste(quad_dim, collapse = "x"), "quad_summ.gpkg"))
+# Create L1, L2, L3 datasets 
+L_list <- c("L1", "L2", "L3")
+L_dir_list <- lapply(L_list, function(x) { 
+  file.path(param$out_dir, x, param$product_version)
+})
+names(L_dir_list) <- L_list
+lapply(L_dir_list, dir.create, recursive = TRUE, showWarnings = FALSE)
+stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", param$product_version, "stem_fil.csv"), 
+  colClasses = stem_col_class)
+stem_agb_mc <- read.csv(file.path(param$out_dir, "09_agb_mc", param$product_version, "stem_agb_mc.csv"))
+stem_summ <- st_read(file.path(param$out_dir, "07_stem_summ", param$product_version, "stem_summ.gpkg"))
+quad_summ <- st_read(file.path(param$out_dir, "10_quad_summ", param$product_version, "quad_summ.gpkg"))
 runFn("./11_brm.R")
 
-# Optionally transfer outputs
-
-# Optionally delete local files

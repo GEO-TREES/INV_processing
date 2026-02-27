@@ -2,23 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2025-07-09
 
-# Packages
-library(dplyr)
-library(sf)
-library(BIOMASS)
-
-source("./func.R")
-
-# Define directories
-# outdir <- "./dat/sites/PanamaCanal/03_quad"
-
-# Import data 
-# stem <- read.csv("./dat/sites/PanamaCanal/01_fmt/stem.csv")
-# plot_pt <- read_sf("./dat/sites/PanamaCanal/01_fmt/plot_pt.gpkg")
-
-# Define quadrat dimensions
-# quad_dim <- c(50, 50)
-
 # Clean polygon data
 pt_clean <- plot_pt %>% 
   cbind(., st_coordinates(.)) %>% 
@@ -42,7 +25,7 @@ plot_divide <- divide_plot(
   rel_coord = c("x_rel", "y_rel"),
   proj_coord = c("x_proj", "y_proj"),
   longlat = NULL,
-  grid_size = quad_dim,
+  grid_size = param$quad_dim,
   grid_tol = 1,
   origin = NULL,
   tree_data = plot_check$tree_data,

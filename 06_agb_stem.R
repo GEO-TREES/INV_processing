@@ -2,21 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)  
 # Last updated: 2026-02-16
 
-# Define directories
-# outdir <- "./dat/sites/PanamaCanal/06_agb_stem"
-
-# Packages
-library(dplyr)
-library(BIOMASS)
-
-# Source functions
-source("./func.R")
-
-# Import data
-# stem <- read.csv("./dat/sites/PanamaCanal/01_fmt/stem.csv")
-# stem_wd <- read.csv("./dat/sites/PanamaCanal/04_wd/stem_wd.csv")
-# stem_height <- read.csv("./dat/sites/PanamaCanal/05_height/stem_height.csv")
-
 # Estimate stem-level AGB
 stem_agb <- stem %>% 
   left_join(., stem_wd, by = "record_id") %>% 

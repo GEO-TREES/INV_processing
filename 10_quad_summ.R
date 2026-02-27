@@ -2,21 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2025-07-09
 
-# Packages
-library(dplyr)
-library(tidyr)
-library(sf)
-library(BIOMASS)
-library(units)
-
-# Define directories
-# outdir <- "./dat/sites/PanamaCanal/10_quad_summ"
-
-# Import data
-# stem_fil <- read.csv("./dat/sites/PanamaCanal/08_stem_fil/stem_fil.csv")
-# quad_poly <- st_read("./dat/sites/PanamaCanal/03_quad/quad_poly.gpkg")
-# quad_agb <- read.csv("./dat/sites/PanamaCanal/09_agb_mc/quad_agb.csv")
-
 # Calculate area of each quadrat
 quad_poly_area <- st_drop_geometry(quad_poly)
 quad_poly_area$quadrat_area_ha <- drop_units(st_area(quad_poly)) * 0.0001

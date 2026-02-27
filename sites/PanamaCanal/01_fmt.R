@@ -104,7 +104,7 @@ sanlorenzo_poly <- read_sf(file.path(indir, "san_lorenzo/san_lorenzo.shp")) %>%
 # Combine all polys 
 polys <- bind_rows(gigante_poly, bci50ha_poly, ctfssmall_poly, 
   sanlorenzo_poly) %>%
-  mutate(site_id)
+  mutate(site_id = param$site_id)
 
 # Cast polygons to points
 pts <- st_cast(polys, "POINT") %>% 
@@ -274,7 +274,7 @@ joe_corner_all <- bind_rows(lapply(1:nrow(joe_corner_fil), function(i) {
     plot_id = Plot,
     corner_id = Corner) %>% 
   mutate(
-    site_id,
+    site_id = param$site_id,
     x_rel_m = case_when(
       plot_id == "10-ha" & corner_id == "SW" ~ 0,
       plot_id == "10-ha" & corner_id == "SE" ~ 1000,
@@ -449,7 +449,7 @@ s_all <- bind_rows(s_clean, s2_clean, s3_clean) %>%
     tree_id = as.character(tree_id),
     stem_id = as.character(stem_id),
     record_id = row_number(),
-    site_id,
+    site_id = param$site_id,
     height_m = NA_real_,
     taxon_name = gsub("NA NA", "Indet indet", taxon_name),
     diam_cm = ifelse(diam_cm == 0, NA_real_, diam_cm),

@@ -2,22 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)  
 # Last updated: 2025-06-18
 
-# Define directories
-# outdir <- "./dat/sites/PanamaCanal/09_agb_mc"
-
-# Packages
-library(dplyr)
-library(sf)
-library(BIOMASS)
-
-# Source functions
-source("./func.R")
-
-# Import data
-# stem_fil <- read.csv("./dat/sites/PanamaCanal/08_stem_fil/stem_fil.csv")
-# plot_pt <- st_read("./dat/sites/PanamaCanal/01_fmt/plot_pt.gpkg")
-# stem_pt <- st_read("./dat/sites/PanamaCanal/03_quad/stem_pt.gpkg")
-
 # Extract plot centres
 p_cent <- plot_pt %>% 
   group_by(site_id, plot_id) %>% 

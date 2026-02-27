@@ -2,25 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)  
 # Last updated: 2026-02-11
 
-# Packages
-library(BIOMASS)
-
-# Define site ID
-# site_id <- "PanamaCanal"
-
-# Define directories
-# outdir <- "./dat/sites/PanamaCanal/03_taxa"
-
-# Source functions
-source("./func.R")
-
-# Import stem data
-# stem <- read.csv("./dat/sites/PanamaCanal/01_fmt/stem.csv")
-
-# Load previous cache
-wfo_path <- file.path(outdir, "wfo_cache.rds")
-if (file.exists(wfo_path)) { loadWFOCache(wfo_path) }
-
 # Check names
 taxa <- correctTaxo(
   genus = stem$taxon_name, 

@@ -2,18 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2026-02-16
 
-# Packages
-library(dplyr)
-library(sf)
-
-source("./func.R")
-
-# Define directories
-# outdir <- "./dat/sites/PanamaCanal/08_stem_fil"
- 
-# Import data
-# stem_summ <- st_read(file.path(site_data, "07_stem_summ/stem_summ.gpkg"))
-
 # Filter stem data
 stem_fil <- stem_summ %>% 
   st_transform(., 4326) %>% 

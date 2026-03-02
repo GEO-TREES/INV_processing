@@ -14,8 +14,14 @@ library(rocrateR)
 # Source functions
 source("./func.R")
 
-# Load yaml file with parameters
+# Load YAML file with parameters
 param <- read_yaml("./param.yaml")
+
+# Load YAML file with software version
+version <- read_yaml("./version.yaml")
+
+# Merge parameters lists
+param <- c(param, version)
 
 # Define parameter names
 param_name_vec <- c(
@@ -70,6 +76,9 @@ out_dir_vec <- c(
   "L3"
 )
 
+# Create sanitised product version string for filenames
+product_version_sanit <- gsub("\\.", "-", param$product_version)
+
 # Optionally wipe existing outputs
 # Prompt the user
 user_input <- readline(prompt = "Do you want to delete previous outputs? (y/n): ")
@@ -84,7 +93,7 @@ if (tolower(trimws(user_input)) %in% c("y", "yes")) {
   file.remove(file.path(param$out_dir, files_rem))
   
   # Delete output sub-directories
-  site_subdir <- file.path(param$out_dir, out_dir_vec, param$product_version)
+  site_subdir <- file.path(param$out_dir, out_dir_vec, product_version_sanit)
   dirs_all <- list.dirs(site_subdir, recursive = TRUE)
   dirs_sub <- dirs_all[!dirs_all %in% c(site_subdir, param$out_dir)]
   unlink(dirs_sub, recursive = TRUE, expand = FALSE)
@@ -141,104 +150,104 @@ for (i in BIOMASS_files) BIOMASS::cacheManager(i)
 
 # Format raw data
 indir <- param$raw_dir
-outdir <- file.path(param$out_dir, "01_fmt", param$product_version)
+outdir <- file.path(param$out_dir, "01_fmt", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
 runFn(file.path("./sites", param$site_id, "01_fmt.R"))
 
 # Correct taxonomy
-outdir <- file.path(param$out_dir, "02_taxa", param$product_version)
+outdir <- file.path(param$out_dir, "02_taxa", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+stem <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "stem.csv"), 
   colClasses = stem_col_class)
 wfo_path <- file.path(outdir, "wfo_cache.rds")
 if (file.exists(wfo_path)) { loadWFOCache(wfo_path) }
 runFn("./02_taxa.R")
 
 # Split plots into quadrats 
-outdir <- file.path(param$out_dir, "03_quad", param$product_version)
+outdir <- file.path(param$out_dir, "03_quad", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+stem <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "stem.csv"), 
   colClasses = stem_col_class)
-plot_pt <- st_read(file.path(param$out_dir, "01_fmt", param$product_version, "plot_pt.gpkg"))
+plot_pt <- st_read(file.path(param$out_dir, "01_fmt", product_version_sanit, "plot_pt.gpkg"))
 runFn("./03_quad.R")
 
 # Estimate wood density
-outdir <- file.path(param$out_dir, "04_wd", param$product_version)
+outdir <- file.path(param$out_dir, "04_wd", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+stem <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "stem.csv"), 
   colClasses = stem_col_class)
-stem_taxa <- read.csv(file.path(param$out_dir, "02_taxa", param$product_version, "stem_taxa.csv"))
+stem_taxa <- read.csv(file.path(param$out_dir, "02_taxa", product_version_sanit, "stem_taxa.csv"))
 wd <- read.csv("./dat/01_wd/wd.csv")
 runFn("./04_wd.R")
 
 # Estimate stem height
-outdir <- file.path(param$out_dir, "05_height", param$product_version)
+outdir <- file.path(param$out_dir, "05_height", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+stem <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "stem.csv"), 
   colClasses = stem_col_class)
-plot_pt <- st_read(file.path(param$out_dir, "01_fmt", param$product_version, "plot_pt.gpkg"))
+plot_pt <- st_read(file.path(param$out_dir, "01_fmt", product_version_sanit, "plot_pt.gpkg"))
 runFn("./05_height.R")
 
 # Estimate AGB for every measurement
-outdir <- file.path(param$out_dir, "06_agb_stem", param$product_version)
+outdir <- file.path(param$out_dir, "06_agb_stem", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+stem <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "stem.csv"), 
   colClasses = stem_col_class)
-stem_wd <- read.csv(file.path(param$out_dir, "04_wd", param$product_version, "stem_wd.csv"))
-stem_height <- read.csv(file.path(param$out_dir, "05_height", param$product_version, "stem_height.csv"))
+stem_wd <- read.csv(file.path(param$out_dir, "04_wd", product_version_sanit, "stem_wd.csv"))
+stem_height <- read.csv(file.path(param$out_dir, "05_height", product_version_sanit, "stem_height.csv"))
 runFn("./06_agb_stem.R")
 
 # Create master stems table
-outdir <- file.path(param$out_dir, "07_stem_summ", param$product_version)
+outdir <- file.path(param$out_dir, "07_stem_summ", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
-stem <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "stem.csv"), 
+stem <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "stem.csv"), 
   colClasses = stem_col_class)
-stem_agb <- read.csv(file.path(param$out_dir, "06_agb_stem", param$product_version, "stem_agb.csv"))
-stem_height <- read.csv(file.path(param$out_dir, "05_height", param$product_version, "stem_height.csv"))
-stem_wd <- read.csv(file.path(param$out_dir, "04_wd", param$product_version, "stem_wd.csv"))
-stem_taxa <- read.csv(file.path(param$out_dir, "02_taxa", param$product_version, "stem_taxa.csv"))
-stem_pt <- st_read(file.path(param$out_dir, "03_quad", param$product_version, "stem_pt.gpkg"))
-census <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "census.csv"), 
+stem_agb <- read.csv(file.path(param$out_dir, "06_agb_stem", product_version_sanit, "stem_agb.csv"))
+stem_height <- read.csv(file.path(param$out_dir, "05_height", product_version_sanit, "stem_height.csv"))
+stem_wd <- read.csv(file.path(param$out_dir, "04_wd", product_version_sanit, "stem_wd.csv"))
+stem_taxa <- read.csv(file.path(param$out_dir, "02_taxa", product_version_sanit, "stem_taxa.csv"))
+stem_pt <- st_read(file.path(param$out_dir, "03_quad", product_version_sanit, "stem_pt.gpkg"))
+census <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "census.csv"), 
   colClasses = census_col_class)
-plot <- read.csv(file.path(param$out_dir, "01_fmt", param$product_version, "plot.csv"), 
+plot <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "plot.csv"), 
   colClasses = plot_col_class)
 runFn("./07_stem_summ.R")
 
 # Filter stem data for quadrat summaries
-outdir <- file.path(param$out_dir, "08_stem_fil", param$product_version)
+outdir <- file.path(param$out_dir, "08_stem_fil", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
-stem_summ <- st_read(file.path(param$out_dir, "07_stem_summ", param$product_version, "stem_summ.gpkg"))
+stem_summ <- st_read(file.path(param$out_dir, "07_stem_summ", product_version_sanit, "stem_summ.gpkg"))
 runFn("./08_stem_fil.R")
 
 # Run AGB Monte-Carlo error propagation
-outdir <- file.path(param$out_dir, "09_agb_mc", param$product_version)
+outdir <- file.path(param$out_dir, "09_agb_mc", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
-stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", param$product_version, "stem_fil.csv"), 
+stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", product_version_sanit, "stem_fil.csv"), 
   colClasses = stem_col_class)
-plot_pt <- st_read(file.path(param$out_dir, "01_fmt", param$product_version, "plot_pt.gpkg"))
-stem_pt <- st_read(file.path(param$out_dir, "03_quad", param$product_version, "stem_pt.gpkg"))
+plot_pt <- st_read(file.path(param$out_dir, "01_fmt", product_version_sanit, "plot_pt.gpkg"))
+stem_pt <- st_read(file.path(param$out_dir, "03_quad", product_version_sanit, "stem_pt.gpkg"))
 runFn("./09_agb_mc.R")
 
 # Create master quadrat summary object
-outdir <- file.path(param$out_dir, "10_quad_summ", param$product_version)
+outdir <- file.path(param$out_dir, "10_quad_summ", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
-stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", param$product_version, "stem_fil.csv"), 
+stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", product_version_sanit, "stem_fil.csv"), 
   colClasses = c(census_col_class, stem_col_class))
-quad_poly <- st_read(file.path(param$out_dir, "03_quad", param$product_version, "quad_poly.gpkg"))
-quad_agb <- read.csv(file.path(param$out_dir, "09_agb_mc", param$product_version, "quad_agb.csv"))
+quad_poly <- st_read(file.path(param$out_dir, "03_quad", product_version_sanit, "quad_poly.gpkg"))
+quad_agb <- read.csv(file.path(param$out_dir, "09_agb_mc", product_version_sanit, "quad_agb.csv"))
 runFn("./10_quad_summ.R")
 
 # Create L1, L2, L3 datasets 
 L_list <- c("L1", "L2", "L3")
 L_dir_list <- lapply(L_list, function(x) { 
-  file.path(param$out_dir, x, param$product_version)
+  file.path(param$out_dir, x, product_version_sanit)
 })
 names(L_dir_list) <- L_list
 lapply(L_dir_list, dir.create, recursive = TRUE, showWarnings = FALSE)
-stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", param$product_version, "stem_fil.csv"), 
+stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", product_version_sanit, "stem_fil.csv"), 
   colClasses = stem_col_class)
-stem_agb_mc <- read.csv(file.path(param$out_dir, "09_agb_mc", param$product_version, "stem_agb_mc.csv"))
-stem_summ <- st_read(file.path(param$out_dir, "07_stem_summ", param$product_version, "stem_summ.gpkg"))
-quad_summ <- st_read(file.path(param$out_dir, "10_quad_summ", param$product_version, "quad_summ.gpkg"))
+stem_agb_mc <- read.csv(file.path(param$out_dir, "09_agb_mc", product_version_sanit, "stem_agb_mc.csv"))
+stem_summ <- st_read(file.path(param$out_dir, "07_stem_summ", product_version_sanit, "stem_summ.gpkg"))
+quad_summ <- st_read(file.path(param$out_dir, "10_quad_summ", product_version_sanit, "quad_summ.gpkg"))
 runFn("./11_brm.R")
 

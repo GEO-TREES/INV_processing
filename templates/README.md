@@ -9,3 +9,4 @@
 
 `./plot_meta.xlsx` contains a template for data owners to record plot-level meta-data for a site.
 
+`./param.yaml` contains a template parameters file, read by `../zz_site.R` to process a single GEO-TREES site.

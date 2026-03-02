@@ -1,0 +1,23 @@
+name: Release GEO-TREES PDA_processing code
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers when you push a tag from local (e.g., git tag v0-1)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          # This includes the source code automatically
+          generate_release_notes: true
+          # Attach version.yaml as standalone asset for quick reference
+          files: version.yaml 
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

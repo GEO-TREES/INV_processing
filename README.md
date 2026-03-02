@@ -61,4 +61,6 @@ To track data inputs and versions of the processing code, each `L`-level data ou
 
 A `param.yaml` file is used to track user-defined parameters such as the site name, quadrat dimensions, input and output directories. A copy of this file is placed alongside each `L`-level data output. A template of `param.yaml` is located in `./templates/param.yaml`.
 
+`./version.yaml` is used to track code versions. 
+
 

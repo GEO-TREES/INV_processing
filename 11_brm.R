@@ -73,7 +73,7 @@ L1_filename <- paste(
     "PDA", 
     param$acquisition_id, 
     "L1", 
-    param$product_version, 
+    product_version_sanit, 
   sep = "_")
 
 L2_filename <- paste(
@@ -81,7 +81,7 @@ L2_filename <- paste(
     "PDA", 
     param$acquisition_id, 
     "L2", 
-    param$product_version, 
+    product_version_sanit, 
   sep = "_")
 
 L3_filename <- paste(
@@ -89,7 +89,7 @@ L3_filename <- paste(
     "PDA", 
     param$acquisition_id, 
     "L3", 
-    param$product_version, 
+    product_version_sanit, 
   sep = "_")
 
 # Write L1 dataset to file

@@ -1,4 +1,4 @@
-#' Helper function to run scripts from their own directory 
+#' Run scripts from their own directory 
 #'
 #' @param x filepath to R script 
 #'
@@ -89,13 +89,13 @@ stemValCheck <- function(x) {
     stop("NAs in `plot_id` are not allowed")
   }
 
-  # Census number must be positive
-  if (any(x$census_id <= 0, na.rm = TRUE)) { 
+  # Census ID must be positive integer
+  if (any(x$census_id <= 0 | x$census_id != floor(x$census_id), na.rm = TRUE)) { 
     stop("`census_id` must be a positive integer")
   }
 
-  # Measurement number must be positive
-  if (any(x$measurement_id <= 0, na.rm = TRUE)) { 
+  # Measurement ID must be positive integer
+  if (any(x$measurement_id <= 0 | x$measurement_id != floor(x$measurement_id), na.rm = TRUE)) { 
     stop("`measurement_id` must be a positive integer")
   }
 
@@ -113,23 +113,53 @@ stemValCheck <- function(x) {
   if (any(x$height_m <= 0, na.rm = TRUE)) { 
     stop("`height_m` must be positive")
   }
-}
 
-#' Check polygon sf object values
-#' 
-#' Runs various checks on the values in polygons sf object columns 
-#'
-#' @param x sf dataframe containing plot polygons
-#'
-polyValCheck <- function(x) {
-  # Only one site ID per site
-  if (length(unique(x$site_id)) > 1) { 
-    stop("`site_id` must be the same for all plots within a site")
+  # Codes must only contain some values
+  code_allowed <- c("A", "D", "S", "F", "M", "B", "T") # Letters and spaces
+  if (any(grepl(paste0("[^", paste(code_allowed, collapse = ""), "]"), x$code))) {
+    stop("`code` must only contain: ", paste(code_allowed, collapse = ", "))
   }
 
-  # All plots must have a name
-  if (any(is.na(x$plot_id))) { 
-    stop("NAs in `plot_id` are not allowed")
+  # Some combinations of code are incompatible
+  if (any(grepl("A", x$code) & grepl("D", x$code))){
+    stop("`code` contain only either: 'A' or 'D', not both")
+  }
+
+  if (any(grepl("S", x$code) & grepl("F", x$code))){
+    stop("`code` contain only either: 'S' or 'F', not both")
+  }
+
+  if (any(grepl("B", x$code) & grepl("T", x$code))){
+    stop("`code` contain only either: 'B' or 'T', not both")
+  }
+
+  # If code is "M" (missing), diameter must be empty
+  if (any(grepl("M", x$code) & (!is.na(x$diam_cm) | !is.na(x$height_m) | !is.na(x$pom_m)))) {
+    stop("If `code` is 'M' (missing), diameter, height, and POM must be empty")
+  }
+
+}
+
+#' Check taxon table values
+#'
+#' Runs various checks on the values in taxon table columns 
+#'
+#' @param x dataframe containing taxonomic data 
+#' 
+taxonValCheck <- function(x) { 
+  # Wood density must be positive
+  if (any(x$wood_density_gcm3 <= 0, na.rm = TRUE)) { 
+    stop("`wood_density_gcm3` must be positive")
+  }
+
+  # Wood density SD must be positive
+  if (any(x$wood_density_sd_gcm3 <= 0, na.rm = TRUE)) { 
+    stop("`wood_density_sd_gcm3` must be positive")
+  }
+
+  # Wood density N must be positive integer
+  if (any(x$wood_density_n <= 0 | x$wood_density_n != floor(x$wood_density_n), na.rm = TRUE)) { 
+    stop("`wood_density_n` must be a positive integer")
   }
 }
 
@@ -140,9 +170,19 @@ polyValCheck <- function(x) {
 #' @param x dataframe containing census metadata 
 #' 
 censusValCheck <- function(x) {
+  # Only one site ID per site
+  if (length(unique(x$site_id)) > 1) { 
+    stop("`site_id` must be the same for all plots within a site")
+  }
+
   # All censuses must have a census_id
   if (any(is.na(x$census_id))) { 
     stop("NAs in `census_id` are not allowed")
+  }
+
+  # Census ID must be a positive integer
+  if (any(x$census_id <= 0 | x$census_id != floor(x$census_id), na.rm = TRUE)) { 
+    stop("`census_id` must be a positive integer")
   }
 
   # All censuses must have a census date
@@ -154,6 +194,88 @@ censusValCheck <- function(x) {
   if (any(!grepl("^\\d{4}(-\\d{2}){0,2}$", x$census_date))) {
     stop("`census_date` must be formatted either YYYY, YYYY-MM, or YYYY-MM-DD")
   }
+
+  # Census IDs must be unique within plots
+  if (!all(table(x$census_id, x$plot_id) %in% c(0, 1))) {
+    stop("`census_id` and `plot_id` combinations must be unique")
+  }
+
+  # Census dates and census IDs must match
+  if (!all(table(x$census_date, x$plot_id) %in% c(0, 1))) {
+    stop("`census_date` and `plot_id` combinations must be unique")
+  }
+
+}
+
+#' Check plot meta-data table values
+#' 
+#' Runs various checks on the values in plot meta-data table columns 
+#'
+#' @param x dataframe containing plot meta-data 
+#'
+plotValCheck <- function(x) {
+  # Only one site ID per site
+  if (length(unique(x$site_id)) > 1) { 
+    stop("`site_id` must be the same for all plots within a site")
+  }
+
+  # Only one entry per plot
+  if (length(unique(x$site_id)) > 1) { 
+    stop("`plot_id` must be unique within the site")
+  }
+
+  # Census dates for GEO-TREES must not be empty
+  if (any(is.na(x$census_date_geotrees))) { 
+    stop("`census_date_geotrees` must be provided")
+  }
+
+  # Census dates for GEO-TREES must not be empty
+  if (any(is.na(x$census_date_all))) { 
+    stop("`census_date_all` must be provided")
+  }
+
+  # Plot length must be positive
+  if (!all(!is.na(x$plot_length_m) & x$plot_length_m > 0)) {
+    stop("`plot_length_m` must be positive")
+  }
+
+  # Plot width must be positive
+  if (!all(!is.na(x$plot_width_m) & x$plot_width_m > 0)) {
+    stop("`plot_width_m` must be positive")
+  }
+
+  # Plot planar must be provided
+  if (any(is.na(x$plot_planar))) { 
+    stop("`plot_planar` must be provided")
+  }
+
+  # Minimum diameter threshold must be positive
+  if (!all(!is.na(x$meas_diam_min_cm) & x$meas_diam_min_cm > 0)) {
+    stop("`meas_diam_min_cm` must be positive")
+  }
+
+  # Default POM must be positive
+  if (!all(!is.na(x$meas_pom_default_m) & x$meas_pom_default_m > 0)) {
+    stop("`meas_pom_default_m` must be positive")
+  }
+
+  # Methods logical columns must be provided
+  if (any(is.na(x$meas_tree_stem))) {
+    stop("`meas_tree_stem` must be provided")
+  }
+
+  if (any(is.na(x$meas_tree_group))) {
+    stop("`meas_tree_group` must be provided")
+  }
+
+  if (any(is.na(x$meas_dead))) {
+    stop("`meas_dead` must be provided")
+  }
+
+  if (any(is.na(x$meas_fallen))) {
+    stop("`meas_fallen` must be provided")
+  }
+
 }
 
 # # All censuses must have a positive minimum diameter threshold
@@ -232,23 +354,6 @@ loadWFOCache <- function(x) {
   unlockBinding("the", pkg_env) 
   assign("the", the_modified, envir = pkg_env)
   lockBinding("the", pkg_env) 
-}
-
-#' Get valid UTM zone from latitude and longitude in WGS84 decimal degrees
-#'
-#' @param x vector of longitude coordinates in decimal degrees
-#' @param y vector of latitude coordinate in decimal degrees
-#'
-#' @return Vector of UTM zones for each latitude-longitude pair
-#' 
-#' @export
-#' 
-latLong2UTM <- function(x, y) {
-  unlist(lapply(1:length(x), function(z) {
-    paste((floor((as.numeric(x[z]) + 180) / 6) %% 60) + 1,
-      ifelse(as.numeric(y[z]) < 0, "S", "N"),
-      sep = "")
-  }))
 }
 
 # Check if object is sf type

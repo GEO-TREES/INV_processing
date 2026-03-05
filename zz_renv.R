@@ -1,12 +1,14 @@
 # Initiate repository
 renv::init(bare = TRUE)
 
-# Find packages to install
-# See .renvignore for files searched
-renv::hydrate(
-  update = TRUE,
-  report = TRUE,
-  prompt = TRUE)
+# List packages and where called 
+renv::dependencies()
+
+# Install packages
+renv::install()
+
+# Install dev branch
+renv::install("umr-amap/BIOMASS@dev_john")
 
 # Snapshot package versions
 renv::snapshot()

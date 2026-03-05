@@ -1,5 +1,8 @@
 # Ignore all directories
 */
 
-# Un-ignore per-site scripts
-!sites/
+# Un-ignore (include) .R files located in root 
+!/*.R
+
+# Un-ignore (include) .R files located in sites directory 
+!/sites/

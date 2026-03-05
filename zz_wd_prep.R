@@ -4,6 +4,7 @@
 
 # Packages
 library(dplyr)
+library(BIOMASS)
 
 # Source functions
 source("./func.R")
@@ -122,255 +123,40 @@ wd_clean <- bind_rows(cirad_clean, zanne_clean) %>%
     .after = "species_epithet")
 
 # Check taxonomic names in wood density data
-taxon_check <- taxonCheck(wd_clean$species, 
-  WFO.file = "./dat/wfo_raw/classification.csv",
-  ret_unk = TRUE)
+taxon_check <- correctTaxo(
+  genus = wd_clean$species, 
+  species = NULL,
+  interactive = TRUE, 
+  preferAccepted = TRUE,
+  preferFuzzy = FALSE,
+  sub_pattern = subPattern(),
+  useCache = TRUE,
+  useAPI = TRUE,
+  capacity = 60,
+  fill_time_s = 1, 
+  timeout = 60
+)
 
-# Create lookup table
-missing_fill <- tribble(
-~"original", ~"corrected",
-"Aglaia nitidula", "Anthocarapa nitidula",
-"Ailanthus excelsa", "Ailanthus excelsa",
-"Aleurites moluccana", "Aleurites moluccanus",
-"Aleurites montana", "Vernicia montana",
-"Aleurites trisperma", "Reutealis trisperma",
-"Allanblackia stanereana", "Allanblackia staneriana",
-"Alphitonia neo-caledonica", "Alphitonia neocaledonica",
-"Amomyrtella guili", "Amomyrtella guilii",
-"Androstachys viticoides", "Androstachys johnsonii",
-"Annona fraxinifolium", "Astronium fraxinifolium",
-"Artocarpus fretessii", "Artocarpus fretessii",
-"Artocarpus integra", "Artocarpus integer",
-"Artocarpus lanceaefolia", "Artocarpus lanceifolius",
-"Aspidosperma cylindrocarpum", "Aspidosperma cylindrocarpon",
-"Aspidostemon louvelii", "Aspidosperma indet",
-"Beilschmiedia letouzei", "Beilschmiedia letouzeyi",
-"Bombacopsis flaviflora", "Pachira flaviflora",
-"Breonia decidua", "Breonia indet",
-"Bursera indica", "Bursera indet",
-"Caldcluvia myriantha", "Caldcluvia paniculata",
-"Calophyllum montanum", "Calophyllum indet",
-"Calophyllum neo-ebudicum", "Calophyllum neoebudicum",
-"Campnosperma brevipetiolata", "Campnosperma brevipetiolatum",
-"Camptostemon philippinense", "Camptostemon philippinensis",
-"Carya illinoiensis", "Carya illinoinensis",
-"Casearia grewiaefolia", "Casearia grewiifolia",
-"Castanopsis faberi", "Castanopsis faberi",
-"Castanopsis motleyana", "Castanopsis motleyana",
-"Castanopsis philippinensis", "Castanopsis philipensis",
-"Cerberiopsis candelabrum", "Cerberiopsis candelabra",
-"Chionanthus ligustrinus", "Chionanthus ligustrinus",
-"Chlorocardium rodiaei", "Chlorocardium rodiei",
-"Chrysophyllum madagascariensis", "Gambeya boiviniana",
-"Chrysophyllum rigescens", "Chrysophyllum indet",
-"Cinnamomum burmannii", "Cinnamomum burmanni",
-"Cinnamomum koordersi", "Cinnamomum trichophyllum",
-"Cleidion prealtum", "Conceveiba praealta",
-"Cleyera theaeoides", "Cleyera theoides",
-"Clusia gundlachii", "Clusia gundlachii",
-"Colubrina faralaotra", "Colubrina faraloatra",
-"Commiphora barorum", "Commiphora indet",
-"Cornutia grandiflora", "Cornutia pyramidata",
-"Couepia hostmanniana", "Couepia indet",
-"Couthovia neo-caledonica", "Neuburgia novocaledonica",
-"Cratoxylon sp.", "Cratoxylum indet",
-"Cynometra novo-guineensis", "Cynometra novoguineensis ",
-"Dacrydium novo-guineense", "Dacrydium novoguineense",
-"Derris hatschbachii", "Deguelia hatschbachii",
-"Diospyros lancifolia", "Diospyros lanceifolia",
-"Diospyros minahasae", "Diospyros minahassae",
-"Drimys granatensis", "Drimys granadensis",
-"Drypetes americana", "Drypetes indet",
-"Dysoxylum loureiri", "Dysoxylum indet",
-"Elaeocarpus comptoni", "Elaeocarpus comptonii",
-"Engelhardtia nudiflora", "Engelhardia serrata",
-"Engelhardtia rigida", "Engelhardia rigida",
-"Engelhardtia roxburghiana", "Engelhardia roxburghiana",
-"Engelhardtia serrata", "Engelhardia serrata",
-"Engelhardtia spicata", "Engelhardia spicata",
-"Engelhardtia wallichiana", "Engelhardia roxburghiana",
-"Enterolobium oldemannii", "Robrichia oldemanii",
-"Eribroma oblongum", "Sterculia oblonga",
-"Eucalyptus blaxlandii", "Eucalyptus blaxlandii",
-"Eucalyptus nowraensis", "Eucalyptus×nowraensis",
-"Eucalyptus tetragona", "Eucalyptus×tetragona",
-"Euodia glabra", "Melicope glabra",
-"Euodia miliaefolia", "Melicope indet",
-"Flindersia bennettiana", "Flindersia bennettii",
-"Flindersia ifflaiana", "Flindersia ifflana",
-"Galipea alba", "Galipea indet",
-"Gambeya comoriense", "Gambeya indet",
-"Gilbertiodendron mayumbense", "Gilbertiodendron mayombense",
-"Gluta turtur", "Gluta tourtour",
-"Gmelina leichardtii", "Gmelina leichhardtii",
-"Henriettea minutiflora", "Henriettea indet",
-"Hernandia voyronii", "Hernandia voyronii",
-"Hydnocarpus wightiana", "Hydnocarpus pentandrus",
-"Hymenostegia pellegrini", "Hymenostegia pellegrinii",
-"Ilex valerioi", "Ilex indet",
-"Inhambanella henriquesii", "Inhambanella henriquesii",
-"Juglans ailanthifolia", "Juglans mandshurica",
-"Lecythis latifolium", "Lecythis lurida",
-"Lecythis zabucaja", "Lecythis zabucajo",
-"Licania campestre", "Licania indet",
-"Licania licaniaeflora", "Licania indet",
-"Litchi longan", "Litchi chinensis",
-"Lithocarpus pseudo-molucca", "Lithocarpus pseudomoluccus",
-"Litsea teysmanni", "Litsea machilifolia",
-"Magnolia dubia", "Magnolia indet",
-"Mallotus philippinensis", "Mallotus philippensis",
-"Mangifera gedebi", "Mangifera gedebe",
-"Manilkara venulosa", "Manilkara indet",
-"Melaleuca leucadendron", "Melaleuca leucadendra",
-"Mezilaurus itauba", "Mezilaurus ita-uba",
-"Microcos cinnamonifolia", "Microcos cinnamomifolia",
-"Micropholis guianensis", "Micropholis guyanensis",
-"Monopetalanthus pellegrini", "Bikinia pellegrinii",
-"Monopteryx uaucu", "Monopteryx uaucu",
-"Myristica guatteriaefolia", "Myristica guatteriifolia",
-"Nothofagus brassi", "Nothofagus brassii",
-"Ochrothallus gordoniaefolius", "Pycnandra gordoniifolia",
-"Ochrothallus sarlini", "Pycnandra sarlinii",
-"Odyendyea gabonensis", "Odyendea gabunensis",
-"Odyendyea sp.", "Odyendea indet",
-"Osteophloem platyspermum", "Osteophloeum platyspermum",
-"Parartocarpus bracteata", "Parartocarpus bracteatus",
-"Parartocarpus venenosa", "Parartocarpus venenosus",
-"Parinari rodolphii", "Parinari rodolphi",
-"Paropsia varecifomis", "Paropsia vareciformis",
-"Pausinystalia brachythyrsa", "Corynanthe macroceras",
-"Peltophorum dasyrrhachis", "Peltophorum dasyrhachis",
-"Phyllanthus discoides", "Margaritaria discoidea",
-"Phyllanthus officinalis", "Phyllanthus emblica",
-"Phyllocladus hypophylla", "Phyllocladus hypophyllus",
-"Pittosporum monticolum", "Pittosporum moluccanum",
-"Podocarpus imbricata", "Dacrycarpus imbricatus",
-"Podocarpus milanjiana", "Podocarpus milanjianus",
-"Podocarpus salicifolia", "Podocarpus salicifolius",
-"Populus X", "Populus indet",
-"Potameia antavaratra", "Potameia antevaratra",
-"Pouteria fissilis", "Pouteria sessilis",
-"Pouteria galactoxylon", "Palaquium galactoxylum",
-"Pouteria pachycarpa", "Pouteria indet",
-"Protium llewelynii", "Protium grandifolium",
-"Psidium ilex", "Psidium indet",
-"Psydrax latifolia", "Psydrax latifolius",
-"Psydrax parviflora", "Psydrax parviflorus",
-"Pyriluma sphaerocarpum", "Planchonella sphaerocarpa",
-"Quercus margaretta", "Quercus margaretta",
-"Quercus myrsinifolia", "Quercus myrsinifolia",
-"Raukaua crassifolius", "Pseudopanax crassifolius",
-"Raukaua linearis", "Pseudopanax linearis",
-"Ravenia urbanii", "Ravenia urbani",
-"Rhizophora harrisonii", "Rhizophora×harrisonii",
-"Sambucus caerulea", "Sambucus cerulea",
-"Schefflera andreana", "Schefflera indet",
-"Scyphiphora hydrophyllacea", "Scyphiphora hydrophylacea",
-"Senna timorensis", "Senna timoriensis",
-"Shorea lepida", "Rubroshorea lepidota",
-"Shorea-antho assamica", "Anthoshorea assamica",
-"Shorea-antho hypochra", "Anthoshorea hypochra",
-"Shorea-antho polita", "Anthoshorea polita",
-"Shorea-pentacme contorta", "Pentacme contorta",
-"Shorea-pentacme sp.", "Pentacme indet",
-"Shorea-richetia hopeifolia", "Richetia hopeifolia",
-"Shorea-richetia sp.", "Richetia indet",
-"Shorea-rubro almon", "Rubroshorea almon",
-"Shorea-rubro leprosula", "Rubroshorea leprosula",
-"Shorea-rubro negrosensis", "Rubroshorea negrosensis",
-"Shorea-rubro palosapis", "Rubroshorea palosapis",
-"Shorea-rubro pauciflora", "Rubroshorea pauciflora",
-"Shorea-rubro polysperma", "Rubroshorea polysperma",
-"Shorea-rubro sp.", "Rubroshorea indet",
-"Shorea-shorea guiso", "Shorea guiso",
-"Shorea-shorea sp.", "Shorea indet",
-"Sideroxylon longepetiolatum", "Planchonella longipetiolata",
-"Sloanea berteriana", "Sloanea berteroana",
-"Sloanea massoni", "Sloanea macrophylla",
-"Sterculia tantrae", "Sterculia tantraensis",
-"Streblus brunonianus", "Paratrophis pendulina",
-"Strychnos nuxvomica", "Strychnos nux-vomica",
-"Stuartia kwangtungensis", "Stewartia villosa",
-"Swartzia remiger", "Swartzia remigera",
-"Tambourissa tricophylla", "Tambourissa trichophylla",
-"Taxus grandis", "Taxus baccata",
-"Terminalia benzoin", "Terminalia bentzoe",
-"Terminalia calamansanay", "Terminalia calamansanai",
-"Terminalia copelandi", "Terminalia procera",
-"Terminalia guianensis", "Terminalia guyanensis",
-"Terminaliopsis tetrandrus", "Terminalia tetrandra",
-"Thuya plicata", "Thuja plicata",
-"Thuya sp.", "Thuja indet",
-"Trattinickia burserifolia", "Trattinnickia burserifolia",
-"Trattinickia rhoifolia", "Trattinnickia rhoifolia",
-"Trattinickia sp.", "Trattinnickia indet",
-"Trichilia prieuriana", "Trichilia prieureana",
-"Trichilia rolfoi", "Trichilia indet",
-"Trichospermum ikutae", "Trichospermum ikutae",
-"Viburnum seemenii", "Viburnum seemenii",
-"Zanthoxylum brassii", "Zanthoxylum indet",
-"Zanthoxylum papuanum", "Zanthoxylum indet",
-"Zygogynum whiteana", "Zygogynum semecarpoides",
-"Licaria canella", "Licaria cannella",
-"Phyllarthron madagascariense", "Phyllarthron madagascariensis",
-"Rauvolfia caffra", "Rauvolfia afra",
-"Trema orientalis", "Trema orientale",
-"Cordia caffra", "Cordia afra",
-"Dovyalis caffra", "Dovyalis afra",
-"Eucalyptus kirtoniana", "Eucalyptus×kirtoniana",
-"Glochidion ferdinandii", "Glochidion philippicum",
-"Hydnocarpus alpina", "Hydnocarpus alpinus",
-"Larix eurolepis", "Larix×eurolepis",
-"Melanoxylon brauna", "Melanoxylum brauna",
-"Palaquium impressionervium", "Palaquium impressinervium",
-"Polyosma laetevirens", "Polyosma laete-virens",
-"Sclerocarya caffra", "Sclerocarya birrea subsp. afra",
-"Terminalia longispicata", "Terminalia longespicata",
-"Trema micrantha", "Trema micranthum",
-"Trema tomentosa", "Trema tomentosum",
-"Ulmus hollandica", "Ulmus×hollandica")
+# Check no rows added or lost
+stopifnot(nrow(wd_clean) == nrow(taxon_check))
 
-# Check all unmatched species included
-stopifnot(length(taxon_check[!taxon_check %in% missing_fill$original]) == 0)
+# Combine dataframes
+wd_out <- cbind(wd_clean, taxon_check)
 
-# Run taxon checking second time
-taxon_check <- taxonCheck(wd_clean$species, 
-  lookup = missing_fill,
-  WFO.file = "../dat/wfo_raw/classification.csv")
+# Check no names are duplicated
+stopifnot(all(!duplicated(names(wd_out))))
 
-# Check all names filled
-stopifnot(all(!is.na(taxon_check$taxon_name_acc)))
-
-# Add updated species names back to wood density data
-wd_out <- wd_clean %>% 
-  left_join(., taxon_check, by = c("species" = "taxon_name_orig")) %>% 
-  dplyr::select(
-    taxon_name_orig = species,
-    taxon_name_sanit, 
-    taxon_name_syn,
-    taxon_family_acc,
-    taxon_genus_acc,
-    taxon_epithet_acc,
-    taxon_species_acc,
-    taxon_variety_acc,
-    taxon_subspecies_acc,
-    taxon_wfo_syn,
-    taxon_wfo_acc,
-    taxon_wfo_parent,
-    taxon_auth_acc,
-    taxon_rank_acc,
-    taxon_wfo_date,
-    country,
-    wd,
-    wd_region,
-    wd_source)
+# Filter out missing names
+wd_fil <- wd_out[!is.na(wd_out$nameAccepted),]
 
 # Check validity of output
-stopifnot(all(!is.na(wd_out$taxon_name_acc)))
-stopifnot(all(!is.na(wd_out$wd)))
-stopifnot(all(!is.na(wd_out$wd_region[!is.na(wd_out$country)])))
-stopifnot(all(!is.na(wd_out$wd_region[wd_out$wd_source == "zanne"])))
+stopifnot(all(!is.na(wd_fil$nameAccepted)))
+stopifnot(all(!is.na(wd_fil$wd)))
+stopifnot(all(!is.na(wd_fil$wd_region[!is.na(wd_fil$country)])))
+stopifnot(all(!is.na(wd_fil$wd_region[wd_fil$wd_source == "zanne"])))
 
 # Write wood density data to file
-write.csv(wd_out, file.path(outdir, "wd.csv"), row.names = FALSE)
+write.csv(wd_fil, file.path(outdir, "wd.csv"), row.names = FALSE)
 
+# Write WFO cache to file
+saveRDS(BIOMASS:::the$wfo_cache, file.path(outdir, "wfo_cache.rds"))

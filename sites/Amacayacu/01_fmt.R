@@ -2,28 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2026-02-25
 
-# Packages
-library(dplyr)
-library(tidyr)
-library(sf)
-library(readxl)
-
-# Source functions
-# source("./func.R")
-
-# Define site ID
-# site_id <- "Amacayacu"
-
-# Define directories
-# indir <- "./dat/sites/Amacayacu/raw"
-# outdir <- "./dat/sites/Amacayacu/01_fmt"
- 
-# # Import column descriptions
-# plot_cols <- read.csv("./templates/plot_cols.csv")
-# pt_cols <- read.csv("./templates/pt_cols.csv")
-# census_cols <- read.csv("./templates/census_cols.csv")
-# stem_cols <- read.csv("./templates/stem_cols.csv")
-
 # Import data
 s <- readRDS(file.path(indir, "amacayacu_census4_20260225.rds"))
 q <- read.csv(file.path(indir, "quadrat.20260224.csv"))
@@ -38,7 +16,7 @@ pt <- poly %>%
   slice_tail(n = -1) %>% 
   mutate(corner_id = c("SW", "NW", "NE", "SE")) %>%
   mutate(
-    site_id,
+    site_id = param$site_id, 
     plot_id = "Amacayacu_1",
     x_rel_m = case_when(
       corner_id %in% c("SW", "NW") ~ 0,
@@ -62,18 +40,21 @@ s_clean <- s %>%
     y_rel_m = gy,
     subplot_id = quadrat, 
     pom_m = hom4,
-    measurement_date = date4) %>% 
+    measurement_date = date4,
+    notes = obs4) %>% 
   mutate(
-    site_id, 
+    site_id = param$site_id, 
     census_id = as.integer(4),
     plot_id = "Amacayacu_1",
     diam_cm = dbh4 / 10,
     height_m = NA_real_,
     measurement_date = as.character(measurement_date),
-    alive = ifelse(status4 %in% c("alive", "P"), TRUE, FALSE),
-    fallen = ifelse(grepl("L", codes4), TRUE, FALSE),
-    broken = ifelse(grepl("Q", codes4), TRUE, FALSE),
-    missing = ifelse(grepl("DD", codes4), TRUE, FALSE),
+    alive = ifelse(status4 %in% c("alive", "P"), "A", "D"),
+    fallen = ifelse(grepl("L", codes4), "F", "S"),
+    broken = ifelse(grepl("Q", codes4), "B", ""),
+    missing = ifelse(grepl("DD", codes4), "M", ""),
+    stump = "",
+    code = pasteVals(alive, broken, fallen, missing, stump),
     agb_allometry = NA_character_) %>% 
   group_by(plot_id, census_id, stem_id) %>% 
   mutate(measurement_id = row_number()) %>% 
@@ -91,7 +72,7 @@ census <- s_clean %>%
   
 # Create plot metadata table
 p_clean <- data.frame(
-  site_id,
+  site_id = param$site_id, 
   plot_id = "Amacayacu_1",
   census_date_geotrees = as.character(census$census_date[census$census_id == 4]),
   census_date_all = "2008-05-17;2014-12-08;2020-06-05;2024-02-27",
@@ -132,7 +113,7 @@ colCheck(census, census_cols)
 colCheck(s_clean, stem_cols)
 
 # Check values
-# plotValCheck(plots)
+plotValCheck(p_clean)
 ptValCheck(pt)
 censusValCheck(census)
 stemValCheck(s_clean)

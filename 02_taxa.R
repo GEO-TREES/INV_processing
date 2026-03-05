@@ -12,9 +12,9 @@ taxa <- correctTaxo(
   sub_pattern = subPattern(),
   useCache = TRUE,
   useAPI = TRUE,
-  capacity = 120,
-  fill_time_s = 30, 
-  timeout = 10)
+  capacity = 60,
+  fill_time_s = 1, 
+  timeout = 60)
 
 # Extract only the taxonomy data from the stems
 taxa_out <- cbind(record_id = stem$record_id, taxa)

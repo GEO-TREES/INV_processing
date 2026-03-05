@@ -13,6 +13,11 @@ stem_summ <- stem %>%
     by = c("site_id", "plot_id", "census_id")) %>% 
   left_join(., plot[,c("site_id", "plot_id", "meas_diam_min_cm")], 
     by = c("site_id", "plot_id")) %>% 
+  # {
+  #   if (exists("taxon")) {
+  #     left_join(., taxon, by = "taxon_name")
+  #   } else { . }
+  # } %>% 
   st_sf()
 
 # Write to file

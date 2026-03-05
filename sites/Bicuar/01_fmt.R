@@ -1,27 +1,6 @@
 # Clean Bicuar tree inventory data
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-02-18
-
-# Packages
-library(dplyr)
-library(tidyr)
-library(sf)
-
-# Source functions
-# source("./func.R")
-
-# Define site ID
-# site_id <- "Bicuar"
-
-# Define directories
-# indir <- "./dat/sites/Bicuar/raw"
-# outdir <- "./dat/sites/Bicuar/01_fmt"
-
-# Import column descriptions
-# plot_cols <- read.csv("./templates/plot_cols.csv")
-# pt_cols <- read.csv("./templates/pt_cols.csv")
-# census_cols <- read.csv("./templates/census_cols.csv")
-# stem_cols <- read.csv("./templates/stem_cols.csv")
+# Last updated: 2026-03-03
 
 # Import data
 s <- read.csv(file.path(indir, "stems.csv"))
@@ -31,7 +10,7 @@ plot_corners <- read_sf(file.path(indir, "plot_corners.shp"))
 # Process plot corners
 pt <- plot_corners %>% 
   mutate(
-    site_id,
+    site_id = param$site_id,
     corner_id = gsub(".*[0-9]+", "", name)) %>%
   dplyr::select(site_id, plot_id = plot_name, corner_id) %>% 
   mutate(
@@ -54,8 +33,7 @@ census <- p %>%
   group_by(plot_id) %>% 
   mutate(census_id = dense_rank(census_date)) %>% 
   ungroup() %>% 
-  mutate(
-    site_id) %>% 
+  mutate(site_id = param$site_id) %>% 
   filter(plot_id != "P1") %>% 
   dplyr::select(all_of(census_cols$column_name))
 
@@ -75,14 +53,17 @@ s_clean <- s %>%
     diam_cm = diam,
     pom_m = pom,
     height_m = height, 
-    taxon_name = species_name_clean) %>% 
+    taxon_name = species_name_clean,
+    notes = notes_stem) %>% 
   mutate(
     census_id = as.numeric(gsub("-.*", "", measurement_date)),
-    site_id = site_id,
-    alive = ifelse(stem_status %in% c("a", "r"), TRUE, FALSE),
-    broken = ifelse(grepl("b|p", stem_mode), TRUE, FALSE),
-    fallen = ifelse(grepl("f", stem_mode), TRUE, FALSE),
-    missing = ifelse(grepl("v|q", stem_mode), TRUE, FALSE),
+    site_id = param$site_id,
+    alive = ifelse(stem_status %in% c("a", "r"), "A", "D"),
+    broken = ifelse(grepl("b|p", stem_mode), "B", ""),
+    fallen = ifelse(grepl("f", stem_mode), "F", "S"),
+    missing = ifelse(grepl("v|q", stem_mode), "M", ""),
+    stump = ifelse(grepl("t", stem_mode), "T", ""),
+    code = pasteVals(alive, broken, fallen, missing, stump),
     agb_allometry = NA_character_,
     subplot_id = as.character(subplot_id)) %>% 
   group_by(plot_id) %>% 
@@ -141,7 +122,7 @@ colCheck(census, census_cols)
 colCheck(s_clean, stem_cols)
 
 # Check values
-# plotValCheck(plots)
+plotValCheck(plots)
 ptValCheck(pt)
 censusValCheck(census)
 stemValCheck(s_clean)

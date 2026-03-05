@@ -52,7 +52,7 @@ When you open this project for the first time, R will automatically detect the `
 The `./.renvignore` file specifies files and directories to be monitored for new packages. If you need to add a new package to the project:
 
 1. Ensure the package is called in one of the tracked files or directories.
-2. Install the package: `renv::install("package_name")` or `renv::install("user/repo")` for packages on GitHub.
+2. Install the package: `renv::install("package_name")` or `renv::install("user/repo@branch")` for packages on GitHub.
 3. Update the lockfile: `renv::snapshot()`
 
 ## Reproducibility

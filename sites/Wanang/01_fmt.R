@@ -2,26 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2026-02-18
 
-# Packages
-library(dplyr)
-library(sf)
-
-# Source functions
-# source("./func.R")
-
-# Define site ID
-# site_id <- "Wanang"
-
-# Define directories
-# indir <- "./dat/sites/Wanang/raw"
-# outdir <- "./dat/sites/Wanang/01_fmt"
-
-# Import column descriptions
-# plot_cols <- read.csv("./templates/plot_cols.csv")
-# pt_cols <- read.csv("./templates/pt_cols.csv")
-# census_cols <- read.csv("./templates/census_cols.csv")
-# stem_cols <- read.csv("./templates/stem_cols.csv")
-
 # Import data
 pt <- read.csv(file.path(indir, "plot_corners.csv"))
 s <- read.csv(file.path(indir, "s.csv"))
@@ -43,12 +23,15 @@ s_clean <- s %>%
     record_id = row_number(),
     tree_id = NA_character_,
     height_m = NA_real_,
-    site_id,
-    alive = ifelse(status %in% c("alive", "alivealive below"), TRUE, FALSE),
-    missing = ifelse(status %in% c("missing"), TRUE, FALSE),
-    broken = FALSE,
-    fallen = FALSE, 
+    site_id = param$site_id,
+    alive = ifelse(status %in% c("alive", "alivealive below"), "A", "D"),
+    missing = ifelse(status %in% c("missing") & is.na(diam_cm), "M", ""),
+    broken = "",
+    stump = "", 
+    fallen = "S", 
+    code = pasteVals(alive, fallen, broken, missing, stump),
     agb_allometry = NA_character_,
+    notes = NA_character_,
     measurement_date = ifelse(is.na(measurement_date), first(na.omit(measurement_date)), measurement_date),
     taxon_name = paste(Genus, SpeciesName)) %>% 
   group_by(plot_id, census_id, stem_id) %>% 
@@ -61,7 +44,7 @@ pt_clean <- pt %>%
   mutate(plot_id = as.character(plot_id)) %>%
   st_as_sf(., coords = c("X", "Y"), crs = 32755) %>% 
   st_transform(., 4326) %>% 
-  mutate(site_id) %>% 
+  mutate(site_id = param$site_id) %>% 
   mutate(
          x_rel_m = as.numeric(x_rel_m),
          y_rel_m = as.numeric(y_rel_m)) %>% 
@@ -118,7 +101,7 @@ colCheck(census, census_cols)
 colCheck(s_clean, stem_cols)
 
 # Check values
-# plotValCheck(plots)
+plotValCheck(plots)
 ptValCheck(pt_clean)
 censusValCheck(census)
 stemValCheck(s_clean)

@@ -2,27 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2025-09-30
 
-# Packages
-library(dplyr)
-library(tidyr)
-library(sf)
-
-# Source functions
-# source("./func.R")
-
-# Define site ID
-# site_id <- "DanumValley"
-
-# Define directories
-# indir <- "./dat/sites/DanumValley/raw"
-# outdir <- "./dat/sites/DanumValley/01_fmt"
-
-# Import column descriptions
-# stem_cols <- read.csv("./templates/stem_cols.csv")
-# census_cols <- read.csv("./templates/census_cols.csv")
-# plot_cols <- read.csv("./templates/plot_cols.csv")
-# pt_cols <- read.csv("./templates/pt_cols.csv")
-
 # Import data
 s <- read.table(file.path(indir, "ViewFullTable_danum.txt"),
   sep = "\t", header = TRUE, colClasses = "character")
@@ -31,7 +10,7 @@ plot_corners <- read.csv(file.path(indir, "corner_coords.csv"))
 # Process plot corners
 pt <- plot_corners %>% 
   mutate(
-    site_id,
+    site_id = param$site_id,
     plot_id = unique(s$PlotName),
     x_rel_m = case_when(
       name == "SE_0000" ~ 0,
@@ -63,7 +42,7 @@ s_sel <- s %>%
     alive = Status,
     flags = ListOfTSM) %>% 
   mutate(
-    site_id,
+    site_id = param$site_id,
     taxon_name = paste(Genus, SpeciesName),
     x_rel_m = as.numeric(x_rel_m),
     y_rel_m = as.numeric(y_rel_m),
@@ -76,15 +55,20 @@ s_sel <- s %>%
     measurement_date = as.character(measurement_date),
     measurement_date = ifelse(measurement_date == "NULL", NA_character_, measurement_date),
     flags = ifelse(flags == "NULL", NA_character_, flags),
-    broken = ifelse(grepl("X|Q", flags), TRUE, FALSE),
-    fallen = ifelse(grepl("Y", flags), TRUE, FALSE),
-    missing = ifelse(alive == "missing", TRUE, FALSE),
+    broken = ifelse(grepl("X|Q", flags), "B", ""),
+    fallen = ifelse(grepl("Y", flags), "F", "S"),
+    missing = ifelse(alive == "missing", "M", ""),
+    stump = ifelse(alive == "broken_below", "T", ""),
     alive = case_when(
-      alive == "alive" ~ TRUE,
-      alive == "dead" ~ FALSE,
-      alive == "missing" ~ FALSE,
-      alive == "broken below" ~ TRUE,
-      TRUE ~ NA)) %>% 
+      alive == "alive" ~ "A",
+      alive == "dead" ~ "A",
+      alive == "missing" ~ "D",
+      alive == "broken below" ~ "A",
+      TRUE ~ NA_character_),
+    code = pasteVals(alive, broken, fallen, missing, stump),
+    notes = NA_character_,
+    pom_m = ifelse(grepl("M", code), NA_real_, pom_m)
+    ) %>% 
   group_by(census_id) %>% 
   mutate(
     measurement_date = ifelse(is.na(measurement_date), 
@@ -119,7 +103,7 @@ census_date_all <- s %>%
   paste(., collapse = ";")
 
 plots <- data.frame(
-    site_id,
+    site_id = param$site_id,
     plot_id = unique(census$plot_id),
     census_date_geotrees = census$census_date,
     census_date_all,
@@ -160,7 +144,7 @@ colCheck(census, census_cols)
 colCheck(s_sel, stem_cols)
 
 # Check values
-# plotValCheck(plots)
+plotValCheck(plots)
 ptValCheck(pt)
 censusValCheck(census)
 stemValCheck(s_sel)

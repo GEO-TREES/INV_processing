@@ -35,10 +35,11 @@ s_height <- s_cent %>%
   filter(
     !is.na(diam_cm),
     !is.na(height_m),
-    alive == TRUE,
-    broken == FALSE,
-    fallen == FALSE,
-    missing == FALSE) %>% 
+    grepl("A", code),
+    grepl("S", code),
+    !grepl("B", code),
+    !grepl("T", code),
+    !grepl("M", code)) %>% 
   dplyr::select(record_id, diam_cm, height_m)
 
 # Write valid height measurements to file

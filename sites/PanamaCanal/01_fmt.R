@@ -2,27 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2025-06-18
 
-# Packages
-library(dplyr)
-library(tidyr)
-library(sf)
-
-# Source functions
-# source("./func.R")
-
-# Define site ID
-# site_id <- "PanamaCanal"
-
-# Define directories
-# indir <- "./dat/sites/PanamaCanal/raw"
-# outdir <- "./dat/sites/PanamaCanal/01_fmt"
-
-# Import column descriptions
-# plot_cols <- read.csv("./templates/plot_cols.csv")
-# pt_cols <- read.csv("./templates/pt_cols.csv")
-# stem_cols <- read.csv("./templates/stem_cols.csv")
-# census_cols <- read.csv("./templates/census_cols.csv")
-
 # Import stem data from Gigante
 # c/o Suzanne Lao, Helene Muller-Landau
 s <- read.delim(file.path(indir, "gigante/Gigante_2023census_WorkingFile20250301.txt"))
@@ -343,10 +322,12 @@ s_clean <- s %>%
   left_join(., n, by = c("sp23" = "sp6")) %>% 
   filter(!as.numeric(dbh23) %in% c(-9, 0)) %>%  # Remove missing records
   mutate(
-    broken = ifelse(grepl("X|Q", code23), TRUE, FALSE),  # 
-    fallen = ifelse(grepl("Y", code23), TRUE, FALSE),
-    missing = FALSE,
-    alive = TRUE,
+    broken = ifelse(grepl("X|Q", code23), "B", ""),  # 
+    fallen = ifelse(grepl("Y", code23), "F", "S"),
+    missing = "",
+    stump = "",
+    alive = "A",
+    code = pasteVals(alive, fallen, broken, missing, stump),
     measurement_date = format(as.Date(as.character(date23), format = "%Y%m%d"), "%Y-%m-%d"),
     diam_cm = dbh23 / 10,
     plot_id = "Gigante fertilization plot",
@@ -363,11 +344,12 @@ s2_clean <- s2 %>%
     PlotName %in% c("bci", "P12", "P14", "P06", "P15", "elcharco", "metrop", 
       "soberania", "FincaRoubik", "sherman")) %>% 
   mutate(
-    alive = ifelse(Status %in% c("alive", "broken below"), TRUE, FALSE),
-    broken = ifelse(Status == "broken below", TRUE, FALSE),
-    missing = ifelse(Status == "missing", TRUE, FALSE),
-    missing = FALSE,
-    fallen = ifelse(grepl("Y", ListOfTSM), TRUE, FALSE),
+    alive = ifelse(Status %in% c("alive", "broken below"), "A", "D"),
+    broken = ifelse(Status == "broken below", "B", ""),
+    missing = ifelse(Status == "missing", "M", ""),
+    fallen = ifelse(grepl("Y", ListOfTSM), "F", "S"),
+    stump = "",
+    code = pasteVals(alive, broken, missing, fallen, stump),
     plot_id = case_when(
       PlotName == "bci" ~ "BCI 50 ha plot",
       PlotName == "elcharco" ~ "ElCharco",
@@ -415,14 +397,16 @@ s3_clean <- s3 %>%
     measurement_date = format(as.Date(as.character(measurement_date), format = "%Y%m%d")),
     taxon_name = paste(genus, species),
     alive = case_when(
-      alive == "future recruit" ~ TRUE,
-      alive == "alive" ~ TRUE,
-      alive == "dead" ~ FALSE,
-      alive == "missing" ~ FALSE,
+      alive == "future recruit" ~ "A",
+      alive == "alive" ~ "A",
+      alive == "dead" ~ "D",
+      alive == "missing" ~ "",
       TRUE ~ NA),
-    broken = ifelse(grepl("R", code), TRUE , FALSE),
-    missing = ifelse(grepl("N", code), TRUE , FALSE),
-    fallen = FALSE,
+    broken = ifelse(grepl("R", code), "B" , ""),
+    missing = ifelse(grepl("N", code), "M" , ""),
+    fallen = "S",
+    stump = "",
+    code = pasteVals(alive, broken, missing, fallen, stump),
     ) %>% 
   group_by(plot_id, tree_id) %>% 
   mutate(stem_id = row_number()) %>% 
@@ -485,8 +469,8 @@ plots <- census %>%
       plot_id == "San Lorenzo A" ~ 140,
       plot_id == "San Lorenzo B" ~ 100,
       plot_id == "Soberania" ~ 100,
-      plot_id == "10-ha" ~ 100,
-      plot_id == "25-ha" ~ 500,
+      plot_id == "10ha" ~ 100,
+      plot_id == "25ha" ~ 500,
       plot_id == "AVA" ~ 150,
       plot_id == "Drayton" ~ 200,
       plot_id == "Pearson" ~ 200,
@@ -505,8 +489,8 @@ plots <- census %>%
       plot_id == "San Lorenzo A" ~ 140,
       plot_id == "San Lorenzo B" ~ 400,
       plot_id == "Soberania" ~ 100,
-      plot_id == "10-ha" ~ 1000,
-      plot_id == "25-ha" ~ 500,
+      plot_id == "10ha" ~ 1000,
+      plot_id == "25ha" ~ 500,
       plot_id == "AVA" ~ 250,
       plot_id == "Drayton" ~ 300,
       plot_id == "Pearson" ~ 300,
@@ -566,7 +550,7 @@ colCheck(s_all, stem_cols)
 colCheck(census, census_cols)
 
 # Check values
-# plotValCheck(plots)
+plotValCheck(plots)
 ptValCheck(pts_all)
 stemValCheck(s_all)
 censusValCheck(census)

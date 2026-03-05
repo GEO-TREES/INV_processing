@@ -1,21 +1,18 @@
-﻿column_name,class,description,units
-record_id,integer,"ID of the stem measurement record, unique within the site",NA
-site_id,character,GEO-TREES site name,NA
-plot_id,character,"Plot name, unique within the site",NA
-census_id,integer,Census number. E.g. '3' for the third census in that plot,NA
-subplot_id,character,"Subplot name, unique within the plot",NA
-tree_id,character,"Unique identifier for trees within a plot, normally the first `stem_id` within the tree",NA
-stem_id,character,Unique identifier for stems within a plot. Normally the tag ID if the plot has tags,NA
-measurement_id,integer,Measurement number. If a stem has multiple measurements within a single census,NA
-measurement_date,character,"The date of the measurement. This can be either YYYY, YYYY-MM, or YYYY-MM-DD",NA
-x_rel_m,numeric,X coordinate of the stem relative to the plot (m),m
-y_rel_m,numeric,Y coordinate of the stem relative to the plot (m),m
-diam_cm,numeric,Stem diameter measurement in cm to one decimal place (nearest mm),cm
-pom_m,numeric,"The height at which `diam_cm` was measured, in metres to one decimal place (nearest 10 cm)",m
-height_m,numeric,"The height of the tree, in metres to one decimal place (nearest 10 cm)",m
-taxon_name,character,"Taxonomic name of the stem, provided by the data originator",NA
-alive,logical,Is the stem alive?,NA
-broken,logical,Is the stem broken or snapped above the POM?,NA
-fallen,logical,Is the stem fallen to the ground and not supporting its own weight?,NA
-missing,logical,Is the stem missing from this census?,NA
-agb_allometry,character,"Recommended above-ground woody biomass allometry, referring to a function in R, e.g. `Chave2014`",NA
+﻿column_name,class,description,units,raw_data
+record_id,integer,"ID of the stem measurement record, unique within the site",NA,
+site_id,character,GEO-TREES site name.,NA,TRUE
+plot_id,character,"Plot name, unique within the site.",NA,TRUE
+census_id,integer,Census number. E.g. '3' for the third census in that plot.,NA,TRUE
+subplot_id,character,"If the plot is divided into multiple parcels, the parcel within which the stem is found. Unique within the plot.",NA,TRUE
+tree_id,character,"Unique identifier for individual trees within a plot, normally the stem_id of the first or largest stem within the tree.",NA,TRUE
+stem_id,character,Unique identifier for stems within a plot. Normally the tag ID.,NA,TRUE
+measurement_id,integer,Measurement ID. If a stem has multiple measurements within a single census.,NA,TRUE
+measurement_date,character,The date of the measurement. This should ideally be YYYY-MM-DD. YYYY-MM and YYYY are also accepted.,NA,TRUE
+taxon_name,character,The taxonomic name of the tree.,m,TRUE
+x_rel_m,numeric,The X coordinate of the stem within the plot. In metres to nearest 10 cm (one decimal place).,m,TRUE
+y_rel_m,numeric,The Y coordinate of the stem within the plot. In metres to nearest 10 cm (one decimal place).,cm,TRUE
+diam_cm,numeric,Stem diameter measurement in cm to nearest mm (one decimal place).,m,TRUE
+pom_m,numeric,The height at which 'diam' was measured. Point of Measurement (POM). In metres to nearest nearest 10 cm (one decimal place).,m,TRUE
+height_m,numeric,"The height of the tree, in metres to nearest 10 cm (one decimal place). Note: we are aware that the accuracy of tree height field measurements may be less than 10 cm.",NA,TRUE
+code,character,Indicate stem mortality and condition. See Table 2 for more information on these codes,NA,TRUE
+notes,character,Miscellaneous notes for each stem measurement,NA,TRUE

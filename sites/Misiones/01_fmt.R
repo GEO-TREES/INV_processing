@@ -2,27 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2025-07-09
 
-# Packages
-library(dplyr)
-library(readxl)
-library(sf)
-
-# Define site ID
-# site_id <- "Misiones"
-
-# Source functions
-# source("./func.R")
-
-# Define directories
-# indir <- "./dat/sites/Misiones/raw"
-# outdir <- "./dat/sites/Misiones/01_fmt"
-
-# Import column descriptions
-# plot_cols <- read.csv("./templates/plot_cols.csv")
-# pt_cols <- read.csv("./templates/pt_cols.csv")
-# census_cols <- read.csv("./templates/census_cols.csv")
-# stem_cols <- read.csv("./templates/stem_cols.csv")
-
 # Import stem data 
 s <- read_excel(file.path(indir, "Medicion2024 planilla compartida GEO-TREES.xlsx"), sheet = 2, guess_max = Inf)
 sp <- read_excel(file.path(indir, "species.xlsx"), sheet = 1, guess_max = Inf)
@@ -31,7 +10,7 @@ recs <- read_excel(file.path(indir, "Medicion2024 planilla compartida GEO-TREES.
 # Extract plot corners
 polys <- st_read(file.path(indir, "parcela_ubicacion_campo_2026-02-24.kml")) %>% 
   mutate(
-    site_id = site_id,
+    site_id = param$site_id,
     plot_id = as.character(Name)) %>% 
   st_transform(., 4326)
   
@@ -65,7 +44,7 @@ pt <- bind_rows(lapply(seq_len(nrow(polys)), function(i) {
   st_sf(d, geometry = g)
 })) %>% 
   mutate(
-    site_id,
+    site_id = param$site_id,
     x_rel_m = case_when(
       corner_id %in% c("SW", "NW") ~ 0,
       corner_id %in% c("SE", "NE") ~ 100,
@@ -88,9 +67,10 @@ s_clean <- s %>%
     diam_cm = cap_24,
     x_rel_m = x_per,
     y_rel_m = y_long,
-    pom_m = pom) %>% 
+    pom_m = pom,
+    notes = observaciones_campo_2024) %>% 
   mutate(
-    site_id,
+    site_id = param$site_id,
     plot_id = as.character(plot_id),
     tree_id = NA_character_,
     diam_cm = case_when(
@@ -98,11 +78,13 @@ s_clean <- s %>%
       TRUE ~ as.numeric(diam_cm)),
     diam_cm = diam_cm / pi,
     pom_m = as.numeric(pom_m),
-    alive = ifelse(alive == 1, FALSE, TRUE),
+    alive = ifelse(alive == 1, "D", "A"),
     subplot_id = paste0(bloque, lado),
-    fallen = ifelse(grepl("C", danio_24), TRUE, FALSE),
-    missing = FALSE,
-    broken = ifelse(grepl("B|R", danio_24), TRUE, FALSE),
+    fallen = ifelse(grepl("C", danio_24), "F", "S"),
+    missing = "",
+    broken = ifelse(grepl("B|R", danio_24), "B", ""),
+    stump = "",
+    code = pasteVals(alive, fallen, broken, missing, stump),
     census_id = as.integer(1),
     measurement_date = as.character(measurement_date),
     x_rel_m = case_when(
@@ -130,18 +112,21 @@ recs_clean <- recs %>%
     diam_cm = cap_24,
     x_rel_m = x_per,
     y_rel_m = y_long,
-    pom_m = pom) %>% 
+    pom_m = pom,
+    notes = observaciones_campo_2024) %>% 
   mutate(
-    site_id,
+    site_id = param$site_id,
     plot_id = as.character(plot_id),
     tree_id = NA_character_,
     diam_cm = as.numeric(diam_cm) / pi,
     pom_m = as.numeric(pom_m),
-    alive = ifelse(alive == 1, FALSE, TRUE),
+    alive = ifelse(alive == 1, "D", "A"),
     subplot_id = paste0(bloque, lado),
-    fallen = ifelse(grepl("C", danio_24), TRUE, FALSE),
-    missing = FALSE,
-    broken = ifelse(grepl("B|R", danio_24), TRUE, FALSE),
+    fallen = ifelse(grepl("C", danio_24), "F", "S"),
+    missing = "",
+    broken = ifelse(grepl("B|R", danio_24), "B", ""),
+    stump = "",
+    code = pasteVals(alive, fallen, broken, missing, stump),
     census_id = as.integer(1),
     measurement_date = "2024",
     height_m = as.numeric(height_m),
@@ -235,7 +220,7 @@ colCheck(census, census_cols)
 colCheck(s_all, stem_cols)
 
 # Check values
-# plotValCheck(plots)
+plotValCheck(plots)
 ptValCheck(pt)
 censusValCheck(census)
 stemValCheck(s_all)

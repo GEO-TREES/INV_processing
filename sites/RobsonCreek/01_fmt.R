@@ -2,28 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2026-02-13
 
-# Packages
-library(dplyr)
-library(tidyr)
-library(sf)
-library(readxl)
-
-# Source functions
-# source("./func.R")
-
-# Define site ID
-# site_id <- "RobsonCreek"
-
-# Define directories
-# indir <- "./dat/sites/RobsonCreek/raw"
-# outdir <- "./dat/sites/RobsonCreek/01_fmt"
-
-# Import column descriptions
-# plot_cols <- read.csv("./templates/plot_cols.csv")
-# pt_cols <- read.csv("./templates/pt_cols.csv")
-# stem_cols <- read.csv("./templates/stem_cols.csv")
-# census_cols <- read.csv("./templates/census_cols.csv")
-
 # TODO: Replace when plot coordinates received
 # Import stem data
 s <- read_excel(file.path(indir, "Robson_Creek_cleanedbiomass_predictedHeightsoutputASR2025septv4_Standardized2026.xlsx"),
@@ -63,25 +41,9 @@ all_corners <- lapply(seq_along(grid), function(i) {
 })
 names(all_corners) <- seq_along(all_corners)
 
-# Convert each data frame into an sfc_POLYGON
-poly_list <- lapply(all_corners, function(x) {
-  # Extract only X and Y, convert to matrix
-  coords_mat <- as.matrix(x[c(1:4,1), c("X", "Y")])
-  
-  # Create the polygon (requires a list of matrices)
-  st_polygon(list(coords_mat))
-})
-names(poly_list) <- names(all_corners)
-
-# Create final polygons object
-poly <- st_sf(geometry = st_sfc(poly_list), crs = 32755) %>% 
-  mutate(
-    site_id,
-    plot_id = as.character(names(poly_list)))
-
 # Create final corner point object
 pt <- do.call(rbind, all_corners) %>% 
-  mutate(site_id, .before = everything()) %>% 
+  mutate(site_id = param$site_id, .before = everything()) %>% 
   mutate(
     x_rel_m = case_when(
       corner_id == "SW" ~ 0,
@@ -114,9 +76,10 @@ s_clean <- s %>%
     height_m = stemHeight_metres,
     alive = plantMortality,
     census_id = year,
-    measurement_date = phenomenonTime) %>% 
+    measurement_date = phenomenonTime,
+    notes = comment) %>% 
   mutate(
-    site_id = site_id,
+    site_id = param$site_id,
     plot_id = case_when(
       grepl("core1ha", plot_id) ~ "6",
       TRUE ~ gsub("Robson Creek, ha ", "", plot_id)),
@@ -126,16 +89,19 @@ s_clean <- s %>%
     height_m = as.numeric(height_m),
     census_id = dense_rank(census_id),
     measurement_date = format(measurement_date),
+    notes = ifelse(notes == "NA", NA_character_, notes),
     alive = case_when(
-      alive == "Alive" ~ TRUE,
-      alive == "Dead" ~ FALSE,
-      is.na(alive) ~ TRUE,
+      alive == "Alive" ~ "A",
+      alive == "Dead" ~ "D",
+      is.na(alive) ~ "A",
       TRUE ~ NA),
     x_rel_m = as.numeric(x_rel_m),
     y_rel_m = as.numeric(y_rel_m),
-    broken = ifelse(grepl("snapped", plantCondition, ignore.case = TRUE), TRUE, FALSE),
-    fallen = FALSE,  # TODO:
-    missing = FALSE,  # TODO:
+    broken = ifelse(grepl("snapped", plantCondition, ignore.case = TRUE), "B", ""),
+    fallen = "S",  # TODO:
+    missing = "",  # TODO:
+    stump = "",  # TODO:
+    code = pasteVals(alive, broken, fallen, missing, stump),
     agb_allometry = NA_character_,
     subplot_in_plot = (as.numeric(subplot_id) - 1) %% 25,
     col = subplot_in_plot %% 5,

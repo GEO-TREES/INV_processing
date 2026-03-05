@@ -2,27 +2,6 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2025-07-09
 
-# Packages
-library(dplyr)
-library(tidyr)
-library(sf)
-
-# Source functions
-# source("./func.R")
-
-# Define site ID
-# site_id <- "Nouragues"
-
-# Define directories
-# indir <- "./dat/sites/Nouragues/raw"
-# outdir <- "./dat/sites/Nouragues/01_fmt"
-
-# Import column descriptions
-# plot_cols <- read.csv("./templates/plot_cols.csv")
-# pt_cols <- read.csv("./templates/pt_cols.csv")
-# stem_cols <- read.csv("./templates/stem_cols.csv")
-# census_cols <- read.csv("./templates/census_cols.csv")
-
 # Import stem data
 s <- read.csv(file.path(indir, "2023-09-29_Petit_Plateau2022.csv"))
 
@@ -63,7 +42,7 @@ plot_corners <- plot_meta %>%
 pt <- plot_corners %>% 
   st_as_sf(., coords = c("longitude", "latitude"), crs = 4326) %>% 
   mutate(
-    site_id,
+    site_id = param$site_id,
     x_rel_m = case_when(
       plot_id == "Balenfois" & corner_id %in% c("SW", "NW") ~ 0,
       plot_id == "Balenfois" & corner_id %in% c("SE", "NE") ~ 100,
@@ -103,7 +82,7 @@ s_clean <- s %>%
     measurement_date = CensusDate,
     alive = CodeAlive) %>% 
   mutate(
-    site_id,
+    site_id = param$site_id,
     plot_id = as.character(plot_id),
     subplot_id = as.character(subplot_id),
     tree_id = as.character(tree_id),
@@ -111,14 +90,18 @@ s_clean <- s %>%
     pom_m = POM * 0.01,
     diam_cm = CircCorr / pi,
     height_m = NA_real_,
-    alive = as.logical(alive),
+    alive = ifelse(alive == 1, "A", "D"),
     GenusFilled = iconv(GenusFilled, "UTF-8", "UTF-8", sub = ""),
     SpeciesFilled = iconv(SpeciesFilled, "UTF-8", "UTF-8", sub = ""),
     taxon_name = paste(trimws(GenusFilled), trimws(SpeciesFilled)),
-    broken = FALSE,
-    fallen = ifelse(MeasCode == 12 , TRUE, FALSE),
-    missing = FALSE,
-    agb_allometry = NA_character_) %>% 
+    broken = "",
+    fallen = ifelse(MeasCode == 12 , "F", "S"),
+    missing = "",
+    stump = "",
+    code = pasteVals(alive, fallen, broken, stump, missing),
+    agb_allometry = NA_character_,
+    notes = NA_character_
+    ) %>% 
   group_by(plot_id) %>% 
   mutate(census_id = dense_rank(census_id)) %>% 
   ungroup() %>% 
@@ -134,7 +117,7 @@ census <- s_clean %>%
   summarise(census_date = format(mean(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
   mutate(
-    site_id,
+    site_id = param$site_id,
     min_diam_thresh_cm = 10,
     census_id_all = "1") %>%
   dplyr::select(all_of(census_cols$column_name))

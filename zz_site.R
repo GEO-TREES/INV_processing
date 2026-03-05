@@ -1,10 +1,11 @@
 # Run the data processing for an individual site
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-02-11
+# Last updated: 2026-03-03
 
 # Load packages
 library(dplyr)
 library(tidyr)
+library(readxl)
 library(units)
 library(sf)
 library(BIOMASS)
@@ -15,13 +16,13 @@ library(rocrateR)
 source("./func.R")
 
 # Load YAML file with parameters
-param <- read_yaml("./param.yaml")
+# p <- read_yaml("./param.yaml")
 
 # Load YAML file with software version
 version <- read_yaml("./version.yaml")
 
 # Merge parameters lists
-param <- c(param, version)
+param <- c(p, version)
 
 # Define parameter names
 param_name_vec <- c(
@@ -49,6 +50,9 @@ if (param$opt_s3) {
 # Import column classes
 stem_cols <- read.csv("./templates/stem_cols.csv")
 stem_col_class <- setNames(stem_cols$class, stem_cols$column_name)
+
+taxon_cols <- read.csv("./templates/taxon_cols.csv")
+taxon_col_class <- setNames(taxon_cols$class, taxon_cols$column_name)
 
 census_cols <- read.csv("./templates/census_cols.csv")
 census_col_class <- setNames(census_cols$class, census_cols$column_name)
@@ -160,7 +164,9 @@ dir.create(outdir, showWarnings = FALSE)
 stem <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "stem.csv"), 
   colClasses = stem_col_class)
 wfo_path <- file.path(outdir, "wfo_cache.rds")
-if (file.exists(wfo_path)) { loadWFOCache(wfo_path) }
+if (file.exists(wfo_path)) { 
+  message("WFO cache loaded")
+  loadWFOCache(wfo_path) }
 runFn("./02_taxa.R")
 
 # Split plots into quadrats 
@@ -202,6 +208,10 @@ outdir <- file.path(param$out_dir, "07_stem_summ", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
 stem <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "stem.csv"), 
   colClasses = stem_col_class)
+taxon_path <- file.path(param$out_dir, "01_fmt", product_version_sanit, "taxon.csv")
+if (file.exists(taxon_path)) { 
+  taxon <- read.csv(taxon_path, colClasses = taxon_col_class)
+}
 stem_agb <- read.csv(file.path(param$out_dir, "06_agb_stem", product_version_sanit, "stem_agb.csv"))
 stem_height <- read.csv(file.path(param$out_dir, "05_height", product_version_sanit, "stem_height.csv"))
 stem_wd <- read.csv(file.path(param$out_dir, "04_wd", product_version_sanit, "stem_wd.csv"))

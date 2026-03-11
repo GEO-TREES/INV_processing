@@ -2,7 +2,7 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2026-02-16
 
-# Preapre L1 dataset
+# Prepare L1 dataset
 L1 <- stem_summ %>% 
   bind_cols(., st_coordinates(.)) %>% 
   group_by(plot_id) %>% 
@@ -22,8 +22,8 @@ L1 <- stem_summ %>%
     Longitude = X,
     Latitude = Y)
 
-# Prepare L2 dataset
-L2 <- stem_fil %>% 
+# Prepare L2 stems dataset
+L2_stem <- stem_fil %>% 
   group_by(quadrat_id) %>% 
   filter(census_id == max(census_id)) %>% 
   ungroup() %>% 
@@ -42,9 +42,16 @@ L2 <- stem_fil %>%
     Height_tree_estimate = height_m_pred)#,
     # TODO: Height_tree_uncertainty = )
 
+# Prepare L2 plot polygons dataset
+L2_poly <- plot_pt %>% 
+  group_by(site_id, plot_id) %>% 
+  summarise(.groups = "drop_last") %>% 
+  st_cast("POLYGON") %>% 
+  ungroup() 
+
 # Check all values filled
-stopifnot(all(!is.na(L2$AGB_tree_estimate)))
-# stopifnot(all(!is.na(L2$AGB_tree_uncertainty)))
+stopifnot(all(!is.na(L2_stem$AGB_tree_estimate)))
+# stopifnot(all(!is.na(L2_stem$AGB_tree_uncertainty)))
 
 # Prepare L3 dataset
 L3 <- quad_summ %>% 
@@ -93,13 +100,15 @@ L3_filename <- paste(
   sep = "_")
 
 # Write L1 dataset to file
-write.csv(L1, file.path(L_dir_list[["L1"]], paste0(L1_filename, ".csv")), row.names = FALSE)
+write.csv(L1, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_stem", ".csv")), row.names = FALSE)
+st_write(L1, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_pt", ".gpkg")), row.names = FALSE)
 
 # Write L2 dataset to file
-write.csv(L2, file.path(L_dir_list[["L2"]], paste0(L2_filename, ".csv")), row.names = FALSE)
+write.csv(L2_stem, file.path(L_dir_list[["L2"]], paste0(L2_filename, "_stem", ".csv")), row.names = FALSE)
+st_write(L2_poly, file.path(L_dir_list[["L2"]], paste0(L2_filename, "_poly", ".gpkg")), delete_dsn = TRUE)
 
 # Write L3 dataset to file
-st_write(L3, file.path(L_dir_list[["L3"]], paste0(L3_filename, ".gpkg")), delete_dsn = TRUE)
+st_write(L3, file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")), delete_dsn = TRUE)
 
 # Construct RO-crates
 
@@ -132,22 +141,36 @@ indir <- entity(
 )
 
 # Output files
-L1_outfile <- entity(
-  x = file.path(L_dir_list[["L1"]], paste0(L1_filename, ".csv")),
+L1_stem_outfile <- entity(
+  x = file.path(L_dir_list[["L1"]], paste0(L1_filename, "_stem", ".csv")),
   type = "File",
   description = "L1 re-formatted stem measurements.",
   encodingFormat = "text/csv"
 )
 
-L2_outfile <- entity(
-  x = file.path(L_dir_list[["L2"]], paste0(L2_filename, ".csv")),
+L1_pt_outfile <- entity(
+  x = file.path(L_dir_list[["L1"]], paste0(L1_filename, "_pt", ".gpkg")),
+  type = "File",
+  description = "L1 re-formatted point geo-location measurements.",
+  encodingFormat = "text/csv"
+)
+
+L2_stem_outfile <- entity(
+  x = file.path(L_dir_list[["L2"]], paste0(L2_filename, "_stem", ".csv")),
   type = "File",
   description = "L2 stem AGB estimates.",
   encodingFormat = "text/csv"
 )
 
-L3_outfile <- entity(
-  x = file.path(L_dir_list[["L3"]], paste0(L3_filename, ".gpkg")),
+L2_poly_outfile <- entity(
+  x = file.path(L_dir_list[["L2"]], paste0(L2_filename, "_stem", ".gpkg")),
+  type = "File",
+  description = "L2 plot polygons.",
+  encodingFormat = "application/geopackage+sqlite3"
+)
+
+L3_quad_outfile <- entity(
+  x = file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")),
   type = "File",
   description = "L3 AGBD estimates within plot quadrats.",
   encodingFormat = "application/geopackage+sqlite3"
@@ -181,34 +204,55 @@ exec <- entity(
 )
 
 L_outfile_list <- list(
-  "L1" = L1_outfile, 
-  "L2" = L2_outfile, 
-  "L3" = L3_outfile)
+  "L1" = list(
+    "L1_stem" = L1_stem_outfile,
+    "L1_pt" = L1_pt_outfile
+  ),
+  "L2" = list(
+    "L2_stem" = L2_stem_outfile, 
+    "L2_poly" = L2_poly_outfile
+  ),
+  "L3" = list(
+    "L3_quad" = L3_quad_outfile
+  )
+)
 
 # Initialize crates, add entities and relationships
-rocrate_list <- lapply(L_outfile_list, function(x) { 
-  rocrate(
+rocrate_list <- lapply(names(L_outfile_list), function(x) { 
+  rc <- rocrate(
     context = "https://w3id.org/ro/crate/1.2/context",
     datePublished = as.character(Sys.Date()),
-    name = "GEO-TREES Bicuar PDA L2"
+    name = paste("GEO-TREES Bicuar PDA", x)
   ) |> 
     add_entity(me) |>
     add_entity(aff) |>
     add_entity(lic) |>
     add_entity(indir) |>
-    add_entity(x) |>
     add_entity(yaml) |>
     add_entity(code) |>
-    add_entity(exec) |>
+    add_entity(exec)
+
+  for (i in L_outfile_list[[x]]) {
+    rc <- rc |> add_entity(i)
+  }
+
+  L_outfile_id_list <- unname(lapply(L_outfile_list[[x]], function(i) { 
+    list(`@id` = i$`@id`) 
+  }))
+
+  rc |>
     add_entity_value(id = "./", key = "author", value = list(`@id` = me$`@id`)) |>
     add_entity_value(id = "./", key = "license", value = list(`@id` = lic$`@id`)) |>
     add_entity_value(id = "./", key = "hasPart", 
-      value = list(
-        list(`@id` = yaml$`@id`),
-        list(`@id` = indir$`@id`),
-        list(`@id` = x$`@id`),
-        list(`@id` = lic$`@id`)
-      )) |>
+      value = c(
+        list(
+          list(`@id` = yaml$`@id`),
+          list(`@id` = indir$`@id`),
+          list(`@id` = lic$`@id`)
+        ),
+        L_outfile_id_list
+      )
+    ) |>
     add_entity_value(id = "./", key = "mentions", value = list(
         list(`@id` = exec$`@id`),
         list(`@id` = code$`@id`)
@@ -219,7 +263,7 @@ rocrate_list <- lapply(L_outfile_list, function(x) {
         list(`@id` = yaml$`@id`),
         list(`@id` = indir$`@id`)
       )) |>
-    add_entity_value(id = exec$`@id`, key = "result", value = list(`@id` = x$`@id`)) |>
+    add_entity_value(id = exec$`@id`, key = "result", value = L_outfile_id_list) |>
     add_entity_value(id = exec$`@id`, key = "instrument", value = list(`@id` = code$`@id`))
 })
 names(rocrate_list) <- names(L_outfile_list)

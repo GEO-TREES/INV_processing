@@ -14,17 +14,17 @@ pt <- poly %>%
   st_set_crs(., 4326) %>% 
   st_cast("POINT") %>% 
   slice_tail(n = -1) %>% 
-  mutate(corner_id = c("SW", "NW", "NE", "SE")) %>%
+  mutate(point_id = c("SW", "NW", "NE", "SE")) %>%
   mutate(
     site_id = param$site_id, 
     plot_id = "Amacayacu_1",
     x_rel_m = case_when(
-      corner_id %in% c("SW", "NW") ~ 0,
-      corner_id %in% c("SE", "NE") ~ 500,
+      point_id %in% c("SW", "NW") ~ 0,
+      point_id %in% c("SE", "NE") ~ 500,
       TRUE ~ NA_real_),
     y_rel_m = case_when(
-      corner_id %in% c("SW", "SE") ~ 0,
-      corner_id %in% c("NW", "NE") ~ 500,
+      point_id %in% c("SW", "SE") ~ 0,
+      point_id %in% c("NW", "NE") ~ 500,
       TRUE ~ NA_real_)) %>% 
   st_as_sf(., coords = c("longitude", "latitude"), crs = 4326) %>% 
   dplyr::select(all_of(pt_cols$column_name))

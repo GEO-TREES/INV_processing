@@ -1,6 +1,7 @@
 # Ignore directories
 dat/
 old/
+drawio/
 
 # Ignore .ipynb_checkpoints/ directories anywhere in the repo
 **/.ipynb_checkpoints/

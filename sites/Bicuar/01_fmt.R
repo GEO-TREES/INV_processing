@@ -11,16 +11,16 @@ plot_corners <- read_sf(file.path(indir, "plot_corners.shp"))
 pt <- plot_corners %>% 
   mutate(
     site_id = param$site_id,
-    corner_id = gsub(".*[0-9]+", "", name)) %>%
-  dplyr::select(site_id, plot_id = plot_name, corner_id) %>% 
+    point_id = gsub(".*[0-9]+", "", name)) %>%
+  dplyr::select(site_id, plot_id = plot_name, point_id) %>% 
   mutate(
     x_rel_m = case_when(
-      corner_id %in% c("SW", "NW") ~ 0,
-      corner_id %in% c("SE", "NE") ~ 100,
+      point_id %in% c("SW", "NW") ~ 0,
+      point_id %in% c("SE", "NE") ~ 100,
       TRUE ~ NA_real_),
     y_rel_m = case_when(
-      corner_id %in% c("SW", "SE") ~ 0,
-      corner_id %in% c("NW", "NE") ~ 100,
+      point_id %in% c("SW", "SE") ~ 0,
+      point_id %in% c("NW", "NE") ~ 100,
       TRUE ~ NA_real_)) %>% 
   filter(plot_id != "P1") %>% 
   dplyr::select(all_of(pt_cols$column_name))

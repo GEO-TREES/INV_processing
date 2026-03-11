@@ -12,31 +12,31 @@ plot_meta <- read.csv(file.path(indir, "NouraguesDescription.csv"))
 plot_corners <- plot_meta %>% 
   pivot_longer(
     cols = starts_with("SubPlotL"),
-    names_to = c(".value", "corner_id"),
+    names_to = c(".value", "point_id"),
     names_pattern = "SubPlot(Lat|Lon)(SW|SE|NE|NW)") %>% 
   dplyr::select(
     id,
     plot_id = Plot,
-    corner_id,
+    point_id,
     longitude = Lon,
     latitude = Lat) %>% 
   filter(
-    (plot_id == "Balenfois" & id == 1 & corner_id == "SW") | 
-    (plot_id == "Balenfois" & id == 1 & corner_id == "SE") | 
-    (plot_id == "Balenfois" & id == 2 & corner_id == "NW") | 
-    (plot_id == "Balenfois" & id == 2 & corner_id == "NE") | 
-    (plot_id == "Grand_Plateau" & id == 12 & corner_id == "SW") | 
-    (plot_id == "Grand_Plateau" & id == 12 & corner_id == "SE") | 
-    (plot_id == "Grand_Plateau" & id == 3 & corner_id == "NW") | 
-    (plot_id == "Grand_Plateau" & id == 3 & corner_id == "NE") | 
-    (plot_id == "Parare-Arataye" & id == 14 & corner_id == "SW") | 
-    (plot_id == "Parare-Arataye" & id == 13 & corner_id == "SE") | 
-    (plot_id == "Parare-Arataye" & id == 18 & corner_id == "NW") | 
-    (plot_id == "Parare-Arataye" & id == 17 & corner_id == "NE") | 
-    (plot_id == "Petit_Plateau" & id == 27 & corner_id == "SW") | 
-    (plot_id == "Petit_Plateau" & id == 30 & corner_id == "SE") | 
-    (plot_id == "Petit_Plateau" & id == 19 & corner_id == "NW") | 
-    (plot_id == "Petit_Plateau" & id == 22 & corner_id == "NE"))
+    (plot_id == "Balenfois" & id == 1 & point_id == "SW") | 
+    (plot_id == "Balenfois" & id == 1 & point_id == "SE") | 
+    (plot_id == "Balenfois" & id == 2 & point_id == "NW") | 
+    (plot_id == "Balenfois" & id == 2 & point_id == "NE") | 
+    (plot_id == "Grand_Plateau" & id == 12 & point_id == "SW") | 
+    (plot_id == "Grand_Plateau" & id == 12 & point_id == "SE") | 
+    (plot_id == "Grand_Plateau" & id == 3 & point_id == "NW") | 
+    (plot_id == "Grand_Plateau" & id == 3 & point_id == "NE") | 
+    (plot_id == "Parare-Arataye" & id == 14 & point_id == "SW") | 
+    (plot_id == "Parare-Arataye" & id == 13 & point_id == "SE") | 
+    (plot_id == "Parare-Arataye" & id == 18 & point_id == "NW") | 
+    (plot_id == "Parare-Arataye" & id == 17 & point_id == "NE") | 
+    (plot_id == "Petit_Plateau" & id == 27 & point_id == "SW") | 
+    (plot_id == "Petit_Plateau" & id == 30 & point_id == "SE") | 
+    (plot_id == "Petit_Plateau" & id == 19 & point_id == "NW") | 
+    (plot_id == "Petit_Plateau" & id == 22 & point_id == "NE"))
 
 # Create plot corner sf 
 pt <- plot_corners %>% 
@@ -44,24 +44,24 @@ pt <- plot_corners %>%
   mutate(
     site_id = param$site_id,
     x_rel_m = case_when(
-      plot_id == "Balenfois" & corner_id %in% c("SW", "NW") ~ 0,
-      plot_id == "Balenfois" & corner_id %in% c("SE", "NE") ~ 100,
-      plot_id == "Grand_Plateau" & corner_id %in% c("NW", "NE") ~ 0,
-      plot_id == "Grand_Plateau" & corner_id %in% c("SW", "SE") ~ 1000,
-      plot_id == "Parare-Arataye" & corner_id %in% c("SE", "SW") ~ 0,
-      plot_id == "Parare-Arataye" & corner_id %in% c("NE", "NW") ~ 300,
-      plot_id == "Petit_Plateau" & corner_id %in% c("NW", "NE") ~ 0,
-      plot_id == "Petit_Plateau" & corner_id %in% c("SW", "SE") ~ 300,
+      plot_id == "Balenfois" & point_id %in% c("SW", "NW") ~ 0,
+      plot_id == "Balenfois" & point_id %in% c("SE", "NE") ~ 100,
+      plot_id == "Grand_Plateau" & point_id %in% c("NW", "NE") ~ 0,
+      plot_id == "Grand_Plateau" & point_id %in% c("SW", "SE") ~ 1000,
+      plot_id == "Parare-Arataye" & point_id %in% c("SE", "SW") ~ 0,
+      plot_id == "Parare-Arataye" & point_id %in% c("NE", "NW") ~ 300,
+      plot_id == "Petit_Plateau" & point_id %in% c("NW", "NE") ~ 0,
+      plot_id == "Petit_Plateau" & point_id %in% c("SW", "SE") ~ 300,
       TRUE ~ NA_real_),
     y_rel_m = case_when(
-      plot_id == "Balenfois" & corner_id %in% c("SW", "SE") ~ 0,
-      plot_id == "Balenfois" & corner_id %in% c("NW", "NE") ~ 200,
-      plot_id == "Grand_Plateau" & corner_id %in% c("NW", "SW") ~ 0,
-      plot_id == "Grand_Plateau" & corner_id %in% c("NE", "SE") ~ 100,
-      plot_id == "Parare-Arataye" & corner_id %in% c("SE", "NE") ~ 0,
-      plot_id == "Parare-Arataye" & corner_id %in% c("SW", "NW") ~ 200,
-      plot_id == "Petit_Plateau" & corner_id %in% c("NW", "SW") ~ 0,
-      plot_id == "Petit_Plateau" & corner_id %in% c("NE", "SE") ~ 400,
+      plot_id == "Balenfois" & point_id %in% c("SW", "SE") ~ 0,
+      plot_id == "Balenfois" & point_id %in% c("NW", "NE") ~ 200,
+      plot_id == "Grand_Plateau" & point_id %in% c("NW", "SW") ~ 0,
+      plot_id == "Grand_Plateau" & point_id %in% c("NE", "SE") ~ 100,
+      plot_id == "Parare-Arataye" & point_id %in% c("SE", "NE") ~ 0,
+      plot_id == "Parare-Arataye" & point_id %in% c("SW", "NW") ~ 200,
+      plot_id == "Petit_Plateau" & point_id %in% c("NW", "SW") ~ 0,
+      plot_id == "Petit_Plateau" & point_id %in% c("NE", "SE") ~ 400,
       TRUE ~ NA_real_)) %>% 
   dplyr::select(-id) %>% 
   dplyr::select(all_of(pt_cols$column_name))

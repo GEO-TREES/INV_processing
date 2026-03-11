@@ -22,7 +22,7 @@ pt <- plot_corners %>%
       name == "SW_0025" ~ 500,
       name == "NE_5000" ~ 0,
       name == "NW_5025" ~ 500),
-    corner_id = gsub("_.*", "", name)) %>% 
+    point_id = gsub("_.*", "", name)) %>% 
   st_as_sf(., coords = c("lon", "lat"), crs = 4326) %>%
   dplyr::select(all_of(pt_cols$column_name))
 

@@ -14,7 +14,7 @@ polys <- st_read(file.path(indir, "parcela_ubicacion_campo_2026-02-24.kml")) %>%
     plot_id = as.character(Name)) %>% 
   st_transform(., 4326)
   
-corner_id_list <- rep(list(c("SW", "NW", "NE", "SE")), nrow(polys))
+point_id_list <- rep(list(c("SW", "NW", "NE", "SE")), nrow(polys))
 pt <- bind_rows(lapply(seq_len(nrow(polys)), function(i) {
   # Isolate polygon
   xsel <- polys[i,]
@@ -24,34 +24,34 @@ pt <- bind_rows(lapply(seq_len(nrow(polys)), function(i) {
 
   xc$sum <- xc$X + xc$Y
   xc$diff <- xc$X - xc$Y
-  xc$corner_id <- NA_character_
-  xc$corner_id[which.min(xc$diff)] <- "NW" 
-  xc$corner_id[which.min(xc$sum)] <- "SW" 
-  xc$corner_id[which.max(xc$diff)] <- "SE" 
-  xc$corner_id[which.max(xc$sum)] <- "NE" 
+  xc$point_id <- NA_character_
+  xc$point_id[which.min(xc$diff)] <- "NW" 
+  xc$point_id[which.min(xc$sum)] <- "SW" 
+  xc$point_id[which.max(xc$diff)] <- "SE" 
+  xc$point_id[which.max(xc$sum)] <- "NE" 
 
   # Select chosen corner coordinate(s)
   xs <- xc[
-    xc$corner_id %in% sort(corner_id_list[[i]]) & !is.na(xc$corner),
-    c("X", "Y", "corner_id")]
+    xc$point_id %in% sort(point_id_list[[i]]) & !is.na(xc$point_id),
+    c("X", "Y", "point_id")]
 
   # Return selected corner coordinate(s)
   g <- st_sfc(lapply(1:nrow(xs), function(j) {
       st_point(as.matrix(xs[j,1:2]))
     }), crs = st_crs(polys))
   d <- st_drop_geometry(polys[rep(i, nrow(xs)), "plot_id"])
-  d$corner_id <- xs$corner_id
+  d$point_id <- xs$point_id
   st_sf(d, geometry = g)
 })) %>% 
   mutate(
     site_id = param$site_id,
     x_rel_m = case_when(
-      corner_id %in% c("SW", "NW") ~ 0,
-      corner_id %in% c("SE", "NE") ~ 100,
+      point_id %in% c("SW", "NW") ~ 0,
+      point_id %in% c("SE", "NE") ~ 100,
       TRUE ~ NA_real_),
     y_rel_m = case_when(
-      corner_id %in% c("SW", "SE") ~ 0,
-      corner_id %in% c("NW", "NE") ~ 100,
+      point_id %in% c("SW", "SE") ~ 0,
+      point_id %in% c("NW", "NE") ~ 100,
       TRUE ~ NA_real_)) %>% 
   dplyr::select(all_of(pt_cols$column_name))
 

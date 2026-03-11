@@ -58,11 +58,11 @@ plot_meta <- read.csv(file.path(indir, "ParacouDescription.csv"))
 #   filter(Plot == "16") %>% 
 #   pivot_longer(
 #     cols = starts_with("SubPlotL"),
-#     names_to = c(".value", "corner_id"),
+#     names_to = c(".value", "point_id"),
 #     names_pattern = "SubPlot(Lat|Lon)(SW|SE|NE|NW)") %>% 
 #   dplyr::select(
 #     subplot_id = SubPlot,
-#     corner_id,
+#     point_id,
 #     longitude = Lon,
 #     latitude = Lat) %>% 
 #   st_as_sf(., coords = c("longitude", "latitude"), crs = 4326) %>% 
@@ -76,11 +76,11 @@ plot_meta <- read.csv(file.path(indir, "ParacouDescription.csv"))
 pt <- plot_meta %>% 
   pivot_longer(
     cols = starts_with("PlotL"),
-    names_to = c(".value", "corner_id"),
+    names_to = c(".value", "point_id"),
     names_pattern = "Plot(Lat|Lon)(SW|SE|NE|NW)") %>% 
   dplyr::select(
     plot_id = Plot,
-    corner_id,
+    point_id,
     longitude = Lon,
     latitude = Lat, 
     PlotArea) %>% 
@@ -90,14 +90,14 @@ pt <- plot_meta %>%
   mutate(
     site_id = param$site_id,
     x_rel_m = case_when(
-      corner_id %in% c("SW", "NW") ~ 0,
-      corner_id %in% c("SE", "NE") & PlotArea == 6.25 ~ 250,
-      corner_id %in% c("SE", "NE") & PlotArea == 25 ~ 500,
+      point_id %in% c("SW", "NW") ~ 0,
+      point_id %in% c("SE", "NE") & PlotArea == 6.25 ~ 250,
+      point_id %in% c("SE", "NE") & PlotArea == 25 ~ 500,
       TRUE ~ NA_real_),
     y_rel_m = case_when(
-      corner_id %in% c("SW", "SE") ~ 0,
-      corner_id %in% c("NW", "NE") & PlotArea == 6.25 ~ 250,
-      corner_id %in% c("NW", "NE") & PlotArea == 25 ~ 500,
+      point_id %in% c("SW", "SE") ~ 0,
+      point_id %in% c("NW", "NE") & PlotArea == 6.25 ~ 250,
+      point_id %in% c("NW", "NE") & PlotArea == 25 ~ 500,
       TRUE ~ NA_real_)) %>% 
   filter(!plot_id %in% c("1", "11", "6")) %>% 
   dplyr::select(all_of(pt_cols$column_name))

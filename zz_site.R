@@ -92,7 +92,7 @@ if (tolower(trimws(user_input)) %in% c("y", "yes")) {
   
   # Delete output files
   files_all <- list.files(param$out_dir, recursive = TRUE)
-  files_out <- files_all[grepl("^[0-9]+_", files_all)]
+  files_out <- files_all[grepl("^[0-9]+_|^L[1-3]", files_all)]
   files_rem <- files_out[!grepl("wfo_cache.rds", files_out)]
   file.remove(file.path(param$out_dir, files_rem))
   
@@ -259,5 +259,6 @@ stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", product_version_san
 stem_agb_mc <- read.csv(file.path(param$out_dir, "09_agb_mc", product_version_sanit, "stem_agb_mc.csv"))
 stem_summ <- st_read(file.path(param$out_dir, "07_stem_summ", product_version_sanit, "stem_summ.gpkg"))
 quad_summ <- st_read(file.path(param$out_dir, "10_quad_summ", product_version_sanit, "quad_summ.gpkg"))
+plot_pt <- st_read(file.path(param$out_dir, "01_fmt", product_version_sanit, "plot_pt.gpkg"))
 runFn("./11_brm.R")
 

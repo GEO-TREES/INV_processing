@@ -41,6 +41,7 @@ s_clean <- s %>%
 
 # Format plot corners
 pt_clean <- pt %>% 
+  rename(point_id = corner_id) %>% 
   mutate(plot_id = as.character(plot_id)) %>%
   st_as_sf(., coords = c("X", "Y"), crs = 32755) %>% 
   st_transform(., 4326) %>% 

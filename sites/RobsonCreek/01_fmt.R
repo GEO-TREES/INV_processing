@@ -34,7 +34,7 @@ all_corners <- lapply(seq_along(grid), function(i) {
   # Create a data frame for this specific 1 ha chunk
   data.frame(
     plot_id = as.character(i),
-    corner_id = c("SW", "NW", "NE", "SE"),
+    point_id = c("SW", "NW", "NE", "SE"),
     X = coords[, 1],
     Y = coords[, 2]
   )
@@ -46,16 +46,16 @@ pt <- do.call(rbind, all_corners) %>%
   mutate(site_id = param$site_id, .before = everything()) %>% 
   mutate(
     x_rel_m = case_when(
-      corner_id == "SW" ~ 0,
-      corner_id == "SE" ~ 100,
-      corner_id == "NW" ~ 0,
-      corner_id == "NE" ~ 100,
+      point_id == "SW" ~ 0,
+      point_id == "SE" ~ 100,
+      point_id == "NW" ~ 0,
+      point_id == "NE" ~ 100,
       TRUE ~ NA_real_),
     y_rel_m = case_when(
-      corner_id == "SW" ~ 0,
-      corner_id == "SE" ~ 0,
-      corner_id == "NW" ~ 100,
-      corner_id == "NE" ~ 100,
+      point_id == "SW" ~ 0,
+      point_id == "SE" ~ 0,
+      point_id == "NW" ~ 100,
+      point_id == "NE" ~ 100,
       TRUE ~ NA_real_)) %>% 
   st_as_sf(., coords = c("X", "Y"), crs = 32755) %>% 
   st_transform(., 4326) %>% 

@@ -2,6 +2,9 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2026-03-05
 
+# Processes all sites with a ./sites/*/param.yaml file
+# I.e. to exclude a site from processing, remove its param.yaml file
+
 # Packages
 library(yaml)
 
@@ -9,7 +12,7 @@ library(yaml)
 p_list <- list.files("./sites", "param.yaml", recursive = TRUE, full.names = TRUE)
 
 # Mock readline function to return "yes" when prompted
-readline <- function() {
+readline <- function(prompt = NULL) {
   return("y")
 }
 

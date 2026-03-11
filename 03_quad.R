@@ -10,7 +10,7 @@ pt_clean <- plot_pt %>%
 # Extract plot corners
 plot_check <- check_plot_coord(
   corner_data = pt_clean,
-  proj_coord = c("X", "Y"),  
+  longlat = c("X", "Y"),  
   rel_coord = c("x_rel_m", "y_rel_m"),
   plot_ID = "plot_id",
   trust_GPS_corners = TRUE,

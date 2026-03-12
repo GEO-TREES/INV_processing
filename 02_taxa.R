@@ -11,7 +11,7 @@ taxa <- correctTaxo(
   preferFuzzy = FALSE,
   sub_pattern = subPattern(),
   useCache = TRUE,
-  useAPI = TRUE,
+  useAPI = FALSE,
   capacity = 60,
   fill_time_s = 1, 
   timeout = 60)

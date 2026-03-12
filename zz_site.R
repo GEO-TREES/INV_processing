@@ -16,7 +16,7 @@ library(rocrateR)
 source("./func.R")
 
 # Load YAML file with parameters
-# p <- read_yaml("./param.yaml")
+# p <- yaml::read_yaml("./<SITE>/<ACQUISITION>/param.yaml")
 
 # Load YAML file with software version
 version <- read_yaml("./version.yaml")
@@ -53,9 +53,6 @@ stem_col_class <- setNames(stem_cols$class, stem_cols$column_name)
 
 taxon_cols <- read.csv("./templates/taxon_cols.csv")
 taxon_col_class <- setNames(taxon_cols$class, taxon_cols$column_name)
-
-census_cols <- read.csv("./templates/census_cols.csv")
-census_col_class <- setNames(census_cols$class, census_cols$column_name)
 
 plot_cols <- read.csv("./templates/plot_cols.csv")
 plot_col_class <- setNames(plot_cols$class, plot_cols$column_name)
@@ -156,7 +153,7 @@ for (i in BIOMASS_files) BIOMASS::cacheManager(i)
 indir <- param$raw_dir
 outdir <- file.path(param$out_dir, "01_fmt", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
-runFn(file.path("./sites", param$site_id, "01_fmt.R"))
+runFn(file.path("./sites", param$site_id, param$acquisition_id, "01_fmt.R"))
 
 # Correct taxonomy
 outdir <- file.path(param$out_dir, "02_taxa", product_version_sanit)
@@ -208,17 +205,15 @@ outdir <- file.path(param$out_dir, "07_stem_summ", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
 stem <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "stem.csv"), 
   colClasses = stem_col_class)
-taxon_path <- file.path(param$out_dir, "01_fmt", product_version_sanit, "taxon.csv")
-if (file.exists(taxon_path)) { 
-  taxon <- read.csv(taxon_path, colClasses = taxon_col_class)
-}
+# taxon_path <- file.path(param$out_dir, "01_fmt", product_version_sanit, "taxon.csv")
+# if (file.exists(taxon_path)) { 
+#   taxon <- read.csv(taxon_path, colClasses = taxon_col_class)
+# }
 stem_agb <- read.csv(file.path(param$out_dir, "06_agb_stem", product_version_sanit, "stem_agb.csv"))
 stem_height <- read.csv(file.path(param$out_dir, "05_height", product_version_sanit, "stem_height.csv"))
 stem_wd <- read.csv(file.path(param$out_dir, "04_wd", product_version_sanit, "stem_wd.csv"))
 stem_taxa <- read.csv(file.path(param$out_dir, "02_taxa", product_version_sanit, "stem_taxa.csv"))
 stem_pt <- st_read(file.path(param$out_dir, "03_quad", product_version_sanit, "stem_pt.gpkg"))
-census <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "census.csv"), 
-  colClasses = census_col_class)
 plot <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "plot.csv"), 
   colClasses = plot_col_class)
 runFn("./07_stem_summ.R")
@@ -242,7 +237,7 @@ runFn("./09_agb_mc.R")
 outdir <- file.path(param$out_dir, "10_quad_summ", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
 stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", product_version_sanit, "stem_fil.csv"), 
-  colClasses = c(census_col_class, stem_col_class))
+  colClasses = stem_col_class)
 quad_poly <- st_read(file.path(param$out_dir, "03_quad", product_version_sanit, "quad_poly.gpkg"))
 quad_agb <- read.csv(file.path(param$out_dir, "09_agb_mc", product_version_sanit, "quad_agb.csv"))
 runFn("./10_quad_summ.R")

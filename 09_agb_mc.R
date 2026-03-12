@@ -16,9 +16,7 @@ stem_all <- stem_fil %>%
   left_join(., p_cent, by = "plot_id")
 
 # Split by quadrat
-stem_split <- split(stem_all, 
-  list(stem_all$quadrat_id, stem_all$census_id), 
-  drop = TRUE, sep = "::")
+stem_split <- split(stem_all, stem_all$quadrat_id)
 
 # Define number of simulations
 nsim <- 1000
@@ -65,8 +63,7 @@ write.csv(stem_agb_mc, file.path(outdir, "stem_agb_mc.csv"), row.names = FALSE)
 # Extract summary statistics from AGB MC error propagation simulations
 quad_agb_mc_summ <- bind_rows(lapply(names(quad_agb_mc_list), function(x) { 
   data.frame(
-    quadrat_id = gsub("::.*", "", x),
-    census_id = gsub(".*::", "", x),
+    quadrat_id = x,
     agb_Mg_sum_mc_mean = quad_agb_mc_list[[x]]$meanAGB,
     agb_Mg_sum_mc_median = quad_agb_mc_list[[x]]$medAGB,
     agb_Mg_sum_mc_sd = quad_agb_mc_list[[x]]$sdAGB,

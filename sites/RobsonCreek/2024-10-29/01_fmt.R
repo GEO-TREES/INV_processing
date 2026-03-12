@@ -41,26 +41,6 @@ all_corners <- lapply(seq_along(grid), function(i) {
 })
 names(all_corners) <- seq_along(all_corners)
 
-# Create final corner point object
-pt <- do.call(rbind, all_corners) %>% 
-  mutate(site_id = param$site_id, .before = everything()) %>% 
-  mutate(
-    x_rel_m = case_when(
-      point_id == "SW" ~ 0,
-      point_id == "SE" ~ 100,
-      point_id == "NW" ~ 0,
-      point_id == "NE" ~ 100,
-      TRUE ~ NA_real_),
-    y_rel_m = case_when(
-      point_id == "SW" ~ 0,
-      point_id == "SE" ~ 0,
-      point_id == "NW" ~ 100,
-      point_id == "NE" ~ 100,
-      TRUE ~ NA_real_)) %>% 
-  st_as_sf(., coords = c("X", "Y"), crs = 32755) %>% 
-  st_transform(., 4326) %>% 
-  dplyr::select(all_of(pt_cols$column_name))
-
 # Prepare stem data 
 s_clean <- s %>% 
   rename(
@@ -80,6 +60,7 @@ s_clean <- s %>%
     notes = comment) %>% 
   mutate(
     site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     plot_id = case_when(
       grepl("core1ha", plot_id) ~ "6",
       TRUE ~ gsub("Robson Creek, ha ", "", plot_id)),
@@ -115,25 +96,15 @@ s_clean <- s %>%
   mutate(census_date = format(mean(as.Date(measurement_date), na.rm = TRUE))) %>% 
   ungroup() %>% 
   mutate(record_id = row_number()) %>% 
+  filter(as.Date(census_date) > as.Date("2023-01-01")) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
-# Prepare census table
-census <- s_clean %>% 
-  group_by(site_id, plot_id, census_id) %>% 
-  summarise(census_date = format(mean(as.Date(measurement_date), na.rm = TRUE))) %>% 
-  ungroup() %>% 
-  mutate(min_diam_thresh_cm = 10) %>% 
-  dplyr::select(all_of(census_cols$column_name))
-
 # Prepare plots table
-plots <- census %>% 
-  group_by(site_id, plot_id) %>% 
-  summarise(
-    census_date_all = paste(census_date, collapse = ";"),
-    census_date_geotrees = max(census_date)) %>% 
-  ungroup() %>% 
-  mutate(census_date_geotrees = ifelse(!grepl("2024", census_date_geotrees), NA_character_, census_date_geotrees)) %>% 
+plots <- s_clean %>% 
+  dplyr::select(site_id, acquisition_id, plot_id, census_date) %>% 
+  distinct() %>% 
   mutate(
+    min_diam_thresh_cm = 10,
     plot_width_m = 100,
     plot_length_m = 100,
     plot_slope_deg = NA_real_,
@@ -164,17 +135,37 @@ plots <- census %>%
     notes_disturbance = NA_character_) %>% 
   dplyr::select(all_of(plot_cols$column_name))
 
+# Create final corner point object
+pt <- do.call(rbind, all_corners) %>% 
+  filter(plot_id %in% plots$plot_id) %>% 
+  mutate(site_id = param$site_id, .before = everything()) %>% 
+  mutate(
+    x_rel_m = case_when(
+      point_id == "SW" ~ 0,
+      point_id == "SE" ~ 100,
+      point_id == "NW" ~ 0,
+      point_id == "NE" ~ 100,
+      TRUE ~ NA_real_),
+    y_rel_m = case_when(
+      point_id == "SW" ~ 0,
+      point_id == "SE" ~ 0,
+      point_id == "NW" ~ 100,
+      point_id == "NE" ~ 100,
+      TRUE ~ NA_real_)) %>% 
+  st_as_sf(., coords = c("X", "Y"), crs = 32755) %>% 
+  st_transform(., 4326) %>% 
+  dplyr::select(all_of(pt_cols$column_name))
+
 # Check all columns in output objects
 colCheck(plots, plot_cols)
 colCheck(pt, pt_cols)
 colCheck(s_clean, stem_cols)
-colCheck(census, census_cols)
 
 # Check values
-# plotValCheck(plots)
-ptValCheck(pt)
-stemValCheck(s_clean)
-censusValCheck(census)
+valCheck(
+  plot = plots,
+  stem = s_clean,
+  pt = pt)
 
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
@@ -185,5 +176,3 @@ write.csv(s_clean, file.path(outdir, "stem.csv"), row.names = FALSE)
 # Write plot meta-data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)
 
-# Write census table to file
-write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)

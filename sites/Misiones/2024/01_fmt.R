@@ -70,7 +70,6 @@ s_clean <- s %>%
     pom_m = pom,
     notes = observaciones_campo_2024) %>% 
   mutate(
-    site_id = param$site_id,
     plot_id = as.character(plot_id),
     tree_id = NA_character_,
     diam_cm = case_when(
@@ -115,7 +114,6 @@ recs_clean <- recs %>%
     pom_m = pom,
     notes = observaciones_campo_2024) %>% 
   mutate(
-    site_id = param$site_id,
     plot_id = as.character(plot_id),
     tree_id = NA_character_,
     diam_cm = as.numeric(diam_cm) / pi,
@@ -143,46 +141,44 @@ recs_clean <- recs %>%
 s_all <- bind_rows(s_clean, recs_clean) %>% 
   mutate(record_id = row_number()) %>% 
   mutate(
+    site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
+    census_date = measurement_date,
     taxon_name = case_when(
-    taxon_name == "AN" ~ "AR",
-    taxon_name == "Ca" ~ "CA",
-    taxon_name == "camboata blanco" ~ "CB",
-    taxon_name == "Ga" ~ "GA",
-    taxon_name == "Gr" ~ "GR",
-    taxon_name == "Gy" ~ "GY",
-    taxon_name == "MUERTO" ~ NA_character_,
-    taxon_name == "myrcine" ~ "Myrsine",
-    taxon_name == "Pereskia aculeata" ~ "Pereskia aculeata",
-    taxon_name == "SY" ~ "SYM",
-    taxon_name == "bauhinia" ~ "PB",
-    taxon_name == "Bauhinia" ~ "PB",
-    taxon_name == "TC" ~ "Tabe.cath",
-    taxon_name == "ZP" ~ "PZ",
-    taxon_name == "Apoyante" ~ NA_character_,
-    taxon_name == "Sola1" ~ "Solanum",
-    taxon_name == "LIANA" ~ NA_character_,
-    taxon_name == "Liana" ~ NA_character_,
-    TRUE ~ taxon_name)) %>% 
+      taxon_name == "AN" ~ "AR",
+      taxon_name == "Ca" ~ "CA",
+      taxon_name == "camboata blanco" ~ "CB",
+      taxon_name == "Ga" ~ "GA",
+      taxon_name == "Gr" ~ "GR",
+      taxon_name == "Gy" ~ "GY",
+      taxon_name == "MUERTO" ~ NA_character_,
+      taxon_name == "myrcine" ~ "Myrsine",
+      taxon_name == "Pereskia aculeata" ~ "Pereskia aculeata",
+      taxon_name == "SY" ~ "SYM",
+      taxon_name == "bauhinia" ~ "PB",
+      taxon_name == "Bauhinia" ~ "PB",
+      taxon_name == "TC" ~ "Tabe.cath",
+      taxon_name == "ZP" ~ "PZ",
+      taxon_name == "Apoyante" ~ NA_character_,
+      taxon_name == "Sola1" ~ "Solanum",
+      taxon_name == "LIANA" ~ NA_character_,
+      taxon_name == "Liana" ~ NA_character_,
+      TRUE ~ taxon_name)) %>% 
   left_join(., sp[,c("cod_sp", "accepted_name", "life_form")], by = c("taxon_name" = "cod_sp")) %>% 
   mutate(taxon_name = ifelse(is.na(accepted_name), taxon_name, accepted_name)) %>% 
   filter(plot_id %in% pt$plot_id) %>% 
   dplyr::select(all_of(stem_cols$column_name)) 
 
 # Create census table
-census <- polys %>% 
+plots <- polys %>% 
   st_drop_geometry() %>% 
   mutate(
     census_id = as.integer(1),
     census_date = unique(s_all$measurement_date),
     measurement_date_min = census_date,
     measurement_date_max = census_date) %>% 
-  dplyr::select(all_of(census_cols$column_name))
-
-# Create plots table
-plots <- census %>% 
-  rename(census_date_all = census_date) %>% 
   mutate(
-    census_date_geotrees = census_date_all,
+    acquisition_id = param$acquisition_id,
     plot_width_m = 100,
     plot_length_m = 100,
     plot_slope_deg = NA_real_,
@@ -216,20 +212,16 @@ plots <- census %>%
 # Check all columns in output objects
 colCheck(plots, plot_cols)
 colCheck(pt, pt_cols)
-colCheck(census, census_cols)
 colCheck(s_all, stem_cols)
 
 # Check values
-plotValCheck(plots)
-ptValCheck(pt)
-censusValCheck(census)
-stemValCheck(s_all)
+valCheck(
+  plot = plots,
+  stem = s_all,
+  pt = pt)
 
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
-
-# Write census meta-data to file
-write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)
 
 # Write plot meta-data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)

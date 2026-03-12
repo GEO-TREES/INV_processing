@@ -43,10 +43,10 @@ s_sel <- s %>%
     flags = ListOfTSM) %>% 
   mutate(
     site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     taxon_name = paste(Genus, SpeciesName),
     x_rel_m = as.numeric(x_rel_m),
     y_rel_m = as.numeric(y_rel_m),
-    census_id = as.numeric(census_id),
     diam_cm = as.numeric(diam_cm) * 0.1,
     pom_m = as.numeric(pom_m) * 0.01,
     census_id = as.integer(census_id),
@@ -69,44 +69,28 @@ s_sel <- s %>%
     notes = NA_character_,
     pom_m = ifelse(grepl("M", code), NA_real_, pom_m)
     ) %>% 
-  group_by(census_id) %>% 
+  group_by(plot_id, census_id) %>% 
   mutate(
     measurement_date = ifelse(is.na(measurement_date), 
       as.character(median(as.Date(measurement_date), na.rm = TRUE)), 
-      measurement_date)) %>% 
+      measurement_date),
+    census_date = as.character(median(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
   filter(
     census_id == 2,
     !stem_id %in% c("216631", "88078", "249295")) %>% 
-  group_by(plot_id, census_id, stem_id) %>% 
+  group_by(plot_id, stem_id) %>% 
   mutate(measurement_id = row_number()) %>% 
   ungroup() %>% 
   mutate(record_id = row_number()) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
-# Create census table
-census <- s_sel %>% 
-  group_by(site_id, plot_id, census_id) %>% 
-  summarise(
-    census_date = as.character(median(as.Date(measurement_date), na.rm = TRUE)),
-    measurement_date_min = as.character(min(as.Date(measurement_date), na.rm = TRUE)),
-    measurement_date_max = as.character(max(as.Date(measurement_date), na.rm = TRUE))) %>% 
-  ungroup() %>% 
-  dplyr::select(all_of(census_cols$column_name))
-
 # Create plot table
-census_date_all <- s %>% 
-  group_by(CensusID) %>% 
-  summarise(census_date = as.character(median(as.Date(ExactDate), na.rm = TRUE))) %>% 
-  ungroup() %>% 
-  pull(census_date) %>% 
-  paste(., collapse = ";")
-
 plots <- data.frame(
     site_id = param$site_id,
-    plot_id = unique(census$plot_id),
-    census_date_geotrees = census$census_date,
-    census_date_all,
+    acquisition_id = param$acquisition_id,
+    plot_id = unique(s_sel$plot_id),
+    census_date = unique(s_sel$census_date),
     plot_width_m = 500,
     plot_length_m = 1000,
     plot_slope_deg = NA_real_,
@@ -140,20 +124,16 @@ plots <- data.frame(
 # Check all columns in output objects
 colCheck(plots, plot_cols)
 colCheck(pt, pt_cols)
-colCheck(census, census_cols)
 colCheck(s_sel, stem_cols)
 
 # Check values
-plotValCheck(plots)
-ptValCheck(pt)
-censusValCheck(census)
-stemValCheck(s_sel)
+valCheck(
+  plot = plots,
+  stem = s_sel,
+  pt = pt)
 
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
-
-# Write census meta-data to file
-write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)
 
 # Write plot meta-data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)

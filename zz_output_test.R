@@ -11,8 +11,8 @@ quad_summ_all <- bind_rows(lapply(list.files("./dat/sites/", "quad_summ.gpkg",
     recursive = TRUE, full.names = TRUE), 
   st_read))
 
-# Which quadrats contain no biomass?
+# Which quadrats within censuses contain no biomass?
 quad_summ_all %>% 
   filter(agb_Mg_sum_mc_mean_ha == 0 | is.na(agb_Mg_sum_mc_mean_ha)) %>% 
   st_drop_geometry() %>% 
-  dplyr::select(site_id, plot_id, quadrat_id, census_id, agb_Mg_sum_mc_mean_ha)
+  dplyr::select(site_id, acquisition_id, plot_id, quadrat_id, agb_Mg_sum_mc_mean_ha)

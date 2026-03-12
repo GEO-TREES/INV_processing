@@ -428,34 +428,30 @@ s3_clean <- s3 %>%
 # Join stems tables
 # Add metadata to stems
 s_all <- bind_rows(s_clean, s2_clean, s3_clean) %>% 
+  group_by(plot_id) %>% 
+  mutate(census_date = as.character(median(as.Date(measurement_date), na.rm = TRUE))) %>% 
+  ungroup() %>%
   mutate(
+    site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     subplot_id = as.character(subplot_id),
     tree_id = as.character(tree_id),
     stem_id = as.character(stem_id),
     record_id = row_number(),
-    site_id = param$site_id,
     height_m = NA_real_,
     taxon_name = gsub("NA NA", "Indet indet", taxon_name),
     diam_cm = ifelse(diam_cm == 0, NA_real_, diam_cm),
     agb_allometry = NA_character_) %>%
-  group_by(plot_id, census_id, stem_id) %>% 
+  group_by(plot_id, census_date, stem_id) %>% 
   mutate(measurement_id = row_number()) %>% 
   ungroup() %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
 # Prepare census table
-census <- s_all %>% 
-  group_by(site_id, plot_id, census_id) %>% 
-  summarise(census_date = format(mean(as.Date(measurement_date), na.rm = TRUE))) %>% 
-  ungroup() %>% 
-  dplyr::select(all_of(census_cols$column_name))
-
-# Prepare plots table
-plots <- census %>% 
-  dplyr::select(
-    site_id, plot_id, census_date_all = census_date) %>% 
+plots  <- s_all %>% 
+  dplyr::select(site_id, plot_id, acquisition_id, census_date) %>% 
+  distinct() %>% 
   mutate(
-    census_date_geotrees = census_date_all,
     plot_width_m = case_when(
       plot_id == "BCI 50 ha plot" ~ 500,
       plot_id == "ElCharco" ~ 100,
@@ -547,13 +543,12 @@ plots <- census %>%
 colCheck(plots, plot_cols)
 colCheck(pts_all, pt_cols)
 colCheck(s_all, stem_cols)
-colCheck(census, census_cols)
 
 # Check values
-plotValCheck(plots)
-ptValCheck(pts_all)
-stemValCheck(s_all)
-censusValCheck(census)
+valCheck(
+  plot = plots,
+  stem = s_all,
+  pt = pts_all)
 
 # Write origin points to file
 st_write(pts_all, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
@@ -563,6 +558,3 @@ write.csv(s_all, file.path(outdir, "stem.csv"), row.names = FALSE)
 
 # Write stem data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)
-
-# Write census table to file
-write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)

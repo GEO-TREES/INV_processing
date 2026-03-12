@@ -115,6 +115,7 @@ s_clean <- s %>%
     alive = CodeAlive) %>% 
   mutate(
     site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     plot_id = as.character(plot_id),
     subplot_id = as.character(subplot_id),
     tree_id = as.character(tree_id),
@@ -141,7 +142,9 @@ s_clean <- s %>%
   group_by(plot_id, census_id) %>% 
   mutate(census_date = format(mean(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
-  filter(as.Date(census_date) > as.Date("2017-01-01")) %>% 
+  group_by(plot_id) %>% 
+  filter(census_date == max(census_date)) %>% 
+  ungroup() %>% 
   mutate(record_id = row_number()) %>% 
   mutate(
     col = (as.numeric(subplot_id) - 1) %% 5,
@@ -154,22 +157,15 @@ s_clean <- s %>%
       TRUE ~ y_rel_m)) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
-census <- s_clean %>% 
-  group_by(plot_id, census_id) %>% 
+# Create plots table
+plots <- s_clean %>% 
+  group_by(plot_id, census_date) %>% 
   summarise(census_date = format(mean(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
   mutate(
     site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     min_diam_thresh_cm = 10) %>% 
-  dplyr::select(all_of(census_cols$column_name))
-
-# Create plots table
-plots <- census %>% 
-  group_by(site_id, plot_id) %>% 
-  summarise(
-    census_date_all = paste(census_date, collapse = ";"),
-    census_date_geotrees = max(census_date)) %>% 
-  ungroup() %>% 
   mutate(
     plot_width_m = case_when(
       plot_id == 16 ~ 500, 
@@ -209,13 +205,12 @@ plots <- census %>%
 colCheck(plots, plot_cols)
 colCheck(pt, pt_cols)
 colCheck(s_clean, stem_cols)
-colCheck(census, census_cols)
 
 # Check values
-plotValCheck(plots)
-ptValCheck(pt)
-stemValCheck(s_clean)
-censusValCheck(census)
+valCheck(
+  plot = plots,
+  stem = s_clean,
+  pt = pt)
 
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
@@ -225,7 +220,4 @@ write.csv(s_clean, file.path(outdir, "stem.csv"), row.names = FALSE)
 
 # Write stem data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)
-
-# Write census table to file
-write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)
 

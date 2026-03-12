@@ -13,7 +13,6 @@ stem_fil <- stem_summ %>%
   filter(
     !is.na(diam_cm),
     !is.na(quadrat_id),
-    !is.na(census_id),
     diam_cm >= meas_diam_min_cm,
     grepl("A", code),
     grepl("S", code),
@@ -21,7 +20,7 @@ stem_fil <- stem_summ %>%
     !grepl("T", code),
     !grepl("M", code)
   ) %>% 
-  group_by(site_id, plot_id, census_id, tree_id, stem_id) %>% 
+  group_by(site_id, plot_id, tree_id, stem_id) %>% 
   slice_max(
     order_by = tibble(pom_m, measurement_date, diam_cm), 
     n = 1, with_ties = FALSE) %>%

@@ -89,9 +89,9 @@ stemValCheck <- function(x) {
     stop("NAs in `plot_id` are not allowed")
   }
 
-  # Census ID must be positive integer
-  if (any(x$census_id <= 0 | x$census_id != floor(x$census_id), na.rm = TRUE)) { 
-    stop("`census_id` must be a positive integer")
+  # All rows must have an acquisition ID 
+  if (any(is.na(x$acquisition_id))) { 
+    stop("NAs in `acquisition_id` are not allowed")
   }
 
   # Measurement ID must be positive integer
@@ -137,7 +137,6 @@ stemValCheck <- function(x) {
   if (any(grepl("M", x$code) & (!is.na(x$diam_cm) | !is.na(x$height_m) | !is.na(x$pom_m)))) {
     stop("If `code` is 'M' (missing), diameter, height, and POM must be empty")
   }
-
 }
 
 #' Check taxon table values
@@ -163,50 +162,6 @@ taxonValCheck <- function(x) {
   }
 }
 
-#' Check census table values
-#'
-#' Runs various checks on the values in census table columns 
-#'
-#' @param x dataframe containing census metadata 
-#' 
-censusValCheck <- function(x) {
-  # Only one site ID per site
-  if (length(unique(x$site_id)) > 1) { 
-    stop("`site_id` must be the same for all plots within a site")
-  }
-
-  # All censuses must have a census_id
-  if (any(is.na(x$census_id))) { 
-    stop("NAs in `census_id` are not allowed")
-  }
-
-  # Census ID must be a positive integer
-  if (any(x$census_id <= 0 | x$census_id != floor(x$census_id), na.rm = TRUE)) { 
-    stop("`census_id` must be a positive integer")
-  }
-
-  # All censuses must have a census date
-  if (any(is.na(x$census_date))) { 
-    stop("NAs in `census_date` are not allowed")
-  }
-
-  # Census date must be either YYYY, YYYY-MM, YYYY-MM-DD
-  if (any(!grepl("^\\d{4}(-\\d{2}){0,2}$", x$census_date))) {
-    stop("`census_date` must be formatted either YYYY, YYYY-MM, or YYYY-MM-DD")
-  }
-
-  # Census IDs must be unique within plots
-  if (!all(table(x$census_id, x$plot_id) %in% c(0, 1))) {
-    stop("`census_id` and `plot_id` combinations must be unique")
-  }
-
-  # Census dates and census IDs must match
-  if (!all(table(x$census_date, x$plot_id) %in% c(0, 1))) {
-    stop("`census_date` and `plot_id` combinations must be unique")
-  }
-
-}
-
 #' Check plot meta-data table values
 #' 
 #' Runs various checks on the values in plot meta-data table columns 
@@ -220,18 +175,28 @@ plotValCheck <- function(x) {
   }
 
   # Only one entry per plot
-  if (length(unique(x$site_id)) > 1) { 
+  if (any(table(x$plot_id) > 1)) { 
     stop("`plot_id` must be unique within the site")
   }
 
-  # Census dates for GEO-TREES must not be empty
-  if (any(is.na(x$census_date_geotrees))) { 
-    stop("`census_date_geotrees` must be provided")
+  # All rows must have a plot ID 
+  if (any(is.na(x$plot_id))) { 
+    stop("NAs in `plot_id` are not allowed")
   }
 
-  # Census dates for GEO-TREES must not be empty
-  if (any(is.na(x$census_date_all))) { 
-    stop("`census_date_all` must be provided")
+  # All rows must have an acquisition ID 
+  if (any(is.na(x$acquisition_id))) { 
+    stop("NAs in `acquisition_id` are not allowed")
+  }
+
+  # All censuses must have a census date
+  if (any(is.na(x$census_date))) { 
+    stop("NAs in `census_date` are not allowed")
+  }
+
+  # Census date must be either YYYY, YYYY-MM, YYYY-MM-DD
+  if (any(!grepl("^\\d{4}(-\\d{2}){0,2}$", x$census_date))) {
+    stop("`census_date` must be formatted either YYYY, YYYY-MM, or YYYY-MM-DD")
   }
 
   # Plot length must be positive
@@ -278,11 +243,6 @@ plotValCheck <- function(x) {
 
 }
 
-# # All censuses must have a positive minimum diameter threshold
-# if (any(is.na(x$min_diam_thresh_cm) | x$min_diam_thresh_cm <= 0)) { 
-#   stop("`min_diam_thresh_cm` must be a positive number")
-# }
-
 #' Check plot corner sf object values
 #' 
 #' Runs various checks on the values in plot corner sf object columns 
@@ -300,16 +260,16 @@ ptValCheck <- function(x) {
     stop("NAs in `plot_id` are not allowed")
   }
 
-  # All corners must have a name
-  if (any(is.na(x$corner_id))) { 
-    stop("NAs in `corner_id` are not allowed")
+  # All points must have a name
+  if (any(is.na(x$point_id))) { 
+    stop("NAs in `point_id` are not allowed")
   }
 
   # Corner IDs must be unique within a plot
   if (any(unlist(lapply(split(x, x$plot_id), function(y) { 
-        any(duplicated(y$corner_id))
+        any(duplicated(y$point_id))
     })))) {
-    stop("`corner_id` must be unique within a plot")
+    stop("`point_id` must be unique within a plot")
   }
 
   # All X coordinates must be filled
@@ -331,7 +291,61 @@ ptValCheck <- function(x) {
   if (sf::st_crs(x) != st_crs(4326)) {
     stop("Must be WGS84 EPSG:4326")
   }
+}
 
+#' Check values across data objects
+#' 
+#' Runs various checks on values across plot, stem, pt and taxon objects
+#'
+#' @param plot 
+#' @param stem 
+#' @param pt 
+#' @param taxon 
+#'
+valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL) { 
+
+  # Run single table checks
+  if (!is.null(plot)) {
+    plotValCheck(plot)
+  }
+
+  if (!is.null(stem)) {
+    stemValCheck(stem)
+  }
+
+  if (!is.null(pt)) {
+    ptValCheck(pt)
+  }
+
+  if (!is.null(taxon)) {
+    taxonValCheck(taxon)
+  }
+
+  # Run tests to match plot and stem tables
+  if (!is.null(plot) & !is.null(stem)) {
+    # All plots and censuses in stem must be in plot
+    if (!all(paste(stem$plot_id, stem$census_date) %in% paste(plot$plot_id, plot$census_date))) {
+      stop("Some plot-census combinations in 'stem' are missing from 'plot'")
+    }
+
+    # Acquisition IDs must match
+    if (any(unique(plot$acquisition_id) != unique(stem$acquisition_id))) {
+      stop("Acquisition IDs do not match between 'plot' and 'stem'")
+    }
+  }
+
+  # Run tests to match plot and pt tables
+  if (!is.null(plot) & !is.null(pt)) {
+    # All plots must match between plot and pt
+    if (any(sort(unique(pt$plot_id)) != sort(unique(plot$plot_id)))) {
+      stop("'plot_id' does not match between 'plot' and 'pt'")
+    }
+  }
+
+  # Run tests to match stem and taxon tables
+  if (!is.null(stem) & !is.null(taxon)) {
+    # TODO:
+  }
 }
 
 #' Import saved WFO cache file

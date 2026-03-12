@@ -25,25 +25,14 @@ pt <- plot_corners %>%
   filter(plot_id != "P1") %>% 
   dplyr::select(all_of(pt_cols$column_name))
 
-# Create census meta-data table
-census <- p %>% 
-  dplyr::select(-plot_id) %>% 
-  rename(
-    plot_id = plot_name) %>% 
-  group_by(plot_id) %>% 
-  mutate(census_id = dense_rank(census_date)) %>% 
-  ungroup() %>% 
-  mutate(site_id = param$site_id) %>% 
-  filter(plot_id != "P1") %>% 
-  dplyr::select(all_of(census_cols$column_name))
-
 # Prepare stem data 
 s_clean <- s %>% 
   left_join(., unique(p[,c("plot_id", "plot_name")]), by = "plot_id") %>% 
   group_by(plot_name, stem_id) %>% 
   arrange(census_date) %>% 
-  fill(x_grid, y_grid, .direction = "downup") %>% 
+  fill(x_grid, y_grid, subplot_id, .direction = "downup") %>% 
   ungroup() %>% 
+  filter(grepl("2024", census_date)) %>% 
   dplyr::select(-plot_id) %>% 
   rename(
     measurement_date = census_date,
@@ -56,7 +45,7 @@ s_clean <- s %>%
     taxon_name = species_name_clean,
     notes = notes_stem) %>% 
   mutate(
-    census_id = as.numeric(gsub("-.*", "", measurement_date)),
+    acquisition_id = param$acquisition_id,
     site_id = param$site_id,
     alive = ifelse(stem_status %in% c("a", "r"), "A", "D"),
     broken = ifelse(grepl("b|p", stem_mode), "B", ""),
@@ -67,24 +56,23 @@ s_clean <- s %>%
     agb_allometry = NA_character_,
     subplot_id = as.character(subplot_id)) %>% 
   group_by(plot_id) %>% 
-  mutate(census_id = dense_rank(census_id)) %>% 
+  mutate(census_date = as.character(median(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
-  group_by(plot_id, census_id, stem_id) %>% 
+  group_by(plot_id, stem_id) %>% 
   mutate(measurement_id = row_number()) %>% 
   ungroup() %>% 
-  mutate(measurement_date = gsub("-01-01", "", measurement_date)) %>% 
   mutate(record_id = row_number()) %>% 
-  filter(plot_id != "P1") %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
 # Create plots table
-plots <- census %>% 
-  group_by(site_id, plot_id) %>%
-  summarise(
-    census_date_all = paste(census_date, collapse = ";"),
-    census_date_geotrees = max(census_date)) %>% 
-  ungroup() %>% 
+plots <- p %>% 
+  dplyr::select(-plot_id) %>% 
+  rename(plot_id = plot_name) %>% 
+  mutate(site_id = param$site_id) %>% 
+  filter(grepl("2024", census_date)) %>% 
+  filter(plot_id != "P1") %>% 
   mutate(
+    acquisition_id = param$acquisition_id,
     plot_width_m = 100,
     plot_length_m = 100,
     plot_slope_deg = NA_real_,
@@ -118,20 +106,16 @@ plots <- census %>%
 # Check all columns in output objects
 colCheck(plots, plot_cols)
 colCheck(pt, pt_cols)
-colCheck(census, census_cols)
 colCheck(s_clean, stem_cols)
 
 # Check values
-plotValCheck(plots)
-ptValCheck(pt)
-censusValCheck(census)
-stemValCheck(s_clean)
+valCheck(
+  plot = plots, 
+  stem = s_clean, 
+  pt = pt)
 
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
-
-# Write census meta-data to file
-write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)
 
 # Write plot meta-data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)

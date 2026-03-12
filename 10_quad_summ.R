@@ -9,7 +9,7 @@ quad_poly_area$quadrat_area_ha <- drop_units(st_area(quad_poly)) * 0.0001
 # Calculate quadrat summary values
 quad_summ <- stem_fil %>% 
   st_drop_geometry() %>% 
-  group_by(site_id, plot_id, quadrat_id, census_id, census_date) %>% 
+  group_by(site_id, acquisition_id, plot_id, quadrat_id, census_date) %>% 
   summarise(
     n_stem = n(),
     ba_m2_sum = sum(ba_m2, na.rm = TRUE),
@@ -28,7 +28,7 @@ quad_summ <- stem_fil %>%
     meanWD_wm_ba = weighted.mean(meanWD, ba_m2),
     .groups = "drop_last") %>% 
   ungroup() %>% 
-  left_join(., quad_agb, by = c("quadrat_id", "census_id")) %>% 
+  left_join(., quad_agb, by = "quadrat_id") %>% 
   left_join(., quad_poly_area, by = c("plot_id", "quadrat_id")) %>% 
   mutate(
     across(
@@ -43,11 +43,8 @@ quad_summ <- stem_fil %>%
 
 # Add quadrat polygons, fill in quadrats with no trees
 quad_summ_out <- quad_poly %>% 
-  left_join(., census, 
-    by = "plot_id",
-    relationship = "many-to-many") %>% 
   left_join(., quad_summ, 
-    by = c("site_id", "plot_id", "quadrat_id", "census_id", "census_date")) %>% 
+    by = c("plot_id", "quadrat_id")) %>% 
   mutate(
     across(all_of(c(
       "n_stem", 

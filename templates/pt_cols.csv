@@ -1,7 +1,7 @@
-column_name,class,description,units,raw_data
-site_id,character,GEO-TREES site ID,NA,TRUE
-plot_id,character,"Plot name, unique within the site",NA,TRUE
-point_id,character,"Point name. E.g. NW, SW, SE, NE, 1, 2, 3, 4. Unique within a plot.",NA,TRUE
-x_rel_m,numeric,X coordinate of the stem map at this point relative to the entire plot (m),m,TRUE
-y_rel_m,numeric,Y coordinate of the stem map at this point relative to the entire plot (m),m,TRUE
-geometry,sfc_POINT,`sf` geometry data,NA,TRUE
+column_name,class,description,units
+site_id,character,GEO-TREES site ID,NA
+plot_id,character,"Plot name, unique within the site",NA
+point_id,character,"Point name. E.g. NW, SW, SE, NE, 1, 2, 3, 4. Unique within a plot.",NA
+x_rel_m,numeric,X coordinate of the stem map at this point relative to the entire plot (m),m
+y_rel_m,numeric,Y coordinate of the stem map at this point relative to the entire plot (m),m
+geometry,sfc_POINT,`sf` geometry data,NA

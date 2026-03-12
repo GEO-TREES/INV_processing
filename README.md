@@ -1,11 +1,12 @@
-# Workflows for processing GEO-TREES tree inventory data
+# Workflow for processing GEO-TREES tree inventory data
 
 This repository contains code to clean and process tree inventory data from GEO-TREES sites.
 
-Each directory in `./sites/` contains a `./*/01_fmt.R` script to perform initial cleaning on raw data from each GEO-TREES site. This script produces four files:
+Each directory in `./sites/` contains one or more acquisition sub-directories. Acquisitions are bundles of raw (L0) tree inventory data, which can be used together with a single airborne LiDAR (ALS) data acquisition to produce estimates of above-ground woody biomass density (AGBD) across the focal landscape of a site. A tree inventory acquisition may comprise one or more discrete data collection events, e.g. the census of a group of plots within the site during a single field campaign. Acquisitions may include data from some or all plots within a site. Acquisitions should only contain one census per plot. Acquisitions are named according to the mid-date of all stem measurements within the acquisition. Crucially, censuses bundled within an acquisition should generally occur within one year either side of the corresponding ALS acquisition. While this window is somewhat subjective, depending on disturbance events and seasonality, staying within this range minimises temporal mismatches that could compromise AGBD estimates.
 
-* `stem.csv` - Stem measurement table, where each row is a measurement of a stem within a census within a plot.
-* `census.csv` - Census metadata table, where each row is a census within a plot. 
+Each acquisition directory contains a `./<SITE>/<ACQUISITION>/01_fmt.R` script to perform initial cleaning of raw (L0) data. This script produces four files:
+
+* `stem.csv` - Stem measurement table, where each row is a measurement of a stem within a single census within a plot.
 * `plot.csv` - Plot metadata table, where each row is a plot. 
 * `plot_pt.gpkg` - Points locating the corners of plots, with additional columns describing the stem map coordinate system.
 
@@ -14,7 +15,7 @@ See `./templates/*` for guidance on which columns should be included in these fi
 In the root directory there are additional scripts which process data from any site:
 
 * `./02_taxa.R` - correct taxonomic information
-* `./03_quad.R` - create quadrats in each plot for each census
+* `./03_quad.R` - create quadrats in each plot 
 * `./04_wd.R` - estimate wood density for each stem measurement
 * `./05_height.R` - estimate stem height for each stem measurement
 * `./06_agb_stem.R` - estimate above-ground woody biomass for each stem measurement
@@ -22,9 +23,10 @@ In the root directory there are additional scripts which process data from any s
 * `./08_stem_fil.R` - filter stem measurements before AGB Monte-Carlo 
 * `./09_agb_mc.R` - AGB Monte-Carlo error propagation
 * `./10_quad_summ.R` - summarise quadrat measurements
-* `./11_brm.R` - Create L2 and L3 datasets
+* `./11_brm.R` - Create L1, L2 and L3 datasets
 
 * `./zz_site.R` - run scripts in order to process a single site
+* `./zz_site_all.R` - run scripts in order to process all sites with a valid `param.yaml` configuration file
 * `./zz_wd_prep.R` - prepare wood density dataset
 * `./zz_renv.R` - prepare reproducible R environment
 
@@ -59,7 +61,7 @@ The `./.renvignore` file specifies files and directories to be monitored for new
 
 To track data inputs and versions of the processing code, each `L`-level data output is accompanied by an [RO-Crate](https://www.researchobject.org/ro-crate/) JSON file containing this meta-data. `./11_brm.R` contains code to programmatically create these files. These files can be used to precisely reproduce each data output.
 
-A `param.yaml` file is used to track user-defined parameters such as the site name, quadrat dimensions, input and output directories. A copy of this file is placed alongside each `L`-level data output. A template of `param.yaml` is located in `./templates/param.yaml`.
+A `param.yaml` file is used to track user-defined parameters for each acquisition, such as the site name, quadrat dimensions, input and output directories. A copy of this file is placed alongside each `L`-level data output. A template of `param.yaml` is located in `./templates/param.yaml`.
 
 `./version.yaml` is used to track code versions. 
 

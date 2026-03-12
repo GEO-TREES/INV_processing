@@ -83,6 +83,7 @@ s_clean <- s %>%
     alive = CodeAlive) %>% 
   mutate(
     site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     plot_id = as.character(plot_id),
     subplot_id = as.character(subplot_id),
     tree_id = as.character(tree_id),
@@ -105,29 +106,26 @@ s_clean <- s %>%
   group_by(plot_id) %>% 
   mutate(census_id = dense_rank(census_id)) %>% 
   ungroup() %>% 
+  group_by(plot_id, census_id) %>% 
+  mutate(census_date = as.character(median(as.Date(measurement_date)))) %>% 
+  ungroup() %>% 
   group_by(plot_id, tree_id, stem_id, census_id) %>% 
   mutate(measurement_id = row_number()) %>% 
   ungroup() %>% 
   mutate(record_id = row_number()) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
-# Create census table
-census <- s_clean %>% 
-  group_by(plot_id, census_id) %>% 
+# Create plots table
+plots <- s_clean %>% 
+  group_by(plot_id, census_date) %>% 
   summarise(census_date = format(mean(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
   mutate(
     site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     min_diam_thresh_cm = 10,
     census_id_all = "1") %>%
-  dplyr::select(all_of(census_cols$column_name))
-
-# Create plots table
-plots <- census %>% 
-  dplyr::select(
-    site_id, plot_id, census_date_all = census_date) %>% 
   mutate(
-    census_date_geotrees = census_date_all,
     plot_width_m = 300,
     plot_length_m = 400,
     plot_slope_deg = NA_real_,
@@ -162,13 +160,12 @@ plots <- census %>%
 colCheck(plots, plot_cols)
 colCheck(pt, pt_cols)
 colCheck(s_clean, stem_cols)
-colCheck(census, census_cols)
 
 # Check values
-# plotValCheck(plot)
-ptValCheck(pt)
-stemValCheck(s_clean)
-censusValCheck(census)
+valCheck(
+  plot = plots,
+  stem = s_clean,
+  pt = pt)
 
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
@@ -178,7 +175,4 @@ write.csv(s_clean, file.path(outdir, "stem.csv"), row.names = FALSE)
 
 # Write plot meta-data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)
-
-# Write census table to file
-write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)
 

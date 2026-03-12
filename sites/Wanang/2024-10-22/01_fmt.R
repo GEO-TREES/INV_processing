@@ -17,13 +17,14 @@ s_clean <- s %>%
     pom_m = HOM, 
     measurement_date = EaxctDate) %>%
   mutate(
-         plot_id = as.character(plot_id),
-         subplot_id = as.character(subplot_id),
-         stem_id = as.character(stem_id),
+    site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
+    plot_id = as.character(plot_id),
+    subplot_id = as.character(subplot_id),
+    stem_id = as.character(stem_id),
     record_id = row_number(),
     tree_id = NA_character_,
     height_m = NA_real_,
-    site_id = param$site_id,
     alive = ifelse(status %in% c("alive", "alivealive below"), "A", "D"),
     missing = ifelse(status %in% c("missing") & is.na(diam_cm), "M", ""),
     broken = "",
@@ -34,9 +35,12 @@ s_clean <- s %>%
     notes = NA_character_,
     measurement_date = ifelse(is.na(measurement_date), first(na.omit(measurement_date)), measurement_date),
     taxon_name = paste(Genus, SpeciesName)) %>% 
-  group_by(plot_id, census_id, stem_id) %>% 
+  group_by(plot_id, stem_id) %>% 
   mutate(measurement_id = row_number()) %>% 
   ungroup() %>% 
+  group_by(plot_id) %>% 
+  mutate(census_date = as.character(median(as.Date(measurement_date)))) %>% 
+  ungroup() %>%
   dplyr::select(all_of(stem_cols$column_name))
 
 # Format plot corners
@@ -51,18 +55,12 @@ pt_clean <- pt %>%
          y_rel_m = as.numeric(y_rel_m)) %>% 
   dplyr::select(all_of(pt_cols$column_name))
 
-# Create census table
-census <- s_clean %>% 
-  group_by(site_id, plot_id, census_id) %>% 
-  summarise(census_date = as.character(mean(as.Date(measurement_date), na.rm = TRUE))) %>% 
-  mutate(min_diam_thresh_cm = 10) %>% 
-  dplyr::select(all_of(census_cols$column_name))
-
 # Create plot meta-data table
-plots <- census %>% 
-  dplyr::select(site_id, plot_id, census_date_all = census_date) %>% 
+plots <- s_clean %>% 
+  dplyr::select(site_id, acquisition_id, plot_id, census_date) %>% 
+  distinct() %>% 
   mutate(
-    census_date_geotrees = census_date_all,
+    min_diam_thresh_cm = 10,
     plot_width_m = 100,
     plot_length_m = case_when(
       plot_id == "2" ~ 400,
@@ -98,20 +96,16 @@ plots <- census %>%
 # Check all columns in output objects
 colCheck(plots, plot_cols)
 colCheck(pt_clean, pt_cols)
-colCheck(census, census_cols)
 colCheck(s_clean, stem_cols)
 
 # Check values
-plotValCheck(plots)
-ptValCheck(pt_clean)
-censusValCheck(census)
-stemValCheck(s_clean)
+valCheck(
+  plot = plots,
+  stem = s_clean,
+  pt = pt_clean)
 
 # Write corner points to file
 st_write(pt_clean, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
-
-# Write census meta-data to file
-write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)
 
 # Write plot meta-data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)

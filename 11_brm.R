@@ -5,11 +5,9 @@
 # Prepare L1 dataset
 L1 <- stem_summ %>% 
   bind_cols(., st_coordinates(.)) %>% 
-  group_by(plot_id) %>% 
-  filter(census_id == max(census_id)) %>% 
-  ungroup() %>% 
   dplyr::select(
     BRM_site = site_id,
+    Acquisition = acquisition_id,
     Plot_name = plot_id,
     Tree_label = tree_id,
     Stem_label = stem_id,
@@ -24,15 +22,13 @@ L1 <- stem_summ %>%
 
 # Prepare L2 stems dataset
 L2_stem <- stem_fil %>% 
-  group_by(quadrat_id) %>% 
-  filter(census_id == max(census_id)) %>% 
-  ungroup() %>% 
   left_join(., stem_agb_mc, by = "record_id") %>% 
   mutate(
     Tree_label = pasteVals(tree_id, stem_id, sep = ":"),
     agb_Mg_mean = ifelse(is.na(agb_Mg_mean), agb_Mg, agb_Mg_mean)) %>% 
   dplyr::select(
     BRM_site = site_id,
+    Acquisition = acquisition_id,
     Plot_name = plot_id,
     Tree_label,
     Longitude = longitude,
@@ -55,11 +51,9 @@ stopifnot(all(!is.na(L2_stem$AGB_tree_estimate)))
 
 # Prepare L3 dataset
 L3 <- quad_summ %>% 
-  group_by(quadrat_id) %>% 
-  filter(census_id == max(census_id)) %>% 
-  ungroup() %>% 
   dplyr::select(
     BRM_site = site_id,
+    Acquisition = acquisition_id,
     Plot_name = plot_id,
     Quadrat_name = quadrat_id,
     AGBD_stand_estimate = agb_Mg_sum_mc_mean_ha,

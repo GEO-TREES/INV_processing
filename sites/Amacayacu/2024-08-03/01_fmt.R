@@ -43,6 +43,7 @@ s_clean <- s %>%
     measurement_date = date4,
     notes = obs4) %>% 
   mutate(
+    acquisition_id = param$acquisition_id,
     site_id = param$site_id, 
     census_id = as.integer(4),
     plot_id = "Amacayacu_1",
@@ -56,26 +57,21 @@ s_clean <- s %>%
     stump = "",
     code = pasteVals(alive, broken, fallen, missing, stump),
     agb_allometry = NA_character_) %>% 
-  group_by(plot_id, census_id, stem_id) %>% 
+  group_by(plot_id) %>% 
+  mutate(census_date = as.character(median(as.Date(measurement_date)))) %>% 
+  ungroup() %>% 
+  group_by(plot_id, stem_id) %>% 
   mutate(measurement_id = row_number()) %>% 
   ungroup() %>% 
   mutate(record_id = row_number()) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
-# Create census table
-census <- s_clean %>% 
-  group_by(site_id, plot_id, census_id) %>% 
-  summarise(census_date = as.character(mean(as.Date(measurement_date), na.rm = TRUE))) %>% 
-  ungroup() %>% 
-  mutate(census_id = as.integer(census_id)) %>% 
-  dplyr::select(all_of(census_cols$column_name))
-  
 # Create plot metadata table
 p_clean <- data.frame(
   site_id = param$site_id, 
+  acquisition_id = param$acquisition_id,
   plot_id = "Amacayacu_1",
-  census_date_geotrees = as.character(census$census_date[census$census_id == 4]),
-  census_date_all = "2008-05-17;2014-12-08;2020-06-05;2024-02-27",
+  census_date = unique(s_clean$census_date),
   plot_width_m = 500,
   plot_length_m = 500,
   plot_slope_deg = NA_real_,
@@ -109,20 +105,16 @@ dplyr::select(all_of(plot_cols$column_name))
 # Check all columns in output objects
 colCheck(p_clean, plot_cols)
 colCheck(pt, pt_cols)
-colCheck(census, census_cols)
 colCheck(s_clean, stem_cols)
 
 # Check values
-plotValCheck(p_clean)
-ptValCheck(pt)
-censusValCheck(census)
-stemValCheck(s_clean)
+valCheck(
+  plot = p_clean,
+  stem = s_clean,
+  pt = pt)
 
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
-
-# Write census meta-data to file
-write.csv(census, file.path(outdir, "census.csv"), row.names = FALSE)
 
 # Write plot meta-data to file
 write.csv(p_clean, file.path(outdir, "plot.csv"), row.names = FALSE)

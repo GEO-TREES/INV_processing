@@ -1,7 +1,0 @@
-site_id: "PanamaCanal"
-acquisition_id: "2025-06-23"
-out_dir: "./dat/sites/PanamaCanal/2025-06-23"
-raw_dir: "./dat/sites/PanamaCanal/2025-06-23/L0"
-s3_dir: "johngodlee/GEO-TREES_PDA/dat/sites/PanamaCanal/L0"
-quad_dim: [50, 50]
-opt_s3: false

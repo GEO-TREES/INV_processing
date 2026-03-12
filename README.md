@@ -45,9 +45,14 @@ Key outputs from each site include:
 * `./10_quad_summ.R`:
     * `quad_summ.gpkg` - Combined quadrat-level dataset. Includes data from `04_quad/quad_poly.gpkg`, `07_stem_summ/stem_summ.gpkg`.
 * `./11_brm.R`:
-    * `*_L1.csv` - GEO-TREES L1 tree inventory data product for upload to data.geo-trees.org
-    * `*_L2.csv` - GEO-TREES L2 tree inventory data product for upload to data.geo-trees.org
-    * `*_L3.csv` - GEO-TREES L3 tree inventory data product for upload to data.geo-trees.org
+    * L1
+        * `*_L1_*_stem.csv` - GEO-TREES L1 stem measurement data
+        * `*_L1_*_pt.gpkg` - GEO-TREES L1 plot spatial reference points
+    * L2
+        * `*_L2_*_stem.csv` - GEO-TREES L2 stem AGB estimates
+        * `*_L2_*_poly.gpkg` - GEO-TREES L2 plot spatial polygons
+    * L3
+        * `*_L3_*_quad.gpkg` - GEO-TREES L3 quadrat AGBD estimates
 
 ## Environment 
 

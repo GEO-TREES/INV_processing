@@ -1,0 +1,143 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/28.0.4 Chrome/138.0.7204.97 Electron/37.2.1 Safari/537.36" version="28.0.4">
+  <diagram name="Page-1" id="9sY1Td-BVDshkgw1yt8k">
+    <mxGraphModel dx="983" dy="588" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="iDL1loc01U4FXoYdKAi--2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.75;exitY=0;exitDx=0;exitDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--4" edge="1" target="iDL1loc01U4FXoYdKAi--80">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="160" y="180" />
+              <mxPoint x="300" y="180" />
+            </Array>
+            <mxPoint x="290" y="210" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--4" edge="1" target="iDL1loc01U4FXoYdKAi--89">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="80" y="160" />
+              <mxPoint x="460" y="160" />
+            </Array>
+            <mxPoint x="620" y="200" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--4" value="Raw tree inventory data [L0]" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;fillColor=#D9D9D9;fontColor=#333333;strokeColor=#666666;" parent="1" vertex="1">
+          <mxGeometry x="40" y="190" width="160" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--5" value="Stem measurement table" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" parent="iDL1loc01U4FXoYdKAi--4" vertex="1">
+          <mxGeometry y="30" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="q-BMRPveGdaiZa-Hyo3l-1" value="Taxonomy table" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" vertex="1" parent="iDL1loc01U4FXoYdKAi--4">
+          <mxGeometry y="60" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--6" value="Plot meta-data table" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" parent="iDL1loc01U4FXoYdKAi--4" vertex="1">
+          <mxGeometry y="90" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--7" value="GNSS coordinates" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" parent="iDL1loc01U4FXoYdKAi--4" vertex="1">
+          <mxGeometry y="120" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--79" value="Initial QA/QC and data formatting" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;labelBackgroundColor=default;" parent="1" vertex="1">
+          <mxGeometry x="214" y="150" width="200" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--92" value="Clean taxonomy" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--80" target="iDL1loc01U4FXoYdKAi--82" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--94" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--80" target="iDL1loc01U4FXoYdKAi--83" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="220" y="245" />
+              <mxPoint x="220" y="350" />
+              <mxPoint x="140" y="350" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--112" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--80" target="iDL1loc01U4FXoYdKAi--84" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--80" value="Stem measurements&lt;br&gt;(_stem.csv) [L1]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="240" y="200" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--93" value="Estimate wood density" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--82" target="iDL1loc01U4FXoYdKAi--85" edge="1">
+          <mxGeometry x="-0.3333" y="20" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--82" value="&lt;div&gt;Cleaned taxonomic names&lt;/div&gt;(stem_taxa.csv)" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="240" y="290" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--97" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--83" target="iDL1loc01U4FXoYdKAi--84" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--83" value="&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;Stem height estimates&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;(stem_taxa.csv)&lt;/span&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="80" y="380" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--102" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--84" target="iDL1loc01U4FXoYdKAi--86" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="460" y="500" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--84" value="Stem simple AGB estimates&lt;div&gt;(stem_agb.csv)&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="240" y="470" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--111" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--85" target="iDL1loc01U4FXoYdKAi--84" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--85" value="&lt;div&gt;Stem wood density estimates&lt;/div&gt;&lt;div&gt;(stem_wd.csv)&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="240" y="380" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--115" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--86" target="iDL1loc01U4FXoYdKAi--91" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="620" y="440" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--86" value="Filtered stem measurements&lt;div&gt;(_stem.csv) [L2]&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" vertex="1">
+          <mxGeometry x="400" y="380" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--98" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="q-BMRPveGdaiZa-Hyo3l-2" target="iDL1loc01U4FXoYdKAi--90" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="459.9999999999998" y="259.9999999999999" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="q-BMRPveGdaiZa-Hyo3l-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="iDL1loc01U4FXoYdKAi--89" target="q-BMRPveGdaiZa-Hyo3l-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--89" value="GNSS coordinates&lt;div&gt;(_pt.gpkg) [L1]&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
+          <mxGeometry x="400" y="200" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--114" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--90" target="iDL1loc01U4FXoYdKAi--91" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--90" value="Quadrat polygons&amp;nbsp;&lt;div&gt;(poly_quad.gpkg, stem_quad.csv)&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="400" y="300" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--91" value="50x50 m quadrat AGBD estimates [L3]&lt;div&gt;(_quad.gpkg)&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
+          <mxGeometry x="620" y="340" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--78" value="AGB &lt;br&gt;Monte-Carlo error propagation" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;fillColor=none;spacing=0;spacingBottom=0;" parent="1" vertex="1">
+          <mxGeometry x="526" y="340" width="80" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--64" value="Combine and filter stem datasets" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;" parent="1" vertex="1">
+          <mxGeometry x="405" y="485" width="110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--106" value="Split plots into quadrats" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;fillColor=none;" parent="1" vertex="1">
+          <mxGeometry x="460" y="250" width="176" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--108" value="Estimate stem height" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;" parent="1" vertex="1">
+          <mxGeometry x="120" y="350" width="110" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="iDL1loc01U4FXoYdKAi--109" value="Estimate stem AGB" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;" parent="1" vertex="1">
+          <mxGeometry x="250" y="440" width="110" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="q-BMRPveGdaiZa-Hyo3l-2" value="Plot polygons&lt;br&gt;&lt;div&gt;(_poly.gpkg) [L2]&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="590" y="200" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="q-BMRPveGdaiZa-Hyo3l-4" value="Fit plot polygons" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;" vertex="1" parent="1">
+          <mxGeometry x="520" y="200" width="60" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,10 +1,15 @@
 # Ignore directories
 dat/
 old/
-drawio/
 
 # Ignore .ipynb_checkpoints/ directories anywhere in the repo
 **/.ipynb_checkpoints/
+
+# Ignore .drawio output and backup files
+drawio/.*.drawio.bkp
+drawio/*.drawio.bkp
+drawio/*.pdf
+drawio/*.png
 
 # macOS system files
 .DS_Store

@@ -49,7 +49,10 @@ pt_clean <- pt %>%
   mutate(plot_id = as.character(plot_id)) %>%
   st_as_sf(., coords = c("X", "Y"), crs = 32755) %>% 
   st_transform(., 4326) %>% 
-  mutate(site_id = param$site_id) %>% 
+  mutate(
+    site_id = param$site_id,
+    acquisition_id = param$acquisition_id
+    ) %>% 
   mutate(
          x_rel_m = as.numeric(x_rel_m),
          y_rel_m = as.numeric(y_rel_m)) %>% 

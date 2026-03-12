@@ -138,7 +138,10 @@ plots <- s_clean %>%
 # Create final corner point object
 pt <- do.call(rbind, all_corners) %>% 
   filter(plot_id %in% plots$plot_id) %>% 
-  mutate(site_id = param$site_id, .before = everything()) %>% 
+  mutate(
+    site_id = param$site_id, 
+    acquisition_id = param$acquisition_id, 
+    .before = everything()) %>% 
   mutate(
     x_rel_m = case_when(
       point_id == "SW" ~ 0,

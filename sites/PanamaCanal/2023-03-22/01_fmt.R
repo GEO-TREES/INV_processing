@@ -83,12 +83,14 @@ sanlorenzo_poly <- read_sf(file.path(indir, "san_lorenzo/san_lorenzo.shp")) %>%
 # Combine all polys 
 polys <- bind_rows(gigante_poly, bci50ha_poly, ctfssmall_poly, 
   sanlorenzo_poly) %>%
-  mutate(site_id = param$site_id)
+  mutate(
+    site_id = param$site_id,
+    acquisition_id = param$acquisition_id)
 
 # Cast polygons to points
 pts <- st_cast(polys, "POINT") %>% 
-  dplyr::select(site_id, plot_id) %>% 
-  group_by(site_id, plot_id) %>%
+  dplyr::select(site_id, acquisition_id, plot_id) %>% 
+  group_by(site_id, acquisition_id, plot_id) %>%
   slice_head(n = -1) %>% 
   mutate(point_id = as.character(row_number())) %>% 
   mutate(
@@ -254,6 +256,7 @@ joe_corner_all <- bind_rows(lapply(1:nrow(joe_corner_fil), function(i) {
     point_id = Corner) %>% 
   mutate(
     site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     x_rel_m = case_when(
       plot_id == "10-ha" & point_id == "SW" ~ 0,
       plot_id == "10-ha" & point_id == "SE" ~ 1000,
@@ -449,7 +452,7 @@ s_all <- bind_rows(s_clean, s2_clean, s3_clean) %>%
 
 # Prepare census table
 plots  <- s_all %>% 
-  dplyr::select(site_id, plot_id, acquisition_id, census_date) %>% 
+  dplyr::select(site_id, acquisition_id, plot_id, census_date) %>% 
   distinct() %>% 
   mutate(
     plot_width_m = case_when(

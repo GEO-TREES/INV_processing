@@ -89,6 +89,7 @@ pt <- plot_meta %>%
   st_as_sf(., coords = c("longitude", "latitude"), crs = 4326) %>% 
   mutate(
     site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     x_rel_m = case_when(
       point_id %in% c("SW", "NW") ~ 0,
       point_id %in% c("SE", "NE") & PlotArea == 6.25 ~ 250,

@@ -29,7 +29,7 @@ quad_summ <- stem_fil %>%
     .groups = "drop_last") %>% 
   ungroup() %>% 
   left_join(., quad_agb, by = "quadrat_id") %>% 
-  left_join(., quad_poly_area, by = c("plot_id", "quadrat_id")) %>% 
+  left_join(., quad_poly_area, by = c("site_id", "acquisition_id", "plot_id", "quadrat_id")) %>% 
   mutate(
     across(
       starts_with(c("n_stem_", "ba_m2_", "agb_Mg")), 
@@ -44,7 +44,7 @@ quad_summ <- stem_fil %>%
 # Add quadrat polygons, fill in quadrats with no trees
 quad_summ_out <- quad_poly %>% 
   left_join(., quad_summ, 
-    by = c("plot_id", "quadrat_id")) %>% 
+    by = c("site_id", "acquisition_id", "plot_id", "quadrat_id")) %>% 
   mutate(
     across(all_of(c(
       "n_stem", 

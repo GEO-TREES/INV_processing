@@ -40,7 +40,7 @@ L2_stem <- stem_fil %>%
 
 # Prepare L2 plot polygons dataset
 L2_poly <- plot_pt %>% 
-  group_by(site_id, plot_id) %>% 
+  group_by(site_id, acquisition_id, plot_id) %>% 
   summarise(.groups = "drop_last") %>% 
   st_cast("POLYGON") %>% 
   ungroup() 

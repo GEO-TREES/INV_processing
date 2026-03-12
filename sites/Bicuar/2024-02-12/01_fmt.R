@@ -11,8 +11,9 @@ plot_corners <- read_sf(file.path(indir, "plot_corners.shp"))
 pt <- plot_corners %>% 
   mutate(
     site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     point_id = gsub(".*[0-9]+", "", name)) %>%
-  dplyr::select(site_id, plot_id = plot_name, point_id) %>% 
+  rename(plot_id = plot_name) %>% 
   mutate(
     x_rel_m = case_when(
       point_id %in% c("SW", "NW") ~ 0,

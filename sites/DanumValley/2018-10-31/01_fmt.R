@@ -11,6 +11,7 @@ plot_corners <- read.csv(file.path(indir, "corner_coords.csv"))
 pt <- plot_corners %>% 
   mutate(
     site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     plot_id = unique(s$PlotName),
     x_rel_m = case_when(
       name == "SE_0000" ~ 0,

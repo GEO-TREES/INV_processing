@@ -16,7 +16,7 @@ library(rocrateR)
 source("./func.R")
 
 # Load YAML file with parameters
-# p <- yaml::read_yaml("./<SITE>/<ACQUISITION>/param.yaml")
+# p <- yaml::read_yaml("./sites/<SITE>/<ACQUISITION>/param.yaml")
 
 # Load YAML file with software version
 version <- read_yaml("./version.yaml")
@@ -214,14 +214,14 @@ stem_height <- read.csv(file.path(param$out_dir, "05_height", product_version_sa
 stem_wd <- read.csv(file.path(param$out_dir, "04_wd", product_version_sanit, "stem_wd.csv"))
 stem_taxa <- read.csv(file.path(param$out_dir, "02_taxa", product_version_sanit, "stem_taxa.csv"))
 stem_pt <- st_read(file.path(param$out_dir, "03_quad", product_version_sanit, "stem_pt.gpkg"))
-plot <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "plot.csv"), 
-  colClasses = plot_col_class)
 runFn("./07_stem_summ.R")
 
 # Filter stem data for quadrat summaries
 outdir <- file.path(param$out_dir, "08_stem_fil", product_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
 stem_summ <- st_read(file.path(param$out_dir, "07_stem_summ", product_version_sanit, "stem_summ.gpkg"))
+plot <- read.csv(file.path(param$out_dir, "01_fmt", product_version_sanit, "plot.csv"), 
+  colClasses = plot_col_class)
 runFn("./08_stem_fil.R")
 
 # Run AGB Monte-Carlo error propagation

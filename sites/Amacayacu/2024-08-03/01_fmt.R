@@ -17,6 +17,7 @@ pt <- poly %>%
   mutate(point_id = c("SW", "NW", "NE", "SE")) %>%
   mutate(
     site_id = param$site_id, 
+    acquisition_id = param$acquisition_id, 
     plot_id = "Amacayacu_1",
     x_rel_m = case_when(
       point_id %in% c("SW", "NW") ~ 0,

@@ -45,6 +45,7 @@ pt <- bind_rows(lapply(seq_len(nrow(polys)), function(i) {
 })) %>% 
   mutate(
     site_id = param$site_id,
+    acquisition_id = param$acquisition_id,
     x_rel_m = case_when(
       point_id %in% c("SW", "NW") ~ 0,
       point_id %in% c("SE", "NE") ~ 100,

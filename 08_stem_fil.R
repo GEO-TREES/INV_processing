@@ -4,6 +4,8 @@
 
 # Filter stem data
 stem_fil <- stem_summ %>% 
+  left_join(., plot[,c("plot_id", "meas_diam_min_cm")], 
+    by = "plot_id") %>% 
   st_transform(., 4326) %>% 
   bind_cols(., st_coordinates(.)) %>% 
   rename(

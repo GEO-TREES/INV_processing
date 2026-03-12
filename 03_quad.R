@@ -38,6 +38,10 @@ plot_divide <- divide_plot(
 # Create quadrat polygons
 quad_pt <- plot_divide$sub_corner_coord %>% 
   st_as_sf(., coords = c("x_proj", "y_proj"), crs = st_crs(plot_pt)) %>% 
+  mutate(    
+    site_id = param$site_id,
+    acquisition_id = param$acquisition_id, 
+    .before = everything()) %>% 
   rename(
     plot_id = plot_ID, 
     quadrat_id = subplot_ID,
@@ -45,7 +49,7 @@ quad_pt <- plot_divide$sub_corner_coord %>%
     y_rel_m = y_rel)
 
 quad_poly <- quad_pt %>% 
-  group_by(plot_id, quadrat_id) %>%
+  group_by(site_id, acquisition_id, plot_id, quadrat_id) %>%
   summarise() %>% 
   st_convex_hull() 
 

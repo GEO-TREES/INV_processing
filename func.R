@@ -461,3 +461,31 @@ censusGen <- function(x, gap) {
   # Return
   return(out)
 }
+
+#' Get valid UTM zone from latitude and longitude in WGS84 decimal degrees
+#'
+#' @param lon vector of longitude coordinates in decimal degrees
+#' @param lat vector of latitude coordinate in decimal degrees
+#' @param epsg logical, if TRUE return EPSG code, otherwise UTM zone name 
+#'
+#' @return Vector of UTM zones for each latitude-longitude pair
+#' 
+#' @export
+#'
+getUTM <- function(lon, lat, epsg = TRUE) {
+  # Calculate the zone number for all coordinates at once
+  zone <- (floor((lon + 180) / 6) %% 60) + 1
+  
+  # Determine hemisphere (N or S)
+  hemisphere <- ifelse(lat < 0, "S", "N")
+  
+  if (epsg) {
+    # EPSG: 326xx for North, 327xx for South
+    base_code <- ifelse(lat < 0, 32700, 32600)
+    return(base_code + zone)
+  } else {
+    # Return string format like "18N"
+    return(paste0(zone, hemisphere))
+  }
+}
+

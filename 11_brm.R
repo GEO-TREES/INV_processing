@@ -2,9 +2,10 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2026-02-16
 
-# Prepare L1 dataset
-L1 <- stem_summ %>% 
+# Prepare L1 stems dataset
+L1_stem <- stem_summ %>% 
   bind_cols(., st_coordinates(.)) %>% 
+  st_drop_geometry() %>% 
   dplyr::select(
     BRM_site = site_id,
     Acquisition = acquisition_id,
@@ -19,6 +20,16 @@ L1 <- stem_summ %>%
     Position_y = y_rel_m,
     Longitude = X,
     Latitude = Y)
+
+# Prepare L1 plot GNSS points dataset 
+L1_pt <- plot_pt %>% 
+  dplyr::select(
+    BRM_site = site_id,
+    Acquisition = acquisition_id,
+    Plot_name = plot_id,
+    Point_label = point_id,
+    Position_x = x_rel_m,
+    Position_y = y_rel_m)
 
 # Prepare L2 stems dataset
 L2_stem <- stem_fil %>% 
@@ -38,19 +49,19 @@ L2_stem <- stem_fil %>%
     Height_tree_estimate = height_m_pred)#,
     # TODO: Height_tree_uncertainty = )
 
-# Prepare L2 plot polygons dataset
-L2_poly <- plot_pt %>% 
-  group_by(site_id, acquisition_id, plot_id) %>% 
-  summarise(.groups = "drop_last") %>% 
-  st_cast("POLYGON") %>% 
-  ungroup() 
-
 # Check all values filled
 stopifnot(all(!is.na(L2_stem$AGB_tree_estimate)))
 # stopifnot(all(!is.na(L2_stem$AGB_tree_uncertainty)))
 
+# Prepare L2 plot polygons dataset
+L2_poly <- plot_poly %>% 
+  dplyr::select(
+    BRM_site = site_id,
+    Acquisition = acquisition_id,
+    Plot_name = plot_id)
+
 # Prepare L3 dataset
-L3 <- quad_summ %>% 
+L3_quad <- quad_summ %>% 
   dplyr::select(
     BRM_site = site_id,
     Acquisition = acquisition_id,
@@ -65,8 +76,8 @@ L3 <- quad_summ %>%
     Wood_density = meanWD_wm_ba) 
 
 # Check all values filled
-stopifnot(all(!is.na(L3$AGBD_stand_estimate)))
-# stopifnot(all(!is.na(L3$AGBD_stand_uncertainty)))
+stopifnot(all(!is.na(L3_quad$AGBD_stand_estimate)))
+# stopifnot(all(!is.na(L3_quad$AGBD_stand_uncertainty)))
 
 # Construct output filenames
 L1_filename <- paste(
@@ -94,15 +105,15 @@ L3_filename <- paste(
   sep = "_")
 
 # Write L1 dataset to file
-write.csv(L1, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_stem", ".csv")), row.names = FALSE)
-st_write(L1, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_pt", ".gpkg")), row.names = FALSE)
+write.csv(L1_stem, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_stem", ".csv")), row.names = FALSE)
+st_write(L1_pt , file.path(L_dir_list[["L1"]], paste0(L1_filename, "_pt", ".gpkg")), delete_dsn = TRUE) 
 
 # Write L2 dataset to file
 write.csv(L2_stem, file.path(L_dir_list[["L2"]], paste0(L2_filename, "_stem", ".csv")), row.names = FALSE)
 st_write(L2_poly, file.path(L_dir_list[["L2"]], paste0(L2_filename, "_poly", ".gpkg")), delete_dsn = TRUE)
 
 # Write L3 dataset to file
-st_write(L3, file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")), delete_dsn = TRUE)
+st_write(L3_quad, file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")), delete_dsn = TRUE)
 
 # Construct RO-crates
 
@@ -157,7 +168,7 @@ L2_stem_outfile <- entity(
 )
 
 L2_poly_outfile <- entity(
-  x = file.path(L_dir_list[["L2"]], paste0(L2_filename, "_stem", ".gpkg")),
+  x = file.path(L_dir_list[["L2"]], paste0(L2_filename, "_poly", ".gpkg")),
   type = "File",
   description = "L2 plot polygons.",
   encodingFormat = "application/geopackage+sqlite3"

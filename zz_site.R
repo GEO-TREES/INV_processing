@@ -254,6 +254,7 @@ stem_fil <- read.csv(file.path(param$out_dir, "08_stem_fil", product_version_san
 stem_agb_mc <- read.csv(file.path(param$out_dir, "09_agb_mc", product_version_sanit, "stem_agb_mc.csv"))
 stem_summ <- st_read(file.path(param$out_dir, "07_stem_summ", product_version_sanit, "stem_summ.gpkg"))
 quad_summ <- st_read(file.path(param$out_dir, "10_quad_summ", product_version_sanit, "quad_summ.gpkg"))
+plot_poly <- st_read(file.path(param$out_dir, "03_quad", product_version_sanit, "plot_poly.gpkg"))
 plot_pt <- st_read(file.path(param$out_dir, "01_fmt", product_version_sanit, "plot_pt.gpkg"))
 runFn("./11_brm.R")
 

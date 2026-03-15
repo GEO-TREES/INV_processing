@@ -81,8 +81,7 @@ s_clean <- s %>%
     broken = ifelse(grepl("snapped", plantCondition, ignore.case = TRUE), "B", ""),
     fallen = "S",  # TODO:
     missing = "",  # TODO:
-    stump = "",  # TODO:
-    code = pasteVals(alive, broken, fallen, missing, stump),
+    code = pasteVals(alive, broken, fallen, missing),
     agb_allometry = NA_character_,
     subplot_in_plot = (as.numeric(subplot_id) - 1) %% 25,
     col = subplot_in_plot %% 5,

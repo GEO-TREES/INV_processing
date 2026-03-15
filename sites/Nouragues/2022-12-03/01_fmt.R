@@ -99,8 +99,7 @@ s_clean <- s %>%
     broken = "",
     fallen = ifelse(MeasCode == 12 , "F", "S"),
     missing = "",
-    stump = "",
-    code = pasteVals(alive, fallen, broken, stump, missing),
+    code = pasteVals(alive, fallen, broken, missing),
     agb_allometry = NA_character_,
     notes = NA_character_
     ) %>% 

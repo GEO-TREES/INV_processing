@@ -37,3 +37,6 @@ local({
 # Disable completion from the language server - handled by cmp-nvim-r 
 options(languageserver.server_capabilities =
         list(completionProvider = FALSE, completionItemResolve = FALSE))
+
+# Don't launch xQuartz when selecting menu items
+options(menu.graphics = FALSE)

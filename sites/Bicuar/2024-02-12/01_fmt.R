@@ -33,7 +33,6 @@ s_clean <- s %>%
   arrange(census_date) %>% 
   fill(x_grid, y_grid, subplot_id, .direction = "downup") %>% 
   ungroup() %>% 
-  filter(grepl("2024", census_date)) %>% 
   dplyr::select(-plot_id) %>% 
   rename(
     measurement_date = census_date,
@@ -61,10 +60,28 @@ s_clean <- s %>%
   ungroup() %>% 
   group_by(plot_id, stem_id) %>% 
   mutate(measurement_id = row_number()) %>% 
-  ungroup() %>% 
+  ungroup() 
+
+s_out <- s_clean %>% 
   mutate(record_id = row_number()) %>% 
+  filter(grepl("2024", census_date)) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
+# Create optional height measurements table
+s_height <- s_clean %>% 
+  filter(
+    !is.na(diam_cm), !is.na(height_m),
+    !grepl("D", code),
+    !grepl("B", code),
+    !grepl("F", code),
+    !grepl("M", code),
+    !grepl("T", code)) %>% 
+dplyr::select(
+  site_id,
+  plot_id, 
+  diam_cm,
+  height_m)
+  
 # Create plots table
 plots <- p %>% 
   dplyr::select(-plot_id) %>% 
@@ -107,12 +124,12 @@ plots <- p %>%
 # Check all columns in output objects
 colCheck(plots, plot_cols)
 colCheck(pt, pt_cols)
-colCheck(s_clean, stem_cols)
+colCheck(s_out, stem_cols)
 
 # Check values
 valCheck(
   plot = plots, 
-  stem = s_clean, 
+  stem = s_out, 
   pt = pt)
 
 # Write corner points to file
@@ -121,5 +138,9 @@ st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
 # Write plot meta-data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)
 
-# Write data to file
-write.csv(s_clean, file.path(outdir, "stem.csv"), row.names = FALSE)
+# Write stem data to file
+write.csv(s_out, file.path(outdir, "stem.csv"), row.names = FALSE)
+
+# Write height data to file
+write.csv(s_height, file.path(outdir, "stem_height.csv"), row.names = FALSE)
+

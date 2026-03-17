@@ -13,6 +13,7 @@ quad_summ <- stem_fil %>%
   summarise(
     n_stem = n(),
     ba_m2_sum = sum(ba_m2, na.rm = TRUE),
+    volume_m3_sum = sum(volume_m3, na.rm = TRUE),
     diam_cm_mean = mean(diam_cm, na.rm = TRUE),
     diam_cm_max = max(diam_cm, na.rm = TRUE),
     diam_cm_q80 = quantile(diam_cm, 0.8, na.rm = TRUE),
@@ -32,7 +33,7 @@ quad_summ <- stem_fil %>%
   left_join(., quad_poly_area, by = c("site_id", "acquisition_id", "plot_id", "quadrat_id")) %>% 
   mutate(
     across(
-      starts_with(c("n_stem_", "ba_m2_", "agb_Mg")), 
+      starts_with(c("n_stem_", "ba_m2_", "volume_m3_", "agb_Mg")), 
       ~.x / quadrat_area_ha, .names = "{.col}_ha"),
     across(
       .cols = where(~inherits(.x, "units")), 
@@ -50,6 +51,8 @@ quad_summ_out <- quad_poly %>%
       "n_stem", 
       "ba_m2_sum",
       "ba_m2_sum_ha",
+      "volume_m3_sum",
+      "volume_m3_sum_ha",
       "agb_Mg_sum_mc_mean", 
       "agb_Mg_sum_mc_median",
       "agb_Mg_sum_mc_mean_ha", 

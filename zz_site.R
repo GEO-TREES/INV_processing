@@ -34,6 +34,7 @@ param_name_vec <- c(
   "out_dir",
   "raw_dir",
   "height_method",
+  "wd_method",
   "software_version",
   "param_version"
 )
@@ -166,6 +167,9 @@ wfo_path <- file.path(outdir, "wfo_cache.rds")
 if (file.exists(wfo_path)) { 
   message("WFO cache loaded")
   loadWFOCache(wfo_path) }
+if (param$wd_method == "field") { 
+  wd <- read.csv(file.path(param$out_dir, "01_fmt", software_version_sanit, "wd.csv"))
+}
 runFn("./02_taxa.R")
 
 # Split plots into quadrats 
@@ -181,8 +185,10 @@ outdir <- file.path(param$out_dir, "04_wd", software_version_sanit)
 dir.create(outdir, showWarnings = FALSE)
 stem <- read.csv(file.path(param$out_dir, "01_fmt", software_version_sanit, "stem.csv"), 
   colClasses = stem_col_class)
-stem_taxa <- read.csv(file.path(param$out_dir, "02_taxa", software_version_sanit, "stem_taxa.csv"))
-wd <- read.csv("./dat/01_wd/wd.csv")
+taxa <- read.csv(file.path(param$out_dir, "02_taxa", software_version_sanit, "taxa.csv"))
+if (param$wd_method == "field") { 
+  wd <- read.csv(file.path(param$out_dir, "01_fmt", software_version_sanit, "wd.csv"))
+}
 runFn("./04_wd.R")
 
 # Estimate stem height
@@ -216,7 +222,7 @@ stem <- read.csv(file.path(param$out_dir, "01_fmt", software_version_sanit, "ste
 # }
 stem_agb <- read.csv(file.path(param$out_dir, "06_agb_stem", software_version_sanit, "stem_agb.csv"))
 stem_wd <- read.csv(file.path(param$out_dir, "04_wd", software_version_sanit, "stem_wd.csv"))
-stem_taxa <- read.csv(file.path(param$out_dir, "02_taxa", software_version_sanit, "stem_taxa.csv"))
+taxa <- read.csv(file.path(param$out_dir, "02_taxa", software_version_sanit, "taxa.csv"))
 stem_pt <- st_read(file.path(param$out_dir, "03_quad", software_version_sanit, "stem_pt.gpkg"))
 runFn("./07_stem_summ.R")
 

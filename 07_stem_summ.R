@@ -7,7 +7,7 @@ stem_summ <- stem %>%
   left_join(., stem_agb, by = "record_id") %>% 
   left_join(., stem_height, by = "record_id") %>% 
   left_join(., stem_wd, by = "record_id") %>% 
-  left_join(., stem_taxa, by = "record_id") %>% 
+  left_join(., taxa, by = c("taxon_name" = "nameOriginal")) %>% 
   left_join(., stem_pt, by = "record_id") %>% 
   # {
   #   if (exists("taxon")) {

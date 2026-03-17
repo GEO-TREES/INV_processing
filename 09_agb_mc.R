@@ -26,14 +26,14 @@ quad_length <- length(stem_split)
 quad_agb_mc_list <- lapply(seq_along(stem_split), function(x) { 
   message(paste0(x, " / ", quad_length, " - ", names(stem_split)[x]))
   if (nrow(stem_split[[x]]) < 2) {
-    list(
+    out <- list(
       "meanAGB" = stem_split[[x]]$agb_Mg,
       "medAGB" = stem_split[[x]]$agb_Mg,
       "sdAGB" = NA_real_,
       "credibilityAGB" = c("2.5%" = NA_real_, "97.5%" = NA_real_),
       "AGB_simu" = NA_real_)
   } else {
-    AGBmonteCarlo(
+    out <- AGBmonteCarlo(
       D = stem_split[[x]]$diam_cm,
       WD = stem_split[[x]]$meanWD,
       coord = stem_split[[x]][,c("X", "Y")],
@@ -43,6 +43,20 @@ quad_agb_mc_list <- lapply(seq_along(stem_split), function(x) {
   }
 })
 names(quad_agb_mc_list) <- names(stem_split)
+
+# Sum stem-level AGB simulations, to get AGBD per quadrat per simulation
+quad_agb_simu <- bind_rows(lapply(names(quad_agb_mc_list), function(x) { 
+  out <- data.frame(
+    quadrat_id = x,
+    sim = seq_len(nsim),
+    sumAGB = colSums(as.matrix(quad_agb_mc_list[[x]]$AGB_simu))
+  )
+  rownames(out) <- NULL
+  out
+}))
+
+# Write quadrat simulations to file
+write.csv(quad_agb_simu, file.path(outdir, "quad_agb_mc.csv"), row.names = FALSE)
 
 # Calculate mean and standard deviation of stem AGB
 stem_agb_mc <- bind_rows(lapply(seq_along(quad_agb_mc_list), function(x) {

@@ -5,6 +5,7 @@
 # Estimate stem-level AGB
 stem_agb <- stem %>% 
   left_join(., stem_wd, by = "record_id") %>% 
+  left_join(., stem_height, by = "record_id") %>% 
   mutate(
     agb_Mg = computeAGB(
       D = .$diam_cm,

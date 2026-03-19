@@ -328,9 +328,8 @@ s_clean <- s %>%
     broken = ifelse(grepl("X|Q", code23), "B", ""),  # 
     fallen = ifelse(grepl("Y", code23), "F", "S"),
     missing = "",
-    stump = "",
     alive = "A",
-    code = pasteVals(alive, fallen, broken, missing, stump),
+    code = pasteVals(alive, fallen, broken, missing),
     measurement_date = format(as.Date(as.character(date23), format = "%Y%m%d"), "%Y-%m-%d"),
     diam_cm = dbh23 / 10,
     plot_id = "Gigante fertilization plot",
@@ -351,8 +350,7 @@ s2_clean <- s2 %>%
     broken = ifelse(Status == "broken below", "B", ""),
     missing = ifelse(Status == "missing", "M", ""),
     fallen = ifelse(grepl("Y", ListOfTSM), "F", "S"),
-    stump = "",
-    code = pasteVals(alive, broken, missing, fallen, stump),
+    code = pasteVals(alive, broken, missing, fallen),
     plot_id = case_when(
       PlotName == "bci" ~ "BCI 50 ha plot",
       PlotName == "elcharco" ~ "ElCharco",
@@ -408,8 +406,7 @@ s3_clean <- s3 %>%
     broken = ifelse(grepl("R", code), "B" , ""),
     missing = ifelse(grepl("N", code), "M" , ""),
     fallen = "S",
-    stump = "",
-    code = pasteVals(alive, broken, missing, fallen, stump),
+    code = pasteVals(alive, broken, missing, fallen),
     ) %>% 
   group_by(plot_id, tree_id) %>% 
   mutate(stem_id = row_number()) %>% 

@@ -55,8 +55,7 @@ s_clean <- s %>%
     fallen = ifelse(grepl("L", codes4), "F", "S"),
     broken = ifelse(grepl("Q", codes4), "B", ""),
     missing = ifelse(grepl("DD", codes4), "M", ""),
-    stump = "",
-    code = pasteVals(alive, broken, fallen, missing, stump),
+    code = pasteVals(alive, broken, fallen, missing),
     agb_allometry = NA_character_) %>% 
   group_by(plot_id) %>% 
   mutate(census_date = as.character(median(as.Date(measurement_date)))) %>% 

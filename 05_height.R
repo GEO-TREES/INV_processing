@@ -35,7 +35,7 @@ if (param$height_method == "regional") {
   height_mod_comp <- modelHD(
     D = s_height$diam_cm,
     H = s_height$height_m,
-    bayesian = TRUE,
+    bayesian = FALSE,
     useCache = FALSE,
     drawGraph = FALSE)
 
@@ -49,7 +49,7 @@ if (param$height_method == "regional") {
     D = s_height$diam_cm,
     H = s_height$height_m,
     method = height_mod_best,
-    bayesian = FALSE, # TODO: currently fails with TRUE
+    bayesian = FALSE,
     useCache = FALSE,
     drawGraph = TRUE)
 

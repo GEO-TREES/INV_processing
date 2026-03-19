@@ -67,3 +67,4 @@ if (param$height_method == "regional") {
 # Write to file
 write.csv(out, file.path(outdir, "stem_height.csv"), row.names = FALSE)
 
+## here we need to export/write height_mod

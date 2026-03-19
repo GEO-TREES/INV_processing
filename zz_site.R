@@ -64,6 +64,12 @@ plot_col_class <- setNames(plot_cols$class, plot_cols$column_name)
 pt_cols <- read.csv("./templates/pt_cols.csv")
 pt_col_class <- setNames(pt_cols$class, pt_cols$column_name)
 
+height_cols <- read.csv("./templates/height_cols.csv")
+height_col_class <- setNames(height_cols$class, height_cols$column_name)
+
+wd_cols <- read.csv("./templates/wd_cols.csv")
+wd_col_class <- setNames(wd_cols$class, wd_cols$column_name)
+
 # Define output directories
 out_dir_vec <- c(
   "01_fmt",
@@ -170,7 +176,7 @@ if (file.exists(wfo_path)) {
   loadWFOCache(wfo_path) 
 }
 if (param$wd_method == "field") { 
-  wd <- read.csv(file.path(param$out_dir, "01_fmt", software_version_sanit, "wd.csv"))
+  wd <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"))
 }
 runFn("./02_taxa.R")
 
@@ -187,9 +193,9 @@ outdir <- file.path(param$out_dir, software_version_sanit, "04_wd")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), 
   colClasses = stem_col_class)
-taxa <- read.csv(file.path(param$out_dir, "02_taxa", software_version_sanit, "taxa.csv"))
+taxa <- read.csv(file.path(param$out_dir, software_version_sanit, "02_taxa", "taxa.csv"))
 if (param$wd_method == "field") { 
-  wd <- read.csv(file.path(param$out_dir, "01_fmt", software_version_sanit, "wd.csv"))
+  wd <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"))
 }
 runFn("./04_wd.R")
 

@@ -187,7 +187,29 @@ heightValCheck <- function(x) {
   if (any(x$diam_cm <= 0, na.rm = TRUE) | any(is.na(x$diam_cm))) { 
     stop("`diam_cm` must be positive and not NA")
   }
+}
 
+#' Check wood density table values
+#'
+#' Runs various checks on the values in wood density table columns 
+#'
+#' @param x dataframe containing wood density data 
+#' 
+wdValCheck <- function(x) { 
+  # Only one site ID per site
+  if (length(unique(x$site_id)) > 1) { 
+    stop("`site_id` must be the same for all plots within a site")
+  }
+
+  # Wood density must be positive and not NA
+  if (any(x$wd_gcm3 <= 0, na.rm = TRUE) | any(is.na(x$wd_gcm3))) { 
+    stop("`wd_gcm3` must be positive and not NA")
+  }
+
+  # All taxonomic names must be filled
+  if (any(is.na(x$taxon_name))) { 
+    stop("NAs in `taxon_name` are not allowed")
+  }
 }
 
 #' Check plot meta-data table values
@@ -331,9 +353,11 @@ ptValCheck <- function(x) {
 #' @param stem 
 #' @param pt 
 #' @param taxon 
+#' @param height 
+#' @param wd 
 #'
 valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL, 
-  height = NULL) { 
+  height = NULL, wd = NULL) { 
 
   # Run single table checks
   if (!is.null(plot)) {
@@ -354,6 +378,10 @@ valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL,
 
   if (!is.null(height)) {
     heightValCheck(height)
+  }
+
+  if (!is.null(wd)) {
+    wdValCheck(wd)
   }
 
   # Run tests to match plot and stem tables

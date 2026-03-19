@@ -77,11 +77,7 @@ s_height <- s_clean %>%
     !grepl("F", code),
     !grepl("M", code),
     !grepl("T", code)) %>% 
-dplyr::select(
-  site_id,
-  plot_id, 
-  diam_cm,
-  height_m)
+dplyr::select(all_of(height_cols$column_name))
   
 # Create plots table
 plots <- p %>% 
@@ -126,20 +122,22 @@ plots <- p %>%
     notes_disturbance = NA_character_) %>% 
   dplyr::select(all_of(plot_cols$column_name))
 
-
 # Process wood density data
 wd_clean <- wd %>% 
-  dplyr::select(
+  mutate(site_id = param$site_id) %>% 
+  rename(
     taxon_name = species,
-    wd = WD) %>% 
-  filter(!is.na(taxon_name), !is.na(wd))
+    wd_gcm3 = WD) %>% 
+  filter(!is.na(taxon_name), !is.na(wd_gcm3)) %>% 
+  dplyr::select(all_of(wd_cols$column_name))
+
 
 # Check all columns in output objects
 colCheck(plots, plot_cols)
 colCheck(pt, pt_cols)
 colCheck(s_out, stem_cols)
-# colCheck(wd_clean, wd_cols) # TODO:
-# colCheck(s_height, height_cols)  # TODO:
+colCheck(wd_clean, wd_cols)
+colCheck(s_height, height_cols)
 
 # Check values
 valCheck(

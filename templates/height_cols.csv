@@ -1,0 +1,5 @@
+﻿column_name,class,description,units,derived
+site_id,character,GEO-TREES site name.,NA,
+plot_id,character,"Plot name, unique within the site.",NA,
+diam_cm,numeric,Stem diameter measurement in cm to nearest mm (one decimal place).,m,
+height_m,numeric,"The height of the tree, in metres to nearest 10 cm (one decimal place). Note: we are aware that the accuracy of tree height field measurements may be less than 10 cm.",NA,

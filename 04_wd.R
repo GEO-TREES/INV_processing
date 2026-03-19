@@ -3,7 +3,7 @@
 # Last updated: 2025-07-09
 
 # Join taxonomy data to stem data
-stem_taxa_all <- left_join(stem, taxa, by = c("taxon_name" = "nameOriginal")
+stem_taxa_all <- left_join(stem, taxa, by = c("taxon_name" = "nameOriginal"))
 
 # Optionally process local wood density data
 if (param$wd_method == "field") { 
@@ -14,8 +14,8 @@ if (param$wd_method == "field") {
     genus = genusAccepted,
     species = speciesAccepted) %>% 
   summarise(
-    meanWD = mean(wd, na.rm = TRUE),
-    sdWD = sd(wd, na.rm = TRUE))
+    meanWD = mean(wd_gcm3, na.rm = TRUE),
+    sdWD = sd(wd_gcm3, na.rm = TRUE))
 }
 
 # Estimate wood density for each stem measurement

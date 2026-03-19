@@ -17,6 +17,7 @@ stem_all <- stem_fil %>%
 
 # Split by quadrat
 stem_split <- split(stem_all, stem_all$quadrat_id)
+# no need if we use BIOMASS pipeline with subplot_summary
 
 # Define number of simulations
 nsim <- 1000
@@ -40,6 +41,7 @@ quad_agb_mc_list <- lapply(seq_along(stem_split), function(x) {
       Dpropag = "chave2004",
       errWD = stem_split[[x]]$sdWD,
       n = nsim)
+    # here add HDmodel (from 05 step) so that all uncertainties are propagated
   }
 })
 names(quad_agb_mc_list) <- names(stem_split)
@@ -54,6 +56,8 @@ quad_agb_simu <- bind_rows(lapply(names(quad_agb_mc_list), function(x) {
   rownames(out) <- NULL
   out
 }))
+# here can be done with BIOMASS::subplot_summary and thus includes uncertainties 
+# on coordinates, needs divide_plot outputs from 03_quad
 
 # Write quadrat simulations to file
 write.csv(quad_agb_simu, file.path(outdir, "quad_agb_mc.csv"), row.names = FALSE)

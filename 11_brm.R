@@ -85,7 +85,7 @@ L1_filename <- paste(
     "PDA", 
     param$acquisition_id, 
     "L1", 
-    product_version_sanit, 
+    software_version_sanit, 
   sep = "_")
 
 L2_filename <- paste(
@@ -93,7 +93,7 @@ L2_filename <- paste(
     "PDA", 
     param$acquisition_id, 
     "L2", 
-    product_version_sanit, 
+    software_version_sanit, 
   sep = "_")
 
 L3_filename <- paste(
@@ -101,7 +101,7 @@ L3_filename <- paste(
     "PDA", 
     param$acquisition_id, 
     "L3", 
-    product_version_sanit, 
+    software_version_sanit, 
   sep = "_")
 
 # Write L1 dataset to file
@@ -191,11 +191,11 @@ yaml <- entity(
 
 # Software 
 code <- entity(
-  x = paste0("#PDA_processing_", param$product_version),
+  x = paste0("#PDA_processing_", param$software_version),
   type = c("SoftwareApplication", "SoftwareSourceCode"),
   name = "GEO-TREES AGBD processing pipeline",
-  version = param$product_version,
-  url = paste0("https://github.com/GEO-TREES/PDA_processing/releases/tag/", param$product_version),
+  version = param$software_version,
+  url = paste0("https://github.com/GEO-TREES/PDA_processing/releases/tag/", param$software_version),
   programmingLanguage = "R"
 )
 

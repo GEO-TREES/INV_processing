@@ -1,8 +1,9 @@
 ﻿column_name,class,description,units,derived
 record_id,integer,"ID of the stem measurement record, unique within the acquisition.",NA,TRUE
 site_id,character,GEO-TREES site name.,NA,
-acquisition_id,character,Acquisition ID. The mid-date of stem measurements within the site for that data collection event.,NA,TRUE
+acquisition_id,character,"Acquisition ID. The mid-date of stem measurements within the site for this acquisition. YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,TRUE
 plot_id,character,"Plot name, unique within the site.",NA,
+census_id,character,"Census ID for the plot. E.g. ""1"" for the first census in the plot, ""2"" for the second census.",NA,
 census_date,character,"The mid-date of the census in the plot. This can be either YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,TRUE
 subplot_id,character,"If the plot is divided into multiple parcels, the parcel within which the stem is found. Unique within the plot.",NA,
 tree_id,character,"Unique identifier for individual trees within a plot, normally the stem_id of the first or largest stem within the tree.",NA,

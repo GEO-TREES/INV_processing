@@ -2,6 +2,12 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2025-07-09
 
+# entirely deterministic for now, we would like to include uncertainties on 
+# coordinates using plot_polygons (L2) product. To be computed with BIOMASS::divide_plot 
+# through "sd_coord" argument, it needs to be transformed in a data frame containing (for each plot) 
+# the average standard deviation of the GPS measurements for each corner on the X and Y axes
+
+
 # Find local UTM
 plot_pt_coord <- st_coordinates(plot_pt)
 plot_pt_utm <- getUTM(plot_pt_coord[,1], plot_pt_coord[,2])
@@ -50,6 +56,7 @@ out_list <- lapply(names(plot_pt_list), function(x) {
     tree_plot_ID = "plot_ID",
     sd_coord = NULL, 
     n = 100)
+  # probably needs to be exported/written to be used in 09_agb_mc
 
   # Create plot polygons 
   plot_poly <- plot_check$polygon %>% 

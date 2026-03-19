@@ -52,8 +52,7 @@ s_clean <- s %>%
     broken = ifelse(grepl("b|p", stem_mode), "B", ""),
     fallen = ifelse(grepl("f", stem_mode), "F", "S"),
     missing = ifelse(grepl("v|q", stem_mode), "M", ""),
-    stump = ifelse(grepl("t", stem_mode), "T", ""),
-    code = pasteVals(alive, broken, fallen, missing, stump),
+    code = pasteVals(alive, broken, fallen, missing),
     agb_allometry = NA_character_,
     subplot_id = as.character(subplot_id)) %>% 
   group_by(plot_id) %>% 
@@ -66,6 +65,7 @@ s_clean <- s %>%
 s_out <- s_clean %>% 
   mutate(record_id = row_number()) %>% 
   filter(grepl("2024", census_date)) %>% 
+  mutate(census_id = "3") %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
 # Create optional height measurements table
@@ -92,6 +92,7 @@ plots <- p %>%
   filter(plot_id != "P1") %>% 
   mutate(
     acquisition_id = param$acquisition_id,
+    census_id = "3",
     plot_width_m = 100,
     plot_length_m = 100,
     plot_slope_deg = NA_real_,
@@ -108,9 +109,12 @@ plots <- p %>%
     meas_liana = NA,
     meas_palm = NA,
     meas_bamboo = NA,
+    meas_plot_loc = NA_character_,
+    meas_stem_loc = NA_character_,
     meas_protocol = "SEOSAW_v3.6",
     notes_meas = NA_character_,
     forest_status = NA_character_,
+    vegetation_type = NA_character_,
     land_use = NA_character_,
     treatment = NA_character_,
     treatment_ref = NA_character_,
@@ -141,9 +145,9 @@ colCheck(s_out, stem_cols)
 valCheck(
   plot = plots, 
   stem = s_out, 
-  pt = pt)#,
-  # wd = wd_clean,
-  # height = s_height) # TODO:
+  wd = wd_clean,
+  pt = pt,
+  height = s_height)
 
 # Write corner points to file
 st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)

@@ -1,6 +1,7 @@
 ﻿column_name,class,description,units,derived
 record_id,integer,"ID of the stem measurement record, unique within the acquisition.",NA,TRUE
 site_id,character,GEO-TREES site name.,NA,
+acquisition_id,character,"Acquisition ID. The mid-date of stem measurements within the site for this acquisition. YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,TRUE
 plot_id,character,"Plot name, unique within the site.",NA,
 census_id,character,"Census ID for the plot. E.g. ""1"" for the first census in the plot, ""2"" for the second census.",NA,
 census_date,character,"The mid-date of the census in the plot. This can be either YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,TRUE

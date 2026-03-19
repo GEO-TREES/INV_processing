@@ -2,7 +2,7 @@
 site_id,character,"GEO-TREES site name. This should match the site name used elsewhere, e.g. `site_id` in the stem measurement table.",NA,TRUE,
 acquisition_id,character,"Acquisition ID. The mid-date of stem measurements within the site for this acquisition. YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,,TRUE
 plot_id,character,"Plot name, unique within the site",NA,TRUE,
-census_id,integer,Census ID for the census within the plot for this acquisition.,NA,TRUE,
+census_id,character,Census ID for the census within the plot for this acquisition.,NA,TRUE,
 census_date,character,"Mid-census date for the plot in this acquisition. YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,,TRUE
 plot_planar,logical,"Were plot dimensions established according to a planar projection? (TRUE/FALSE) I.e. was the distance between plot corners measured as a straight line as if looking down from above (TRUE), or following the ground surface (FALSE).",NA,TRUE,
 notes_plot,character,"Additional notes on plot survey methods. E.g. methods to geo-locate plot corners, subplot layout.",NA,,

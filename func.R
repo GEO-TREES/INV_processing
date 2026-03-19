@@ -162,6 +162,34 @@ taxonValCheck <- function(x) {
   }
 }
 
+#' Check height table values
+#'
+#' Runs various checks on the values in height table columns 
+#'
+#' @param x dataframe containing diameter and height data 
+#' 
+heightValCheck <- function(x) { 
+  # Only one site ID per site
+  if (length(unique(x$site_id)) > 1) { 
+    stop("`site_id` must be the same for all plots within a site")
+  }
+
+  # All plots must have a name
+  if (any(is.na(x$plot_id))) { 
+    stop("NAs in `plot_id` are not allowed")
+  }
+  # Height must be positive and not NA
+  if (any(x$height_m <= 0, na.rm = TRUE) | any(is.na(x$height_m))) { 
+    stop("`height_m` must be positive and not NA")
+  }
+
+  # Diameter must be positive and not NA
+  if (any(x$diam_cm <= 0, na.rm = TRUE) | any(is.na(x$diam_cm))) { 
+    stop("`diam_cm` must be positive and not NA")
+  }
+
+}
+
 #' Check plot meta-data table values
 #' 
 #' Runs various checks on the values in plot meta-data table columns 
@@ -293,6 +321,8 @@ ptValCheck <- function(x) {
   }
 }
 
+
+
 #' Check values across data objects
 #' 
 #' Runs various checks on values across plot, stem, pt and taxon objects
@@ -302,7 +332,8 @@ ptValCheck <- function(x) {
 #' @param pt 
 #' @param taxon 
 #'
-valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL) { 
+valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL, 
+  height = NULL) { 
 
   # Run single table checks
   if (!is.null(plot)) {
@@ -319,6 +350,10 @@ valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL) {
 
   if (!is.null(taxon)) {
     taxonValCheck(taxon)
+  }
+
+  if (!is.null(height)) {
+    heightValCheck(height)
   }
 
   # Run tests to match plot and stem tables

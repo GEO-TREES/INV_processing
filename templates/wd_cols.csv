@@ -1,0 +1,4 @@
+﻿column_name,class,description,units,derived
+site_id,character,GEO-TREES site name.,NA,
+taxon_name,character,The taxonomic name of the tree.,m,
+wd_gcm3,numeric,Wood density in g cm^-3,g cm^-3,

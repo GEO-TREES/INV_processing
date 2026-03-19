@@ -35,6 +35,7 @@ param_name_vec <- c(
   "out_dir",
   "raw_dir",
   "height_method",
+  "wd_method",
   "software_version",
   "product_version"
 )
@@ -62,6 +63,12 @@ plot_col_class <- setNames(plot_cols$class, plot_cols$column_name)
 
 pt_cols <- read.csv("./templates/pt_cols.csv")
 pt_col_class <- setNames(pt_cols$class, pt_cols$column_name)
+
+height_cols <- read.csv("./templates/height_cols.csv")
+height_col_class <- setNames(height_cols$class, height_cols$column_name)
+
+wd_cols <- read.csv("./templates/wd_cols.csv")
+wd_col_class <- setNames(wd_cols$class, wd_cols$column_name)
 
 # Define output directories
 out_dir_vec <- c(
@@ -168,6 +175,9 @@ if (file.exists(wfo_path)) {
   message("WFO cache loaded")
   loadWFOCache(wfo_path) 
 }
+if (param$wd_method == "field") { 
+  wd <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"))
+}
 runFn("./02_taxa.R")
 
 # Split plots into quadrats 
@@ -183,8 +193,10 @@ outdir <- file.path(param$out_dir, software_version_sanit, "04_wd")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), 
   colClasses = stem_col_class)
-stem_taxa <- read.csv(file.path(param$out_dir, software_version_sanit, "02_taxa", "stem_taxa.csv"))
-wd <- read.csv("./dat/01_wd/wd.csv")
+taxa <- read.csv(file.path(param$out_dir, software_version_sanit, "02_taxa", "taxa.csv"))
+if (param$wd_method == "field") { 
+  wd <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"))
+}
 runFn("./04_wd.R")
 
 # Estimate stem height

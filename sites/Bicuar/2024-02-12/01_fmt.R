@@ -5,6 +5,7 @@
 # Import data
 s <- read.csv(file.path(indir, "stems.csv"))
 p <- read.csv(file.path(indir, "plots.csv"))
+wd <- read.csv(file.path(indir, "wood_density_raw.csv"))
 plot_corners <- read_sf(file.path(indir, "plot_corners.shp"))
 
 # Process plot corners
@@ -76,11 +77,7 @@ s_height <- s_clean %>%
     !grepl("F", code),
     !grepl("M", code),
     !grepl("T", code)) %>% 
-dplyr::select(
-  site_id,
-  plot_id, 
-  diam_cm,
-  height_m)
+dplyr::select(all_of(height_cols$column_name))
   
 # Create plots table
 plots <- p %>% 
@@ -125,15 +122,28 @@ plots <- p %>%
     notes_disturbance = NA_character_) %>% 
   dplyr::select(all_of(plot_cols$column_name))
 
+# Process wood density data
+wd_clean <- wd %>% 
+  mutate(site_id = param$site_id) %>% 
+  rename(
+    taxon_name = species,
+    wd_gcm3 = WD) %>% 
+  filter(!is.na(taxon_name), !is.na(wd_gcm3)) %>% 
+  dplyr::select(all_of(wd_cols$column_name))
+
+
 # Check all columns in output objects
 colCheck(plots, plot_cols)
 colCheck(pt, pt_cols)
 colCheck(s_out, stem_cols)
+colCheck(wd_clean, wd_cols)
+colCheck(s_height, height_cols)
 
 # Check values
 valCheck(
   plot = plots, 
   stem = s_out, 
+  wd = wd_clean,
   pt = pt,
   height = s_height)
 
@@ -148,4 +158,7 @@ write.csv(s_out, file.path(outdir, "stem.csv"), row.names = FALSE)
 
 # Write height data to file
 write.csv(s_height, file.path(outdir, "stem_height.csv"), row.names = FALSE)
+
+# Write wood density data to file
+write.csv(wd_clean, file.path(outdir, "wd.csv"), row.names = FALSE)
 

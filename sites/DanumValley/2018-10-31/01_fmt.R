@@ -56,17 +56,16 @@ s_sel <- s %>%
     measurement_date = as.character(measurement_date),
     measurement_date = ifelse(measurement_date == "NULL", NA_character_, measurement_date),
     flags = ifelse(flags == "NULL", NA_character_, flags),
-    broken = ifelse(grepl("X|Q", flags), "B", ""),
+    broken = ifelse(grepl("X|Q", flags) | alive == "broken_below", "B", ""),
     fallen = ifelse(grepl("Y", flags), "F", "S"),
     missing = ifelse(alive == "missing", "M", ""),
-    stump = ifelse(alive == "broken_below", "T", ""),
     alive = case_when(
       alive == "alive" ~ "A",
       alive == "dead" ~ "A",
       alive == "missing" ~ "D",
       alive == "broken below" ~ "A",
       TRUE ~ NA_character_),
-    code = pasteVals(alive, broken, fallen, missing, stump),
+    code = pasteVals(alive, broken, fallen, missing),
     notes = NA_character_,
     pom_m = ifelse(grepl("M", code), NA_real_, pom_m)
     ) %>% 

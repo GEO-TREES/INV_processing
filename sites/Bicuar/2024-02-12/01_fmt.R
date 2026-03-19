@@ -51,8 +51,7 @@ s_clean <- s %>%
     broken = ifelse(grepl("b|p", stem_mode), "B", ""),
     fallen = ifelse(grepl("f", stem_mode), "F", "S"),
     missing = ifelse(grepl("v|q", stem_mode), "M", ""),
-    stump = ifelse(grepl("t", stem_mode), "T", ""),
-    code = pasteVals(alive, broken, fallen, missing, stump),
+    code = pasteVals(alive, broken, fallen, missing),
     agb_allometry = NA_character_,
     subplot_id = as.character(subplot_id)) %>% 
   group_by(plot_id) %>% 

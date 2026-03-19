@@ -1,9 +1,9 @@
 site_id: "Bicuar"
 acquisition_id: "2024-02-12"
-param_version: "v1"
-out_dir: "./dat/sites/Bicuar/PDA/2024-02-12"
+product_version: "v1"
+out_dir: "./dat/sites/Bicuar/PDA/2024-02-12/v1"
 raw_dir: "./dat/sites/Bicuar/PDA/2024-02-12/L0"
-s3_dir: "johngodlee/GEO-TREES_PDA/dat/sites/Bicuar/L0"
+s3_raw_dir: "johngodlee/GEO-TREES_PDA/dat/sites/Bicuar/L0"
 quad_dim: [50, 50]
 opt_s3: false
 height_method: "regional"

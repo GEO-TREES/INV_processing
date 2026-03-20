@@ -17,7 +17,7 @@ stem_all <- stem_fil %>%
 
 # Split by quadrat
 stem_split <- split(stem_all, stem_all$quadrat_id)
-# no need if we use BIOMASS pipeline with subplot_summary
+# TODO: Dominique no need if we use BIOMASS pipeline with subplot_summary
 
 # Define number of simulations
 nsim <- 1000

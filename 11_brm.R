@@ -4,6 +4,7 @@
 
 # Prepare L1 stems dataset
 L1_stem <- stem_summ %>% 
+  st_transform(., 4326) %>% 
   bind_cols(., st_coordinates(.)) %>% 
   st_drop_geometry() %>% 
   dplyr::select(
@@ -19,48 +20,47 @@ L1_stem <- stem_summ %>%
     Position_x = x_rel_m,
     Position_y = y_rel_m,
     Longitude = X,
-    Latitude = Y)
+    Latitude = Y,
+    Diameter = diam_cm,
+    POM = pom_m,
+    Total_height = height_m,
+    Code = code)
 
-# Prepare L1 plot GNSS points dataset 
-L1_pt <- plot_pt %>% 
+# Prepare L1 plot polygons dataset 
+L1_poly <- plot_poly %>% 
   dplyr::select(
     BRM_site = site_id,
     Acquisition = acquisition_id,
-    Plot_name = plot_id,
-    Point_label = point_id,
-    Position_x = x_rel_m,
-    Position_y = y_rel_m)
+    Plot_name = plot_id)
 
 # Prepare L2 stems dataset
-L2_stem <- stem_fil %>% 
-  left_join(., stem_agb_mc, by = "record_id") %>% 
+L2_stem <- stem_summ %>% 
+  filter(record_id %in% record_fil) %>% 
+  st_transform(., 4326) %>% 
+  bind_cols(., st_coordinates(.)) %>% 
+  st_drop_geometry() %>% 
   mutate(
-    Tree_label = pasteVals(tree_id, stem_id, sep = ":"),
     agb_Mg_mean = ifelse(is.na(agb_Mg_mean), agb_Mg, agb_Mg_mean)) %>% 
   dplyr::select(
     BRM_site = site_id,
     Acquisition = acquisition_id,
     Plot_name = plot_id,
-    Tree_label,
-    Longitude = longitude,
-    Latitude = latitude,
-    AGB_tree_estimate = agb_Mg_mean,
-    AGB_tree_uncertainty = agb_Mg_sd,
-    Height_tree_estimate = height_m_pred)#,
+    Tree_label = tree_id,
+    Stem_label = stem_id,
+    Longitude = X,
+    Latitude = Y,
+    WD_stem_estimate = meanWD,
+    WD_stem_uncertainty = sdWD,
+    AGB_stem_estimate = agb_Mg_mean,
+    AGB_stem_uncertainty = agb_Mg_sd,
+    Height_stem_estimate = height_m_pred)#,
     # TODO: Height_tree_uncertainty = )
 
 # Check all values filled
 stopifnot(all(!is.na(L2_stem$AGB_tree_estimate)))
 # stopifnot(all(!is.na(L2_stem$AGB_tree_uncertainty)))
 
-# Prepare L2 plot polygons dataset
-L2_poly <- plot_poly %>% 
-  dplyr::select(
-    BRM_site = site_id,
-    Acquisition = acquisition_id,
-    Plot_name = plot_id)
-
-# Prepare L3 dataset
+# Prepare L3 quadrat dataset
 L3_quad <- quad_summ %>% 
   dplyr::select(
     BRM_site = site_id,
@@ -106,11 +106,10 @@ L3_filename <- paste(
 
 # Write L1 dataset to file
 write.csv(L1_stem, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_stem", ".csv")), row.names = FALSE)
-st_write(L1_pt , file.path(L_dir_list[["L1"]], paste0(L1_filename, "_pt", ".gpkg")), delete_dsn = TRUE) 
+st_write(L1_poly , file.path(L_dir_list[["L1"]], paste0(L1_filename, "_poly", ".gpkg")), delete_dsn = TRUE) 
 
 # Write L2 dataset to file
 write.csv(L2_stem, file.path(L_dir_list[["L2"]], paste0(L2_filename, "_stem", ".csv")), row.names = FALSE)
-st_write(L2_poly, file.path(L_dir_list[["L2"]], paste0(L2_filename, "_poly", ".gpkg")), delete_dsn = TRUE)
 
 # Write L3 dataset to file
 st_write(L3_quad, file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")), delete_dsn = TRUE)
@@ -153,10 +152,10 @@ L1_stem_outfile <- entity(
   encodingFormat = "text/csv"
 )
 
-L1_pt_outfile <- entity(
-  x = file.path(L_dir_list[["L1"]], paste0(L1_filename, "_pt", ".gpkg")),
+L1_poly_outfile <- entity(
+  x = file.path(L_dir_list[["L1"]], paste0(L1_filename, "_poly", ".gpkg")),
   type = "File",
-  description = "L1 re-formatted point geo-location measurements.",
+  description = "L1 plot polygons.",
   encodingFormat = "text/csv"
 )
 
@@ -165,13 +164,6 @@ L2_stem_outfile <- entity(
   type = "File",
   description = "L2 stem AGB estimates.",
   encodingFormat = "text/csv"
-)
-
-L2_poly_outfile <- entity(
-  x = file.path(L_dir_list[["L2"]], paste0(L2_filename, "_poly", ".gpkg")),
-  type = "File",
-  description = "L2 plot polygons.",
-  encodingFormat = "application/geopackage+sqlite3"
 )
 
 L3_quad_outfile <- entity(
@@ -211,11 +203,10 @@ exec <- entity(
 L_outfile_list <- list(
   "L1" = list(
     "L1_stem" = L1_stem_outfile,
-    "L1_pt" = L1_pt_outfile
+    "L1_poly" = L1_poly_outfile
   ),
   "L2" = list(
-    "L2_stem" = L2_stem_outfile, 
-    "L2_poly" = L2_poly_outfile
+    "L2_stem" = L2_stem_outfile
   ),
   "L3" = list(
     "L3_quad" = L3_quad_outfile

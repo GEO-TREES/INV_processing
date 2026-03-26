@@ -3,21 +3,24 @@
 # Last updated: 2025-06-18
 
 # Extract plot centres
-p_cent <- plot_pt %>% 
-  group_by(site_id, plot_id) %>% 
+p_cent <- plot_poly %>% 
+  st_transform(., crs = 4326) %>% 
+  group_by(site_id, plot_id, acquisition_id) %>% 
   summarise() %>% 
   st_centroid() %>% 
   cbind(., st_coordinates(.)) %>% 
   st_drop_geometry() %>% 
   dplyr::select(plot_id, X, Y)
 
-# Combine dataframes
-stem_all <- stem_fil %>% 
-  left_join(., p_cent, by = "plot_id")
+# Filter stems data
+stem_fil <- stem %>% 
+  left_join(., p_cent, by = "plot_id") %>% 
+  left_join(., stem_wd, by = "record_id") %>% 
+  left_join(., stem_pt, by = "record_id") %>% 
+  filter(record_id %in% record_fil)
 
 # Split by quadrat
-stem_split <- split(stem_all, stem_all$quadrat_id)
-# TODO: Dominique no need if we use BIOMASS pipeline with subplot_summary
+stem_split <- split(stem_fil, stem_fil$quadrat_id)
 
 # Define number of simulations
 nsim <- 1000
@@ -37,7 +40,7 @@ quad_agb_mc_list <- lapply(seq_along(stem_split), function(x) {
     out <- AGBmonteCarlo(
       D = stem_split[[x]]$diam_cm,
       WD = stem_split[[x]]$meanWD,
-      coord = stem_split[[x]][,c("X", "Y")],
+      coord = st_drop_geometry(stem_split[[x]][,c("X", "Y")]),
       Dpropag = "chave2004",
       errWD = stem_split[[x]]$sdWD,
       n = nsim)

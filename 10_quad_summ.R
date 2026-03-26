@@ -7,7 +7,8 @@ quad_poly_area <- st_drop_geometry(quad_poly)
 quad_poly_area$quadrat_area_ha <- drop_units(st_area(quad_poly)) * 0.0001
 
 # Calculate quadrat summary values
-quad_summ <- stem_fil %>% 
+quad_summ <- stem_summ %>% 
+  filter(record_id %in% record_fil) %>% 
   st_drop_geometry() %>% 
   group_by(site_id, acquisition_id, plot_id, quadrat_id, census_date) %>% 
   summarise(

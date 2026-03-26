@@ -3,8 +3,9 @@
 # Last updated: 2025-07-16
 
 # Combine stem dataframes
-stem_summ <- stem %>% 
+stem_summ <- stem %>%
   left_join(., stem_agb, by = "record_id") %>% 
+  left_join(., stem_agb_mc, by = "record_id") %>% 
   left_join(., stem_height, by = "record_id") %>% 
   left_join(., stem_wd, by = "record_id") %>% 
   left_join(., taxa, by = c("taxon_name" = "nameOriginal")) %>% 

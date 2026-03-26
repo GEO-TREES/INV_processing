@@ -8,9 +8,10 @@ stem_agb <- stem %>%
   left_join(., stem_height, by = "record_id") %>% 
   mutate(
     agb_Mg = computeAGB(
+      allometry = chave2014,
       D = .$diam_cm,
       WD = .$meanWD,
-      H = .$height_m_pred),
+      H = .$height_m_pred)[[1]],
     ba_m2 = base::pi * (.$diam_cm / 2)^2 / 10000,
     volume_m3 = agb_Mg / meanWD) %>% 
   dplyr::select(

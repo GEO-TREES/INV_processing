@@ -24,7 +24,24 @@ pt <- plot_corners %>%
       point_id %in% c("SW", "SE") ~ 0,
       point_id %in% c("NW", "NE") ~ 100,
       TRUE ~ NA_real_)) %>% 
-  filter(plot_id != "P1") %>% 
+  filter(plot_id != "P1")
+
+ptc <- st_coordinates(pt) 
+crs <- unique(getUTM(ptc[,1], ptc[,2], epsg = TRUE))
+crs_name <- unique(getUTM(ptc[,1], ptc[,2], epsg = FALSE))
+
+pt_clean <- pt %>% 
+  st_transform(., crs = crs) %>% 
+  bind_cols(., st_coordinates(.)) %>% 
+  rename(
+    rover_easting_utm_m = X,
+    rover_northing_utm_m = Y) %>% 
+  mutate(
+    crs_epsg = as.character(crs),
+    crs_name = "UTM 33S",
+    rover_model = "Garmin GPSMap 65s") %>% 
+  colGen(., pt_cols$column_name, pt_cols$class) %>% 
+  st_drop_geometry() %>% 
   dplyr::select(all_of(pt_cols$column_name))
 
 # Prepare stem data 
@@ -52,7 +69,10 @@ s_clean <- s %>%
     broken = ifelse(grepl("b|p", stem_mode), "B", ""),
     fallen = ifelse(grepl("f", stem_mode), "F", "S"),
     missing = ifelse(grepl("v|q", stem_mode), "M", ""),
+    stump = ifelse(grepl("t", stem_mode), "T", ""),
     code = pasteVals(alive, broken, fallen, missing),
+    growth_form = NA_character_,
+    height_allometry = NA_character_,
     agb_allometry = NA_character_,
     subplot_id = as.character(subplot_id)) %>% 
   group_by(plot_id) %>% 
@@ -127,14 +147,17 @@ wd_clean <- wd %>%
   mutate(site_id = param$site_id) %>% 
   rename(
     taxon_name = species,
-    wd_gcm3 = WD) %>% 
-  filter(!is.na(taxon_name), !is.na(wd_gcm3)) %>% 
+    wood_density_gcm3 = WD) %>% 
+  mutate(
+    wood_density_sd_gcm3 = NA_real_,
+    wood_density_n = as.integer(NA_real_)) %>%
+  filter(!is.na(taxon_name), !is.na(wood_density_gcm3)) %>% 
   dplyr::select(all_of(wd_cols$column_name))
 
 
 # Check all columns in output objects
 colCheck(plots, plot_cols)
-colCheck(pt, pt_cols)
+colCheck(pt_clean, pt_cols)
 colCheck(s_out, stem_cols)
 colCheck(wd_clean, wd_cols)
 colCheck(s_height, height_cols)
@@ -144,11 +167,11 @@ valCheck(
   plot = plots, 
   stem = s_out, 
   wd = wd_clean,
-  pt = pt,
+  pt = pt_clean,
   height = s_height)
 
 # Write corner points to file
-st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
+write.csv(pt_clean, file.path(outdir, "plot_pt.csv"), row.names = FALSE)
 
 # Write plot meta-data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)
@@ -157,7 +180,7 @@ write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)
 write.csv(s_out, file.path(outdir, "stem.csv"), row.names = FALSE)
 
 # Write height data to file
-write.csv(s_height, file.path(outdir, "stem_height.csv"), row.names = FALSE)
+write.csv(s_height, file.path(outdir, "height.csv"), row.names = FALSE)
 
 # Write wood density data to file
 write.csv(wd_clean, file.path(outdir, "wd.csv"), row.names = FALSE)

@@ -1,20 +1,23 @@
-﻿column_name,class,description,units,derived
-record_id,integer,"ID of the stem measurement record, unique within the acquisition.",NA,TRUE
-site_id,character,GEO-TREES site name.,NA,
-acquisition_id,character,"Acquisition ID. The mid-date of stem measurements within the site for this acquisition. YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,TRUE
-plot_id,character,"Plot name, unique within the site.",NA,
-census_id,character,"Census ID for the plot. E.g. ""1"" for the first census in the plot, ""2"" for the second census.",NA,
-census_date,character,"The mid-date of the census in the plot. This can be either YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,TRUE
-subplot_id,character,"If the plot is divided into multiple parcels, the parcel within which the stem is found. Unique within the plot.",NA,
-tree_id,character,"Unique identifier for individual trees within a plot, normally the stem_id of the first or largest stem within the tree.",NA,
-stem_id,character,Unique identifier for stems within a plot. Normally the tag ID.,NA,
-measurement_id,integer,Measurement ID. If a stem has multiple measurements within a single census.,NA,TRUE
-measurement_date,character,The date of the measurement. This should ideally be YYYY-MM-DD. YYYY-MM and YYYY are also accepted.,NA,
-taxon_name,character,The taxonomic name of the tree.,m,
-x_rel_m,numeric,The X coordinate of the stem within the plot. In metres to nearest 10 cm (one decimal place).,m,
-y_rel_m,numeric,The Y coordinate of the stem within the plot. In metres to nearest 10 cm (one decimal place).,cm,
-diam_cm,numeric,Stem diameter measurement in cm to nearest mm (one decimal place).,m,
-pom_m,numeric,The height at which 'diam' was measured. Point of Measurement (POM). In metres to nearest nearest 10 cm (one decimal place).,m,
-height_m,numeric,"The height of the tree, in metres to nearest 10 cm (one decimal place). Note: we are aware that the accuracy of tree height field measurements may be less than 10 cm.",NA,
-code,character,Indicate stem mortality and condition. See Table 2 for more information on these codes,NA,
-notes,character,Miscellaneous notes for each stem measurement,NA,
+﻿column_name,class,description,units,min_val,max_val,derived
+record_id,integer,"ID of the stem measurement record, unique within the acquisition.",NA,1,NA,TRUE
+site_id,character,GEO-TREES site name.,NA,,,
+acquisition_id,character,"Acquisition ID. The mid-date of stem measurements within the site for this acquisition. YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,,,TRUE
+plot_id,character,"Plot name, unique within the site.",NA,,,
+census_id,character,"Census ID for the plot. E.g. ""1"" for the first census in the plot, ""2"" for the second census.",NA,,,
+census_date,character,"The mid-date of the census in the plot. This can be either YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,,,TRUE
+subplot_id,character,"If the plot is divided into multiple parcels, the parcel within which the stem is found. Unique within the plot.",NA,,,
+tree_id,character,"Unique identifier for individual trees within a plot, normally the stem_id of the first or largest stem within the tree.",NA,,,
+stem_id,character,Unique identifier for stems within a plot. Normally the tag ID.,NA,,,
+measurement_id,integer,Measurement ID. If a stem has multiple measurements within a single census.,NA,1,NA,TRUE
+measurement_date,character,The date of the measurement. This should ideally be YYYY-MM-DD. YYYY-MM and YYYY are also accepted.,NA,,,
+taxon_name,character,The taxonomic name of the tree.,NA,,,
+x_rel_m,numeric,The X coordinate of the stem within the plot. In metres to nearest 10 cm (one decimal place).,m,0,NA,
+y_rel_m,numeric,The Y coordinate of the stem within the plot. In metres to nearest 10 cm (one decimal place).,m,0,NA,
+diam_cm,numeric,Stem diameter measurement in cm to nearest mm (one decimal place).,cm,0,1000,
+pom_m,numeric,The height at which 'diam' was measured. Point of Measurement (POM). In metres to nearest nearest 10 cm (one decimal place).,m,0,50,
+height_m,numeric,"The height of the tree, in metres to nearest 10 cm (one decimal place). Note: we are aware that the accuracy of tree height field measurements may be less than 10 cm.",NA,0,100,
+code,character,Indicate stem mortality and condition. See Table 2 for more information on these codes,NA,,,
+growth_form,character,"Classification of growth form. E.g. tree, bamboo, palm, grass-tree, liana, etc. See the GEO-TREES Tree Inventory Guidelines Section 7: What to measure.",NA,,,
+height_allometry,character,Recommended height-diameter allometry e.g. “Chave et al. (2014) Equation 6a”. Provide more details elsewhere.,NA,,,
+agb_allometry,character,Recommended above-ground woody biomass allometry e.g. “Chave et al. (2014) Equation 4”. Provide more details elsewhere.,NA,,,
+notes,character,Miscellaneous notes for each stem measurement,NA,,,

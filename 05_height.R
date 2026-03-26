@@ -6,13 +6,18 @@
 if (param$height_method == "regional") { 
 
   # Extract plot centres
-  p_cent <- plot_pt %>% 
-    group_by(site_id, plot_id) %>% 
-    summarise() %>% 
-    st_centroid() %>% 
-    cbind(., st_coordinates(.)) %>% 
-    st_drop_geometry() %>% 
-    dplyr::select(plot_id, X, Y)
+  plot_pt_split <- split(plot_pt, plot_pt$crs_epsg)
+  p_cent <- bind_rows(lapply(plot_pt_split, function(x) { 
+    st_as_sf(x, coords = c("rover_easting_utm_m", "rover_northing_utm_m"), 
+      crs = unique(x$crs_epsg)) %>% 
+    st_transform(., 4326) 
+  })) %>% 
+  group_by(site_id, plot_id) %>% 
+  summarise() %>% 
+  st_centroid() %>% 
+  cbind(., st_coordinates(.)) %>% 
+  st_drop_geometry() %>% 
+  dplyr::select(plot_id, X, Y)
 
   # Add plot centres to stem data
   s_cent <- stem %>% 

@@ -5,7 +5,8 @@
 # Combine taxa across tables
 taxon_vec <- sort(unique(c(
   stem$taxon_name,
-  wd$taxon_name)))
+  wd$taxon_name,
+  height$taxon_name)))
 
 # Check names
 taxa <- correctTaxo(
@@ -22,7 +23,7 @@ taxa <- correctTaxo(
   timeout = 60)
 
 # Write stem taxonomic information to file
-write.csv(taxa, file.path(outdir, "taxa.csv"), row.names = FALSE)
+write.csv(taxa, file.path(outdir, "stem_taxa.csv"), row.names = FALSE)
 
 # Write WFO cache to file
 saveRDS(BIOMASS:::the$wfo_cache, file.path(outdir, "wfo_cache.rds"))

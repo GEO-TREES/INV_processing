@@ -1,4 +1,6 @@
 ﻿column_name,class,description,units,derived
 site_id,character,GEO-TREES site name.,NA,
-taxon_name,character,The taxonomic name of the tree.,m,
-wd_gcm3,numeric,Wood density in g cm^-3,g cm^-3,
+taxon_name,character,The taxonomic name of the tree. Matching the stem measurement table.,NA,
+wood_density_gcm3,numeric,"Wood density estimate from local field measurements, in g cm-3 to three decimal places.",g cm^-3,
+wood_density_sd_gcm3,numeric,"Optional standard deviation of estimated wood density if value is derived from multiple samples, in g cm-3 to three decimal places.",g cm^-3,
+wood_density_n,integer,Optional number of individuals sampled to estimate wood density if value is derived from multiple samples,NA,

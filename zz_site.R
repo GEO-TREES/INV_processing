@@ -20,10 +20,10 @@ source("./func.R")
 # p <- yaml::read_yaml("./sites/<SITE>/<ACQUISITION>/<PRODUCTVERSION>/param.yaml")
 
 # Load YAML file with software version
-version <- read_yaml("./version.yaml")
+software_version <- read_yaml("./version.yaml")
 
 # Merge parameters lists
-param <- c(p, version)
+param <- c(p, software_version)
 
 # Define parameter names
 param_name_vec <- c(
@@ -78,9 +78,9 @@ out_dir_vec <- c(
   "04_wd",
   "05_height",
   "06_agb_stem",
-  "07_stem_summ",
-  "08_stem_fil",
-  "09_agb_mc",
+  "07_record_fil",
+  "08_agb_mc",
+  "09_stem_summ",
   "10_quad_summ",
   "L1",
   "L2",
@@ -99,7 +99,8 @@ if (tolower(trimws(user_input)) %in% c("y", "yes")) {
   
   # Delete output files
   files_all <- list.files(param$out_dir, recursive = TRUE)
-  files_out <- files_all[grepl("^[0-9]+_|^L[1-3]", files_all)]
+  files_out <- files_all[grepl(
+    paste0("^", software_version_sanit, "/", "[0-9]+_|^L[1-3]"), files_all)]
   files_rem <- files_out[!grepl("wfo_cache.rds", files_out)]
   file.remove(file.path(param$out_dir, files_rem))
   
@@ -115,7 +116,8 @@ if (tolower(trimws(user_input)) %in% c("y", "yes")) {
 
 # Create output directories
 for (i in out_dir_vec) {
-  dir.create(file.path(param$out_dir, i), showWarnings = FALSE, recursive = TRUE)
+  dir.create(file.path(param$out_dir, software_version_sanit, i), 
+    showWarnings = FALSE, recursive = TRUE)
 }
 
 # If S3, copy raw data from S3 bucket to local directory
@@ -175,8 +177,20 @@ if (file.exists(wfo_path)) {
   message("WFO cache loaded")
   loadWFOCache(wfo_path) 
 }
-if (param$wd_method == "field") { 
+if (file.exists(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"))) { 
   wd <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"))
+} else { 
+  wd <- NULL
+}
+if (file.exists(file.path(param$out_dir, software_version_sanit, "01_fmt", "height.csv"))) { 
+  height <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "height.csv"))
+} else { 
+  height <- NULL
+}
+if (file.exists(file.path(param$out_dir, software_version_sanit, "01_fmt", "taxon.csv"))) {
+  taxon <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "taxon.csv"))
+} else { 
+  taxon <- NULL
 }
 runFn("./02_taxa.R")
 
@@ -185,7 +199,7 @@ outdir <- file.path(param$out_dir, software_version_sanit, "03_quad")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), 
   colClasses = stem_col_class)
-plot_pt <- st_read(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.gpkg"))
+plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"))
 runFn("./03_quad.R")
 
 # Estimate wood density
@@ -193,7 +207,7 @@ outdir <- file.path(param$out_dir, software_version_sanit, "04_wd")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), 
   colClasses = stem_col_class)
-taxa <- read.csv(file.path(param$out_dir, software_version_sanit, "02_taxa", "taxa.csv"))
+taxa <- read.csv(file.path(param$out_dir, software_version_sanit, "02_taxa", "stem_taxa.csv"))
 if (param$wd_method == "field") { 
   wd <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"))
 }
@@ -204,7 +218,7 @@ outdir <- file.path(param$out_dir, software_version_sanit, "05_height")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), 
   colClasses = stem_col_class)
-plot_pt <- st_read(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.gpkg"))
+plot_poly <- st_read(file.path(param$out_dir, software_version_sanit, "03_quad", "plot_poly.gpkg"))
 if (param$height_method == "field") { 
   stem_height <- read.csv(file.path(
     param$out_dir, software_version_sanit, "01_fmt", "stem_height.csv"))
@@ -220,60 +234,60 @@ stem_wd <- read.csv(file.path(param$out_dir, software_version_sanit, "04_wd", "s
 stem_height <- read.csv(file.path(param$out_dir, software_version_sanit, "05_height", "stem_height.csv"))
 runFn("./06_agb_stem.R")
 
-# Create master stems table
-outdir <- file.path(param$out_dir, software_version_sanit, "07_stem_summ")
+# Filter stem data for quadrat summaries
+outdir <- file.path(param$out_dir, software_version_sanit, "07_record_fil")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), 
   colClasses = stem_col_class)
-# taxon_path <- file.path(param$out_dir, software_version_sanit, "01_fmt", "taxon.csv")
-# if (file.exists(taxon_path)) { 
-#   taxon <- read.csv(taxon_path, colClasses = taxon_col_class)
-# }
-stem_agb <- read.csv(file.path(param$out_dir, software_version_sanit, "06_agb_stem", "stem_agb.csv"))
-stem_wd <- read.csv(file.path(param$out_dir, software_version_sanit, "04_wd", "stem_wd.csv"))
-stem_taxa <- read.csv(file.path(param$out_dir, software_version_sanit, "02_taxa", "stem_taxa.csv"))
 stem_pt <- st_read(file.path(param$out_dir, software_version_sanit, "03_quad", "stem_pt.gpkg"))
-runFn("./07_stem_summ.R")
-
-# Filter stem data for quadrat summaries
-outdir <- file.path(param$out_dir, software_version_sanit, "08_stem_fil")
-dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
-stem_summ <- st_read(file.path(param$out_dir, software_version_sanit, "07_stem_summ", "stem_summ.gpkg"))
 plot <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot.csv"), 
   colClasses = plot_col_class)
-runFn("./08_stem_fil.R")
+runFn("./07_record_fil.R")
 
 # Run AGB Monte-Carlo error propagation
-outdir <- file.path(param$out_dir, software_version_sanit, "09_agb_mc")
+outdir <- file.path(param$out_dir, software_version_sanit, "08_agb_mc")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
-stem_fil <- read.csv(file.path(param$out_dir, software_version_sanit, "08_stem_fil", "stem_fil.csv"), 
+stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), 
   colClasses = stem_col_class)
-plot_pt <- st_read(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.gpkg"))
+record_fil <- readLines(file.path(param$out_dir, software_version_sanit, "07_record_fil", "record_fil.txt"))
+stem_wd <- read.csv(file.path(param$out_dir, software_version_sanit, "04_wd", "stem_wd.csv"))
 stem_pt <- st_read(file.path(param$out_dir, software_version_sanit, "03_quad", "stem_pt.gpkg"))
-runFn("./09_agb_mc.R")
+plot_poly <- st_read(file.path(param$out_dir, software_version_sanit, "03_quad", "plot_poly.gpkg"))
+runFn("./08_agb_mc.R")
+
+# Create master stem summary object
+outdir <- file.path(param$out_dir, software_version_sanit, "09_stem_summ")
+dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), 
+  colClasses = stem_col_class)
+stem_wd <- read.csv(file.path(param$out_dir, software_version_sanit, "04_wd", "stem_wd.csv"))
+stem_agb <- read.csv(file.path(param$out_dir, software_version_sanit, "06_agb_stem", "stem_agb.csv"))
+stem_agb_mc <- read.csv(file.path(param$out_dir, software_version_sanit, "08_agb_mc", "stem_agb_mc.csv"))
+stem_taxa <- read.csv(file.path(param$out_dir, software_version_sanit, "02_taxa", "stem_taxa.csv"))
+stem_height <- read.csv(file.path(param$out_dir, software_version_sanit, "05_height", "stem_height.csv"))
+quad_poly <- st_read(file.path(param$out_dir, software_version_sanit, "03_quad", "quad_poly.gpkg"))
+quad_agb <- read.csv(file.path(param$out_dir, software_version_sanit, "08_agb_mc", "quad_agb.csv"))
+runFn("./09_stem_summ.R")
 
 # Create master quadrat summary object
 outdir <- file.path(param$out_dir, software_version_sanit, "10_quad_summ")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
-stem_fil <- read.csv(file.path(param$out_dir, software_version_sanit, "08_stem_fil", "stem_fil.csv"), 
-  colClasses = stem_col_class)
+stem_summ <- st_read(file.path(param$out_dir, software_version_sanit, "09_stem_summ", "stem_summ.gpkg"))
+record_fil <- readLines(file.path(param$out_dir, software_version_sanit, "07_record_fil", "record_fil.txt"))
 quad_poly <- st_read(file.path(param$out_dir, software_version_sanit, "03_quad", "quad_poly.gpkg"))
-quad_agb <- read.csv(file.path(param$out_dir, software_version_sanit, "09_agb_mc", "quad_agb.csv"))
+quad_agb <- read.csv(file.path(param$out_dir, software_version_sanit, "08_agb_mc", "quad_agb.csv"))
 runFn("./10_quad_summ.R")
 
 # Create L1, L2, L3 datasets 
 L_list <- c("L1", "L2", "L3")
 L_dir_list <- lapply(L_list, function(x) { 
-  file.path(param$out_dir, x, software_version_sanit)
+  file.path(param$out_dir, software_version_sanit, x)
 })
 names(L_dir_list) <- L_list
 lapply(L_dir_list, dir.create, recursive = TRUE, showWarnings = FALSE)
-stem_fil <- read.csv(file.path(param$out_dir, software_version_sanit, "08_stem_fil", "stem_fil.csv"), 
-  colClasses = stem_col_class)
-stem_agb_mc <- read.csv(file.path(param$out_dir, software_version_sanit, "09_agb_mc", "stem_agb_mc.csv"))
-stem_summ <- st_read(file.path(param$out_dir, software_version_sanit, "07_stem_summ", "stem_summ.gpkg"))
+stem_summ <- st_read(file.path(param$out_dir, software_version_sanit, "09_stem_summ", "stem_summ.gpkg"))
 quad_summ <- st_read(file.path(param$out_dir, software_version_sanit, "10_quad_summ", "quad_summ.gpkg"))
+record_fil <- readLines(file.path(param$out_dir, software_version_sanit, "07_record_fil", "record_fil.txt"))
 plot_poly <- st_read(file.path(param$out_dir, software_version_sanit, "03_quad", "plot_poly.gpkg"))
-plot_pt <- st_read(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.gpkg"))
 runFn("./11_brm.R")
 

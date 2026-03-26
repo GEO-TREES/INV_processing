@@ -331,16 +331,6 @@ ptValCheck <- function(x) {
   if (any(is.na(x$y_rel_m))) { 
     stop("NAs in `y_rel_m` are not allowed")
   }
-
-  # Must be SF type
-  if (!isSFType(x, "POINT")) { 
-    stop("Must be sf POINT object")
-  }
-
-  # Must be WGS84 CRS
-  if (sf::st_crs(x) != st_crs(4326)) {
-    stop("Must be WGS84 EPSG:4326")
-  }
 }
 
 
@@ -552,3 +542,45 @@ getUTM <- function(lon, lat, epsg = TRUE) {
   }
 }
 
+#' Create empty columns based on a vector of column names
+#'
+#' @param x dataframe 
+#' @param col_names vector of column names
+#' @param col_classes vector of column classes corresponding to `col_names`.
+#' 
+#' @return Dataframe with original and new columns filled with NAs
+#'
+#' @export
+#'
+colGen <- function(x, col_names, col_classes) {
+  
+  # Ensure the inputs match up
+  if (length(col_names) != length(col_classes)) {
+    stop("`col_names` and `col_classes` must be the same length.")
+  }
+  
+  # Find missing columns by index
+  missing_idx <- which(!col_names %in% colnames(x))
+  
+  if (length(missing_idx) > 0) {
+    new_cols <- col_names[missing_idx]
+    new_classes <- col_classes[missing_idx]
+    
+    # Message
+    message("New columns:\n  ", paste(new_cols, collapse = ",\n  "))
+    
+    # Add each new column with the correct NA type
+    for (i in seq_along(new_cols)) {
+      col_name <- new_cols[i]
+      col_class <- new_classes[i]
+      
+      # Dynamically call the appropriate base R coercion function (e.g., as.numeric, as.character)
+      coerce_fun <- match.fun(paste0("as.", col_class))
+      
+      # Populate the new column
+      x[[col_name]] <- rep(coerce_fun(NA), nrow(x))
+    }
+  }
+  
+  return(x)
+}

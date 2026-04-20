@@ -26,12 +26,11 @@ L1_stem <- stem_summ %>%
     Total_height = height_m,
     Code = code)
 
-# Prepare L1 plot polygons dataset 
-L1_poly <- plot_poly %>% 
-  dplyr::select(
-    BRM_site = site_id,
-    Acquisition = acquisition_id,
-    Plot_name = plot_id)
+# Prepare L1 GNSS dataset
+L1_pt <- plot_pt
+
+# Prepare L1 plot meta-data 
+L1_plot <- plot
 
 # Prepare L2 stems dataset
 L2_stem <- stem_summ %>% 
@@ -55,6 +54,13 @@ L2_stem <- stem_summ %>%
     AGB_stem_uncertainty = agb_Mg_sd,
     Height_stem_estimate = height_m_pred)#,
     # TODO: Height_tree_uncertainty = )
+
+# Prepare L1 plot polygons dataset 
+L2_poly <- plot_poly %>% 
+  dplyr::select(
+    BRM_site = site_id,
+    Acquisition = acquisition_id,
+    Plot_name = plot_id)
 
 # Check all values filled
 stopifnot(all(!is.na(L2_stem$AGB_tree_estimate)))
@@ -106,10 +112,12 @@ L3_filename <- paste(
 
 # Write L1 dataset to file
 write.csv(L1_stem, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_stem", ".csv")), row.names = FALSE)
-st_write(L1_poly , file.path(L_dir_list[["L1"]], paste0(L1_filename, "_poly", ".gpkg")), delete_dsn = TRUE) 
+write.csv(L1_plot, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_plot", ".csv")), row.names = FALSE)
+write.csv(L1_pt, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_pt", ".csv")), row.names = FALSE)
 
 # Write L2 dataset to file
 write.csv(L2_stem, file.path(L_dir_list[["L2"]], paste0(L2_filename, "_stem", ".csv")), row.names = FALSE)
+st_write(L2_poly , file.path(L_dir_list[["L1"]], paste0(L1_filename, "_poly", ".gpkg")), delete_dsn = TRUE) 
 
 # Write L3 dataset to file
 st_write(L3_quad, file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")), delete_dsn = TRUE)
@@ -152,10 +160,17 @@ L1_stem_outfile <- entity(
   encodingFormat = "text/csv"
 )
 
-L1_poly_outfile <- entity(
-  x = file.path(L_dir_list[["L1"]], paste0(L1_filename, "_poly", ".gpkg")),
+L1_pt_outfile <- entity(
+  x = file.path(L_dir_list[["L1"]], paste0(L1_filename, "_pt", ".csv")),
   type = "File",
-  description = "L1 plot polygons.",
+  description = "L1 re-formatted plot geo-location points",
+  encodingFormat = "text/csv"
+)
+
+L1_plot_outfile <- entity(
+  x = file.path(L_dir_list[["L1"]], paste0(L1_filename, "_plot", ".csv")),
+  type = "File",
+  description = "L1 re-formatted plot meta-data",
   encodingFormat = "text/csv"
 )
 
@@ -165,6 +180,14 @@ L2_stem_outfile <- entity(
   description = "L2 stem AGB estimates.",
   encodingFormat = "text/csv"
 )
+
+L2_poly_outfile <- entity(
+  x = file.path(L_dir_list[["L1"]], paste0(L1_filename, "_poly", ".gpkg")),
+  type = "File",
+  description = "L1 plot polygons.",
+  encodingFormat = "text/csv"
+)
+
 
 L3_quad_outfile <- entity(
   x = file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")),
@@ -203,10 +226,12 @@ exec <- entity(
 L_outfile_list <- list(
   "L1" = list(
     "L1_stem" = L1_stem_outfile,
-    "L1_poly" = L1_poly_outfile
+    "L1_plot" = L1_plot_outfile,
+    "L1_pt" = L1_pt_outfile
   ),
   "L2" = list(
-    "L2_stem" = L2_stem_outfile
+    "L2_stem" = L2_stem_outfile,
+    "L2_poly" = L2_poly_outfile
   ),
   "L3" = list(
     "L3_quad" = L3_quad_outfile

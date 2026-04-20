@@ -10,11 +10,21 @@ p <- read_excel(file.path(indir, "plot_pi.xlsx"))
 poly <- st_read(file.path(indir, "poly/Amacayacu_plot_new.shp"))
 
 # Process plot corners
+ptc <- st_coordinates(poly) 
+crs <- unique(getUTM(ptc[,1], ptc[,2], epsg = TRUE))
+crs_name <- paste("UTM", unique(getUTM(ptc[,1], ptc[,2], epsg = FALSE)))
+
 pt <- poly %>% 
   st_set_crs(., 4326) %>% 
   st_cast("POINT") %>% 
   slice_tail(n = -1) %>% 
   mutate(point_id = c("SW", "NW", "NE", "SE")) %>%
+  st_transform(., crs = crs) %>% 
+  bind_cols(., st_coordinates(.)) %>% 
+  st_drop_geometry() %>% 
+  rename(
+    rover_easting_utm_m = X,
+    rover_northing_utm_m = Y) %>% 
   mutate(
     site_id = param$site_id, 
     acquisition_id = param$acquisition_id, 
@@ -26,8 +36,12 @@ pt <- poly %>%
     y_rel_m = case_when(
       point_id %in% c("SW", "SE") ~ 0,
       point_id %in% c("NW", "NE") ~ 500,
-      TRUE ~ NA_real_)) %>% 
-  st_as_sf(., coords = c("longitude", "latitude"), crs = 4326) %>% 
+      TRUE ~ NA_real_),
+    crs_epsg = as.character(crs),
+    crs_name = crs_name,
+    rover_model = "Garmin GPSMap 65s", 
+    corner = TRUE) %>% 
+  colGen(., pt_cols$column_name, pt_cols$class) %>% 
   dplyr::select(all_of(pt_cols$column_name))
 
 # Process stem data
@@ -46,7 +60,7 @@ s_clean <- s %>%
   mutate(
     acquisition_id = param$acquisition_id,
     site_id = param$site_id, 
-    census_id = as.integer(4),
+    census_id = "4",
     plot_id = "Amacayacu_1",
     diam_cm = dbh4 / 10,
     height_m = NA_real_,
@@ -56,7 +70,9 @@ s_clean <- s %>%
     broken = ifelse(grepl("Q", codes4), "B", ""),
     missing = ifelse(grepl("DD", codes4), "M", ""),
     code = pasteVals(alive, broken, fallen, missing),
-    agb_allometry = NA_character_) %>% 
+    agb_allometry = NA_character_,
+    growth_form = NA_character_,
+    height_allometry = NA_character_) %>% 
   group_by(plot_id) %>% 
   mutate(census_date = as.character(median(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
@@ -72,6 +88,7 @@ p_clean <- data.frame(
   acquisition_id = param$acquisition_id,
   plot_id = "Amacayacu_1",
   census_date = unique(s_clean$census_date),
+  census_id = "4",
   plot_width_m = 500,
   plot_length_m = 500,
   plot_slope_deg = NA_real_,
@@ -89,8 +106,11 @@ p_clean <- data.frame(
   meas_palm = NA,
   meas_bamboo = NA,
   meas_protocol = NA_character_,
+  meas_plot_loc = NA_character_,
+  meas_stem_loc = "ForestGEO protocol. Well-surveyed 10x10 m subplot grid. Tape measures to locate stems by X and Y coordinates.",
   notes_meas = NA_character_,
   forest_status = "old-growth",
+  vegetation_type = NA_character_,
   land_use = NA_character_,
   treatment = NA_character_,
   treatment_ref = NA_character_,
@@ -114,7 +134,7 @@ valCheck(
   pt = pt)
 
 # Write corner points to file
-st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
+write.csv(pt, file.path(outdir, "plot_pt.csv"), row.names = FALSE)
 
 # Write plot meta-data to file
 write.csv(p_clean, file.path(outdir, "plot.csv"), row.names = FALSE)

@@ -45,6 +45,8 @@ if (all(sort(names(param)) != sort(param_name_vec))) {
     stop("The following parameters must be named in ./param.yaml: ", 
       paste(param_name_vec, collapse = ", "))
 }
+# sort(names(param))
+# sort(param_name_vec)
 
 # Optionally load S3 package
 if (param$opt_s3) {
@@ -285,9 +287,11 @@ L_dir_list <- lapply(L_list, function(x) {
 })
 names(L_dir_list) <- L_list
 lapply(L_dir_list, dir.create, recursive = TRUE, showWarnings = FALSE)
-stem_summ <- st_read(file.path(param$out_dir, software_version_sanit, "09_stem_summ", "stem_summ.gpkg"))
-quad_summ <- st_read(file.path(param$out_dir, software_version_sanit, "10_quad_summ", "quad_summ.gpkg"))
+stem_summ <- st_read(file.path(param$out_dir, software_version_sanit, "09_stem_summ", "stem_summ.gpkg"))  # L1_stem, L2_stem
+plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"))  # L1_pt
+plot <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot.csv"))  # L1_plot
+plot_poly <- st_read(file.path(param$out_dir, software_version_sanit, "03_quad", "plot_poly.gpkg"))  # L2_poly
+quad_summ <- st_read(file.path(param$out_dir, software_version_sanit, "10_quad_summ", "quad_summ.gpkg"))  # L3_quad
 record_fil <- readLines(file.path(param$out_dir, software_version_sanit, "07_record_fil", "record_fil.txt"))
-plot_poly <- st_read(file.path(param$out_dir, software_version_sanit, "03_quad", "plot_poly.gpkg"))
 runFn("./11_brm.R")
 

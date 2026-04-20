@@ -27,9 +27,14 @@ if (param$height_method == "regional") {
   stopifnot(all(!is.na(s_cent$Y)))
 
   # Retrieve stem heights using plot locations
-  s_cent$height_m_pred <- retrieveH(
+  height_pred <- retrieveH(
     D = s_cent$diam_cm, 
-    coord = s_cent[,c("X", "Y")])$H
+    coord = s_cent[,c("X", "Y")])
+
+  height_pred$RSE <- rep(0.243, length(height_pred$H))
+
+  s_cent$height_m_pred <- height_pred$H
+  s_cent$height_m_pred_rse <- height_pred$RSE
 
   # Create output dataframe
   out <- s_cent %>% 

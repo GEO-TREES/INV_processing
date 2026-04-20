@@ -3,6 +3,7 @@ site_id,character,GEO-TREES site name.,NA,,,
 acquisition_id,character,"Acquisition ID. The mid-date of GNSS measurement acquisition within the site. YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,,,TRUE
 plot_id,character,"Plot name, unique within the site.",NA,,,
 point_id,character,ID of the rover geo-reference point,NA,,,
+corner,logical,TRUE if the point is a plot corner,NA,,,
 x_rel_m,numeric,X coordinate of the stem map at this point relative to the entire plot (m).,m,,,
 y_rel_m,numeric,Y coordinate of the stem map at this point relative to the entire plot (m).,m,,,
 rover_easting_utm_m,numeric,"UTM Easting coordinate of the rover. If using a handheld GNSS unit, enter the coordinates of the sample point here.",m,0,NA,

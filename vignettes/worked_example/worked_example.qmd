@@ -62,6 +62,12 @@ library(yaml)
 library(rocrateR)
 ```
 
+Source functions:
+
+```{r}
+source("../../func.R")
+```
+
 ## Create L0 data
 
 This part of the workflow will vary among sites, depending on the structure of
@@ -95,32 +101,72 @@ There should be one `param.yaml` file for each version of the dataset.
 * `height_method` -- Method used to estimate stem height, e.g. `"regional"`, `"local"`
 * `wd_method` -- Method used to estimate wood density, e.g. `"regional"`, `"local"`
 
+Import `param.yaml`:
+
+```{r}
+# p <- yaml::read_yaml("./sites/<SITE>/<ACQUISITION>/<PRODUCTVERSION>/param.yaml")
+p <- read_yaml(file.path(indir, "param.yaml"))
+software_version <- read_yaml(file.path(indir, "version.yaml"))
+
+# Merge parameters lists
+param <- c(p, software_version)
+
+# Define parameter names
+param_name_vec <- c(
+  "site_id",
+  "acquisition_id",
+  "quad_dim",
+  "opt_s3",
+  "s3_dir",
+  "out_dir",
+  "raw_dir",
+  "height_method",
+  "wd_method",
+  "software_version",
+  "product_version"
+)
+
+# Check all parameters present
+if (all(sort(names(param)) != sort(param_name_vec))) {
+    stop("The following parameters must be named in ./param.yaml: ", 
+      paste(param_name_vec, collapse = ", "))
+}
+
+# Optionally load AWS S3 package
+if (param$opt_s3) {
+  library(paws)
+}
+```
+
 ## Import L0 data
 
 ```{r}
 # Define input data directory
-indir <- "../extdata/L0"
+indir <- "./data-raw/data"
 
 # Define data output directory
-outdir <- "./"
+outdir <- "./out"
 
-# Import stem measurements
-s <- read.csv(file.path(indir, "stem.csv"))
+# Import raw L0 data
+L0 <- list(
+  # Import stem measurements
+  stem = read.csv(file.path(indir, "stem.csv")),
 
-# Import plot meta-data
-p <- read.csv(file.path(indir, "plot.csv"))
+  # Import plot meta-data
+  plot = read.csv(file.path(indir, "plot.csv")),
 
-# Import plot geo-location data
-pt <- read.csv(file.path(indir, "plot_pt.csv"))
+  # Import plot geo-location data
+  pt = read.csv(file.path(indir, "pt.csv")),
 
-# Import taxonomy data (optional)
-taxa <- read.csv(file.path(indir, "taxa.csv"))
+  # Import taxonomy data (optional)
+  taxa = read.csv(file.path(indir, "taxa.csv")),
 
-# Import individual local wood density estimates (optional)
-wd <- read.csv(file.path(indir, "wd.csv"))
+  # Import individual local wood density estimates (optional)
+  wd = read.csv(file.path(indir, "wd.csv")),
 
-# Import additional height-diameter measurements (optional)
-hd <- read.csv(file.path(indir, "hd.csv"))
+  # Import additional height-diameter measurements (optional)
+  height = read.csv(file.path(indir, "hd.csv"))
+)
 
 # TODO: Import local biomass allometry
 # agb_allom <- readRDS(file.path(indir, "agb_allom.rds"))
@@ -136,9 +182,15 @@ hd <- read.csv(file.path(indir, "hd.csv"))
 ```{r}
 # Combine taxa across tables
 taxon_vec <- sort(unique(c(
-  stem$taxon_name,
-  wd$taxon_name,
-  height$taxon_name)))
+  L0$stem$taxon_name,
+  L0$wd$taxon_name,
+  L0$height$taxon_name)))
+
+# Load WFO cache from previous processing
+wfo_path <- file.path(indir, "wfo_cache.rds")
+if (file.exists(wfo_path)) { 
+  loadWFOCache(wfo_path) 
+}
 
 # Check names
 taxa <- BIOMASS::correctTaxo(
@@ -154,11 +206,8 @@ taxa <- BIOMASS::correctTaxo(
   fill_time_s = 1, 
   timeout = 60)
 
-# Write stem taxonomic information to file
-write.csv(taxa, file.path(outdir, "stem_taxa.csv"), row.names = FALSE)
-
-# Write WFO cache to file
-saveRDS(BIOMASS:::the$wfo_cache, file.path(outdir, "wfo_cache.rds"))
+# Write WFO cache to file for future processing
+# saveRDS(BIOMASS:::the$wfo_cache, file.path(outdir, "wfo_cache.rds"))
 ```
 
 ## Fit plot spatial polygons
@@ -168,7 +217,7 @@ saveRDS(BIOMASS:::the$wfo_cache, file.path(outdir, "wfo_cache.rds"))
 ```{r}
 # Extract plot corners
 plot_check <- BIOMASS::plotPolygonFit(
-  point_data = plot_pt,
+  point_data = L0$pt,
   method = "procrustes",
   rel_col = c("x_rel_m", "y_rel_m"),
   proj_col = c("rover_easting_utm_m", "rover_northing_utm_m"),
@@ -177,7 +226,7 @@ plot_check <- BIOMASS::plotPolygonFit(
   plot_col = "plot_id",
   max_dist = 10,
   rm_outliers = TRUE,
-  tree_data = stem[stem$plot_id %in% plot_pt$plot_id,],
+  tree_data = L0$stem[L0$stem$plot_id %in% L0$pt$plot_id,],
   tree_rel_col = c("x_rel_m", "y_rel_m"),
   tree_plot_col = "plot_id",
   raster = NULL,
@@ -206,7 +255,7 @@ plot_divide <- BIOMASS::divide_plot(
 # Create plot polygons 
 plot_poly <- plot_check$polygon %>% 
   rename(plot_id = plot_ID) %>% 
-  st_set_crs(unique(plot_pt$crs_epsg)) %>% 
+  st_set_crs(unique(L0$pt$crs_epsg)) %>% 
   mutate(    
     site_id = param$site_id,
     acquisition_id = param$acquisition_id, 
@@ -214,7 +263,7 @@ plot_poly <- plot_check$polygon %>%
 
 # Create quadrat polygons
 quad_pt <- plot_divide$sub_corner_coord %>% 
-  st_as_sf(., coords = c("x_proj", "y_proj"), crs = unique(plot_pt$crs_epsg)) %>% 
+  st_as_sf(., coords = c("x_proj", "y_proj"), crs = unique(L0$pt$crs_epsg)) %>% 
   mutate(    
     site_id = param$site_id,
     acquisition_id = param$acquisition_id, 
@@ -234,28 +283,10 @@ quad_poly <- quad_pt %>%
 # Create stem points
 stem_pt <- plot_divide$tree_data %>% 
   filter(!is.na(x_proj), !is.na(y_proj)) %>% 
-  st_as_sf(., coords = c("x_proj", "y_proj"), crs = unique(plot_pt$crs_epsg)) %>% 
+  st_as_sf(., coords = c("x_proj", "y_proj"), crs = unique(L0$pt$crs_epsg)) %>% 
   dplyr::select(
     record_id,
     quadrat_id = subplot_ID)
-
-# Write plot polygons to file
-st_write(plot_poly, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
-
-# Write plot corner points
-st_write(plot_pt, file.path(outdir, "plot_corner.gpkg"), delete_dsn = TRUE)
-
-# Write quadrat polygons to file
-st_write(quad_poly, file.path(outdir, "quad_poly.gpkg"), delete_dsn = TRUE)
-
-# Write quadrat points to file
-st_write(quad_pt, file.path(outdir, "quad_corner.gpkg"), delete_dsn = TRUE)
-
-# Write global stem coordinates to file
-st_write(stem_pt, file.path(outdir, "stem_pt.gpkg"), delete_dsn = TRUE)
-
-# Write output of divide_plot() to file
-saveRDS(plot_divide, file.path(outdir, "plot_divide.rds"))
 ```
 
 ## Estimate stem wood density
@@ -263,20 +294,21 @@ saveRDS(plot_divide, file.path(outdir, "plot_divide.rds"))
 `04_wd.R`
 
 ```{r}
+# TODO: column name issues
 # Join taxonomy data to stem data
-stem_taxa_all <- left_join(stem, taxa, by = c("taxon_name" = "nameOriginal"))
+stem_taxa_all <- left_join(L0$stem, taxa, by = c("taxon_name" = "nameOriginal"))
 
 # Optionally process local wood density data
 if (param$wd_method == "field") { 
-  wd_summ <- wd %>% 
+  wd_summ <- L0$wd %>% 
     left_join(., taxa, by = c("taxon_name" = "nameOriginal")) %>% 
   group_by(
     family = familyAccepted,
     genus = genusAccepted,
     species = speciesAccepted) %>% 
   summarise(
-    meanWD = mean(wd_gcm3, na.rm = TRUE),
-    sdWD = sd(wd_gcm3, na.rm = TRUE))
+    meanWD = mean(wood_density_gcm3, na.rm = TRUE),
+    sdWD = sd(wood_density_gcm3, na.rm = TRUE))
 }
 
 # Estimate wood density for each stem measurement
@@ -305,14 +337,94 @@ Local height estimation where height data are available
 
 Local height estimation where existing height-diameter allometry is available
 
+```{r}
+
+# Regional height estimation
+if (param$height_method == "regional") { 
+
+  # Extract plot centres
+  plot_pt_split <- split(plot_pt, plot_pt$crs_epsg)
+  p_cent <- bind_rows(lapply(plot_pt_split, function(x) { 
+    st_as_sf(x, coords = c("rover_easting_utm_m", "rover_northing_utm_m"), 
+      crs = unique(x$crs_epsg)) %>% 
+    st_transform(., 4326) 
+  })) %>% 
+  group_by(site_id, plot_id) %>% 
+  summarise() %>% 
+  st_centroid() %>% 
+  cbind(., st_coordinates(.)) %>% 
+  st_drop_geometry() %>% 
+  dplyr::select(plot_id, X, Y)
+
+  # Add plot centres to stem data
+  s_cent <- stem %>% 
+    left_join(., p_cent, by = "plot_id")
+
+  stopifnot(all(!is.na(s_cent$X)))
+  stopifnot(all(!is.na(s_cent$Y)))
+
+  # Retrieve stem heights using plot locations
+  height_pred <- retrieveH(
+    D = s_cent$diam_cm, 
+    coord = s_cent[,c("X", "Y")])
+
+  height_pred$RSE <- rep(0.243, length(height_pred$H))
+
+  s_cent$height_m_pred <- height_pred$H
+  s_cent$height_m_pred_rse <- height_pred$RSE
+
+  # Create output dataframe
+  out <- s_cent %>% 
+    dplyr::select(record_id, height_m_pred)
+} else if (param$height_method == "field") { 
+
+  # Compare height diameter models
+  height_mod_comp <- modelHD(
+    D = s_height$diam_cm,
+    H = s_height$height_m,
+    bayesian = FALSE,
+    useCache = FALSE,
+    drawGraph = FALSE)
+
+  # Choose best height diameter model
+  # Based on average bias
+  height_mod_best <- height_mod_comp[
+    height_mod_comp$Average_bias == min(height_mod_comp$Average_bias), "method"]
+
+  # Fit best height diameter model
+  height_mod <- modelHD(
+    D = s_height$diam_cm,
+    H = s_height$height_m,
+    method = height_mod_best,
+    bayesian = FALSE,
+    useCache = FALSE,
+    drawGraph = TRUE)
+
+  # Predict with best height diameter model
+  height_est <- retrieveH(
+    D = stem$diam_cm,
+    model = height_mod)
+
+  # Create output dataframe
+  out <- stem %>% 
+    mutate(height_m_pred = height_est$H) %>% 
+    dplyr::select(record_id, height_m_pred)
+}
+
+# Write to file
+write.csv(out, file.path(outdir, "stem_height.csv"), row.names = FALSE)
+
+## here we need to export/write height_mod
+```
+
 ## Estimate stem AGB 
 
 `06_agb_stem.R`
 
 ```{r}
 # Estimate stem-level AGB
-stem_agb <- stem %>% 
-  left_join(., stem_wd, by = "record_id") %>% 
+stem_agb <- L0$stem %>% 
+  left_join(., wd_out, by = "record_id") %>% 
   left_join(., stem_height, by = "record_id") %>% 
   mutate(
     agb_Mg = BIOMASS::computeAGB(

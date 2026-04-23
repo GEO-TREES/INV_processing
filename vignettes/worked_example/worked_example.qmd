@@ -297,45 +297,49 @@ stem_pt <- plot_divide$tree_data %>%
 ```{r}
 # Join taxonomy data to stem data
 stem_taxa_all <- left_join(L0$stem, taxa, by = c("taxon_name" = "nameOriginal"))
+```
 
+If local wood density data are available:
+
+```{r}
 # Optionally process local wood density data
-if (param$wd_method == "field") { 
-  wd_summ <- L0$wd %>%
-    group_by(site_id, taxon_name) %>%
-    summarise(
-      wood_density_n_total = sum(wood_density_n, na.rm = TRUE),
-      meanWD = sum(wood_density_gcm3 * wood_density_n, na.rm = TRUE) / 
-        sum(wood_density_n[!is.na(wood_density_gcm3)], na.rm = TRUE),
-      sdWD = {
-        # Filter to rows that have both mean and n 
-        valid_rows = !is.na(wood_density_gcm3) & !is.na(wood_density_n)
-        
-        # if SD is NA, treat as 0 (no variance) 
-        # but still account distance from grand mean
-        clean_sd = ifelse(is.na(wood_density_sd_gcm3), 0, wood_density_sd_gcm3)
-        
-        # Components for grand variance
-        ss_within  = sum((wood_density_n[valid_rows] - 1) * 
-          clean_sd[valid_rows]^2, na.rm = TRUE)
-        ss_between = sum(wood_density_n[valid_rows] * 
-          (wood_density_gcm3[valid_rows] - meanWD)^2, na.rm = TRUE)
-        
-        # If wood_density_n_total <= 1, return NA; otherwise calculate SD
-        if (wood_density_n_total > 1) {
-          sqrt((ss_within + ss_between) / (wood_density_n_total - 1)) 
-        } else {
-          NA_real_
-        }
-      },
-      .groups = "drop"
-    ) %>% 
-    left_join(., taxa, by = c("taxon_name" = "nameOriginal")) %>% 
-    group_by(
-      family = familyAccepted,
-      genus = genusAccepted,
-      species = speciesAccepted)
-}
+wd_summ <- L0$wd %>%
+  group_by(site_id, taxon_name) %>%
+  summarise(
+    wood_density_n_total = sum(wood_density_n, na.rm = TRUE),
+    meanWD = sum(wood_density_gcm3 * wood_density_n, na.rm = TRUE) / 
+      sum(wood_density_n[!is.na(wood_density_gcm3)], na.rm = TRUE),
+    sdWD = {
+      # Filter to rows that have both mean and n 
+      valid_rows = !is.na(wood_density_gcm3) & !is.na(wood_density_n)
+      
+      # if SD is NA, treat as 0 (no variance) 
+      # but still account distance from grand mean
+      clean_sd = ifelse(is.na(wood_density_sd_gcm3), 0, wood_density_sd_gcm3)
+      
+      # Components for grand variance
+      ss_within  = sum((wood_density_n[valid_rows] - 1) * 
+        clean_sd[valid_rows]^2, na.rm = TRUE)
+      ss_between = sum(wood_density_n[valid_rows] * 
+        (wood_density_gcm3[valid_rows] - meanWD)^2, na.rm = TRUE)
+      
+      # If wood_density_n_total <= 1, return NA; otherwise calculate SD
+      if (wood_density_n_total > 1) {
+        sqrt((ss_within + ss_between) / (wood_density_n_total - 1)) 
+      } else {
+        NA_real_
+      }
+    },
+    .groups = "drop"
+  ) %>% 
+  left_join(., taxa, by = c("taxon_name" = "nameOriginal")) %>% 
+  group_by(
+    family = familyAccepted,
+    genus = genusAccepted,
+    species = speciesAccepted)
+```
 
+```{r}
 # Estimate wood density for each stem measurement
 wd_all <- BIOMASS::getWoodDensity(
   genus = stem_taxa_all$genusAccepted, 
@@ -353,85 +357,85 @@ wd_out <- cbind(record_id = stem_taxa_all$record_id, wd_all)
 
 `05_height.R`
 
-Regional height estimation where no height data are available
-
-Local height estimation where height data are available
-
-Local height estimation where existing height-diameter allometry is available
+Where local height data are available:
 
 ```{r}
+# Compare height diameter models
+height_mod_comp <- modelHD(
+  D = s_height$diam_cm,
+  H = s_height$height_m,
+  bayesian = FALSE,
+  useCache = FALSE,
+  drawGraph = FALSE)
 
-# Regional height estimation
-if (param$height_method == "regional") { 
+# Choose best height diameter model
+# Based on average bias
+height_mod_best <- height_mod_comp[
+  height_mod_comp$Average_bias == min(height_mod_comp$Average_bias), "method"]
 
-  # Extract plot centres
-  plot_pt_split <- split(L0$pt, L0$pt$crs_epsg)
-  p_cent <- bind_rows(lapply(plot_pt_split, function(x) { 
-    st_as_sf(x, coords = c("rover_easting_utm_m", "rover_northing_utm_m"), 
-      crs = unique(x$crs_epsg)) %>% 
-    st_transform(., 4326) 
-  })) %>% 
-  group_by(site_id, plot_id) %>% 
-  summarise() %>% 
-  st_centroid() %>% 
-  cbind(., st_coordinates(.)) %>% 
-  st_drop_geometry() %>% 
-  dplyr::select(plot_id, X, Y)
+# Fit best height diameter model
+height_mod <- modelHD(
+  D = s_height$diam_cm,
+  H = s_height$height_m,
+  method = height_mod_best,
+  bayesian = FALSE,
+  useCache = FALSE,
+  drawGraph = TRUE)
 
-  # Add plot centres to stem data
-  s_cent <- L0$stem %>% 
-    left_join(., p_cent, by = "plot_id")
+# Predict with best height diameter model
+height_est <- retrieveH(
+  D = stem$diam_cm,
+  model = height_mod)
 
-  stopifnot(all(!is.na(s_cent$X)))
-  stopifnot(all(!is.na(s_cent$Y)))
+# Create output dataframe
+stem_height <- stem %>% 
+  mutate(height_m_pred = height_est$H) %>% 
+  dplyr::select(record_id, height_m_pred)
+```
 
-  # Retrieve stem heights using plot locations
-  height_pred <- retrieveH(
-    D = s_cent$diam_cm, 
-    coord = s_cent[,c("X", "Y")])
+Where an existing local height-diameter allometry is available:
 
-  height_pred$RSE <- rep(0.243, length(height_pred$H))
+```{r}
+# TODO:
+```
 
-  s_cent$height_m_pred <- height_pred$H
-  s_cent$height_m_pred_rse <- height_pred$RSE
+Regional height estimation where no height data are available:
 
-  # Create output dataframe
-  stem_height <- s_cent %>% 
-    dplyr::select(record_id, height_m_pred)
-} else if (param$height_method == "field") { 
+```{r}
+# Extract plot centres
+plot_pt_split <- split(L0$pt, L0$pt$crs_epsg)
+p_cent <- bind_rows(lapply(plot_pt_split, function(x) { 
+  st_as_sf(x, coords = c("rover_easting_utm_m", "rover_northing_utm_m"), 
+    crs = unique(x$crs_epsg)) %>% 
+  st_transform(., 4326) 
+})) %>% 
+group_by(site_id, plot_id) %>% 
+summarise() %>% 
+st_centroid() %>% 
+cbind(., st_coordinates(.)) %>% 
+st_drop_geometry() %>% 
+dplyr::select(plot_id, X, Y)
 
-  # Compare height diameter models
-  height_mod_comp <- modelHD(
-    D = s_height$diam_cm,
-    H = s_height$height_m,
-    bayesian = FALSE,
-    useCache = FALSE,
-    drawGraph = FALSE)
+# Add plot centres to stem data
+s_cent <- L0$stem %>% 
+  left_join(., p_cent, by = "plot_id")
 
-  # Choose best height diameter model
-  # Based on average bias
-  height_mod_best <- height_mod_comp[
-    height_mod_comp$Average_bias == min(height_mod_comp$Average_bias), "method"]
+stopifnot(all(!is.na(s_cent$X)))
+stopifnot(all(!is.na(s_cent$Y)))
 
-  # Fit best height diameter model
-  height_mod <- modelHD(
-    D = s_height$diam_cm,
-    H = s_height$height_m,
-    method = height_mod_best,
-    bayesian = FALSE,
-    useCache = FALSE,
-    drawGraph = TRUE)
+# Retrieve stem heights using plot locations
+height_pred <- retrieveH(
+  D = s_cent$diam_cm, 
+  coord = s_cent[,c("X", "Y")])
 
-  # Predict with best height diameter model
-  height_est <- retrieveH(
-    D = stem$diam_cm,
-    model = height_mod)
+height_pred$RSE <- rep(0.243, length(height_pred$H))
 
-  # Create output dataframe
-  stem_height <- stem %>% 
-    mutate(height_m_pred = height_est$H) %>% 
-    dplyr::select(record_id, height_m_pred)
-}
+s_cent$height_m_pred <- height_pred$H
+s_cent$height_m_pred_rse <- height_pred$RSE
+
+# Create output dataframe
+stem_height <- s_cent %>% 
+  dplyr::select(record_id, height_m_pred)
 ```
 
 ## Estimate stem AGB 
@@ -456,6 +460,18 @@ stem_agb <- L0$stem %>%
     agb_Mg,
     ba_m2,
     volume_m3)
+```
+
+Where a local biomass allometry is available:
+
+```{r}
+# TODO:
+```
+
+Where some stem measurements specify a custom biomass allometry, e.g. for bamboos:
+
+```{r}
+# TODO:
 ```
 
 ## Filter stem data 
@@ -506,7 +522,7 @@ p_cent <- plot_poly %>%
 # Filter stems data
 stem_fil <- L0$stem %>% 
   left_join(., p_cent, by = "plot_id") %>% 
-  left_join(., stem_wd, by = "record_id") %>% 
+  left_join(., wd_out, by = "record_id") %>% 
   left_join(., stem_pt, by = "record_id") %>% 
   filter(record_id %in% record_fil)
 
@@ -553,9 +569,6 @@ quad_agb_simu <- bind_rows(lapply(names(quad_agb_mc_list), function(x) {
 # here can be done with BIOMASS::subplot_summary and thus includes uncertainties 
 # on coordinates, needs divide_plot outputs from 03_quad
 
-# Write quadrat simulations to file
-write.csv(quad_agb_simu, file.path(outdir, "quad_agb_mc.csv"), row.names = FALSE)
-
 # Calculate mean and standard deviation of stem AGB
 stem_agb_mc <- bind_rows(lapply(seq_along(quad_agb_mc_list), function(x) {
   simu <- quad_agb_mc_list[[x]]$AGB_simu
@@ -569,9 +582,6 @@ stem_agb_mc <- bind_rows(lapply(seq_along(quad_agb_mc_list), function(x) {
   data.frame(record_id = stem_split[[x]]$record_id, agb_Mg_mean, agb_Mg_sd)
 }))
 
-# Write stem-level data to file
-write.csv(stem_agb_mc, file.path(outdir, "stem_agb_mc.csv"), row.names = FALSE)
-
 # Extract summary statistics from AGB MC error propagation simulations
 quad_agb_mc_summ <- bind_rows(lapply(names(quad_agb_mc_list), function(x) { 
   data.frame(
@@ -583,9 +593,6 @@ quad_agb_mc_summ <- bind_rows(lapply(names(quad_agb_mc_list), function(x) {
     agb_Mg_sum_mc_ci2.5 = unname(quad_agb_mc_list[[x]]$credibilityAGB[1]),
     agb_Mg_sum_mc_ci97.5 = unname(quad_agb_mc_list[[x]]$credibilityAGB[2]))
 }))
-
-# Write quadrat-level summary data to file
-write.csv(quad_agb_mc_summ, file.path(outdir, "quad_agb.csv"), row.names = FALSE)
 ```
 
 ## Compile GEO-TREES L1, L2, and L3 data products 

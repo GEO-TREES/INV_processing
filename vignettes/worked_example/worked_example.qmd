@@ -479,3 +479,7 @@ Create ROCrate files.
 * L2 stem AGB estimates.
 * L1 plot polygons.
 * L3 AGBD estimates within plot quadrats.
+
+The L3 Tree Inventory data product is passed to the AGBD geo-spatial modelling
+workflow to produce landscape-level estimates of AGBD at 50 x 50 m gridded
+resolution, in combination with the ALS L3 data products.

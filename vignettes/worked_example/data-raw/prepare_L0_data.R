@@ -157,12 +157,12 @@ valCheck(
   wd = wd_syn)
 
 # Write files
-write.csv(stem_anon, "./data/stem.csv")
-write.csv(plot_anon, "./data/plot.csv")
-write.csv(pt_anon, "./data/pt.csv")
-write.csv(taxa_clean, "./data/taxa.csv")
-write.csv(wd_syn, "./data/wd.csv")
-write.csv(hd_syn, "./data/hd.csv")
+write.csv(stem_anon, "./data/stem.csv", row.names = FALSE)
+write.csv(plot_anon, "./data/plot.csv", row.names = FALSE)
+write.csv(pt_anon, "./data/pt.csv", row.names = FALSE)
+write.csv(taxa_clean, "./data/taxa.csv", row.names = FALSE)
+write.csv(wd_syn, "./data/wd.csv", row.names = FALSE)
+write.csv(hd_syn, "./data/hd.csv", row.names = FALSE)
 write_yaml(param_anon, "./data/param.yaml")
 
 # Copy WFO cache

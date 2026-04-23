@@ -68,6 +68,13 @@ Source functions:
 source("../../func.R")
 ```
 
+Set data input and output directories:
+
+```{r}
+indir <- "./data-raw/data"
+outdir <- "./out"
+```
+
 ## Create L0 data
 
 This part of the workflow will vary among sites, depending on the structure of
@@ -141,12 +148,6 @@ if (param$opt_s3) {
 ## Import L0 data
 
 ```{r}
-# Define input data directory
-indir <- "./data-raw/data"
-
-# Define data output directory
-outdir <- "./out"
-
 # Import raw L0 data
 L0 <- list(
   # Import stem measurements
@@ -294,21 +295,45 @@ stem_pt <- plot_divide$tree_data %>%
 `04_wd.R`
 
 ```{r}
-# TODO: column name issues
 # Join taxonomy data to stem data
 stem_taxa_all <- left_join(L0$stem, taxa, by = c("taxon_name" = "nameOriginal"))
 
 # Optionally process local wood density data
 if (param$wd_method == "field") { 
-  wd_summ <- L0$wd %>% 
+  wd_summ <- L0$wd %>%
+    group_by(site_id, taxon_name) %>%
+    summarise(
+      wood_density_n_total = sum(wood_density_n, na.rm = TRUE),
+      meanWD = sum(wood_density_gcm3 * wood_density_n, na.rm = TRUE) / 
+        sum(wood_density_n[!is.na(wood_density_gcm3)], na.rm = TRUE),
+      sdWD = {
+        # Filter to rows that have both mean and n 
+        valid_rows = !is.na(wood_density_gcm3) & !is.na(wood_density_n)
+        
+        # if SD is NA, treat as 0 (no variance) 
+        # but still account distance from grand mean
+        clean_sd = ifelse(is.na(wood_density_sd_gcm3), 0, wood_density_sd_gcm3)
+        
+        # Components for grand variance
+        ss_within  = sum((wood_density_n[valid_rows] - 1) * 
+          clean_sd[valid_rows]^2, na.rm = TRUE)
+        ss_between = sum(wood_density_n[valid_rows] * 
+          (wood_density_gcm3[valid_rows] - meanWD)^2, na.rm = TRUE)
+        
+        # If wood_density_n_total <= 1, return NA; otherwise calculate SD
+        if (wood_density_n_total > 1) {
+          sqrt((ss_within + ss_between) / (wood_density_n_total - 1)) 
+        } else {
+          NA_real_
+        }
+      },
+      .groups = "drop"
+    ) %>% 
     left_join(., taxa, by = c("taxon_name" = "nameOriginal")) %>% 
-  group_by(
-    family = familyAccepted,
-    genus = genusAccepted,
-    species = speciesAccepted) %>% 
-  summarise(
-    meanWD = mean(wood_density_gcm3, na.rm = TRUE),
-    sdWD = sd(wood_density_gcm3, na.rm = TRUE))
+    group_by(
+      family = familyAccepted,
+      genus = genusAccepted,
+      species = speciesAccepted)
 }
 
 # Estimate wood density for each stem measurement
@@ -322,9 +347,6 @@ wd_all <- BIOMASS::getWoodDensity(
 
 # Create output dataframe
 wd_out <- cbind(record_id = stem_taxa_all$record_id, wd_all)
-
-# Write to file
-write.csv(wd_out, file.path(outdir, "stem_wd.csv"), row.names = FALSE)
 ```
 
 ## Estimate stem height
@@ -343,7 +365,7 @@ Local height estimation where existing height-diameter allometry is available
 if (param$height_method == "regional") { 
 
   # Extract plot centres
-  plot_pt_split <- split(plot_pt, plot_pt$crs_epsg)
+  plot_pt_split <- split(L0$pt, L0$pt$crs_epsg)
   p_cent <- bind_rows(lapply(plot_pt_split, function(x) { 
     st_as_sf(x, coords = c("rover_easting_utm_m", "rover_northing_utm_m"), 
       crs = unique(x$crs_epsg)) %>% 
@@ -357,7 +379,7 @@ if (param$height_method == "regional") {
   dplyr::select(plot_id, X, Y)
 
   # Add plot centres to stem data
-  s_cent <- stem %>% 
+  s_cent <- L0$stem %>% 
     left_join(., p_cent, by = "plot_id")
 
   stopifnot(all(!is.na(s_cent$X)))
@@ -374,7 +396,7 @@ if (param$height_method == "regional") {
   s_cent$height_m_pred_rse <- height_pred$RSE
 
   # Create output dataframe
-  out <- s_cent %>% 
+  stem_height <- s_cent %>% 
     dplyr::select(record_id, height_m_pred)
 } else if (param$height_method == "field") { 
 
@@ -406,15 +428,10 @@ if (param$height_method == "regional") {
     model = height_mod)
 
   # Create output dataframe
-  out <- stem %>% 
+  stem_height <- stem %>% 
     mutate(height_m_pred = height_est$H) %>% 
     dplyr::select(record_id, height_m_pred)
 }
-
-# Write to file
-write.csv(out, file.path(outdir, "stem_height.csv"), row.names = FALSE)
-
-## here we need to export/write height_mod
 ```
 
 ## Estimate stem AGB 
@@ -439,9 +456,6 @@ stem_agb <- L0$stem %>%
     agb_Mg,
     ba_m2,
     volume_m3)
-
-# Write stem-level AGB to file
-write.csv(stem_agb, file.path(outdir, "stem_agb.csv"), row.names = FALSE)
 ```
 
 ## Filter stem data 
@@ -450,9 +464,9 @@ write.csv(stem_agb, file.path(outdir, "stem_agb.csv"), row.names = FALSE)
 
 ```{r}
 # Filter stem data
-record_fil <- stem %>% 
+record_fil <- L0$stem %>% 
   left_join(., stem_pt, by = "record_id") %>% 
-  left_join(., plot[,c("plot_id", "meas_diam_min_cm")], 
+  left_join(., L0$plot[,c("plot_id", "meas_diam_min_cm")], 
     by = "plot_id") %>% 
   filter(
     !is.na(diam_cm),
@@ -472,9 +486,6 @@ record_fil <- stem %>%
   ungroup() %>% 
   pull(record_id) %>% 
   as.character()
-
-# Write filtered stem data to file
-writeLines(record_fil, file.path(outdir, "record_fil.txt"))
 ```
 
 ## Estimate quadrat AGBD and propagate error
@@ -493,7 +504,7 @@ p_cent <- plot_poly %>%
   dplyr::select(plot_id, X, Y)
 
 # Filter stems data
-stem_fil <- stem %>% 
+stem_fil <- L0$stem %>% 
   left_join(., p_cent, by = "plot_id") %>% 
   left_join(., stem_wd, by = "record_id") %>% 
   left_join(., stem_pt, by = "record_id") %>% 

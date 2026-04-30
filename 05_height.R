@@ -74,7 +74,10 @@ if (param$height_method == "regional") {
     dplyr::select(record_id, height_m_pred)
 }
 
-# Write to file
+# Write height estimates to file
 write.csv(out, file.path(outdir, "stem_height.csv"), row.names = FALSE)
 
-## here we need to export/write height_mod
+# Write height-diameter model to file
+if (param$height_method == "field" && exists(height_mod)) {
+  saveRDS(height_mod, file.path(outdir, "height_mod.rds"))
+}

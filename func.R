@@ -1,4 +1,4 @@
-#' Run scripts from their own directory 
+#' Run scripts from their own directory
 #'
 #' @param x filepath to R script 
 #'
@@ -146,19 +146,9 @@ stemValCheck <- function(x) {
 #' @param x dataframe containing taxonomic data 
 #' 
 taxonValCheck <- function(x) { 
-  # Wood density must be positive
-  if (any(x$wood_density_gcm3 <= 0, na.rm = TRUE)) { 
-    stop("`wood_density_gcm3` must be positive")
-  }
-
-  # Wood density SD must be positive
-  if (any(x$wood_density_sd_gcm3 <= 0, na.rm = TRUE)) { 
-    stop("`wood_density_sd_gcm3` must be positive")
-  }
-
-  # Wood density N must be positive integer
-  if (any(x$wood_density_n <= 0 | x$wood_density_n != floor(x$wood_density_n), na.rm = TRUE)) { 
-    stop("`wood_density_n` must be a positive integer")
+  # All taxonomic names must be filled
+  if (any(is.na(x$taxon_name))) { 
+    stop("NAs in `taxon_name` are not allowed")
   }
 }
 
@@ -174,10 +164,6 @@ heightValCheck <- function(x) {
     stop("`site_id` must be the same for all plots within a site")
   }
 
-  # All plots must have a name
-  if (any(is.na(x$plot_id))) { 
-    stop("NAs in `plot_id` are not allowed")
-  }
   # Height must be positive and not NA
   if (any(x$height_m <= 0, na.rm = TRUE) | any(is.na(x$height_m))) { 
     stop("`height_m` must be positive and not NA")
@@ -202,13 +188,18 @@ wdValCheck <- function(x) {
   }
 
   # Wood density must be positive and not NA
-  if (any(x$wd_gcm3 <= 0, na.rm = TRUE) | any(is.na(x$wd_gcm3))) { 
-    stop("`wd_gcm3` must be positive and not NA")
+  if (any(x$wood_density_gcm3 <= 0, na.rm = TRUE) | any(is.na(x$wood_density_gcm3))) { 
+    stop("`wood_density_gcm3` must be positive and not NA")
   }
 
-  # All taxonomic names must be filled
-  if (any(is.na(x$taxon_name))) { 
-    stop("NAs in `taxon_name` are not allowed")
+  # Wood density SD must be positive
+  if (any(x$wood_density_sd_gcm3 <= 0, na.rm = TRUE)) { 
+    stop("`wood_density_sd_gcm3` must be positive")
+  }
+
+  # Wood density N must be positive integer
+  if (any(x$wood_density_n <= 0 | x$wood_density_n != floor(x$wood_density_n), na.rm = TRUE)) { 
+    stop("`wood_density_n` must be a positive integer")
   }
 }
 
@@ -293,11 +284,11 @@ plotValCheck <- function(x) {
 
 }
 
-#' Check plot corner sf object values
+#' Check plot geo-location sf object values
 #' 
-#' Runs various checks on the values in plot corner sf object columns 
+#' Runs various checks on the values in plot geo-location sf object columns 
 #'
-#' @param x sf dataframe containing plot corner points
+#' @param x sf dataframe containing plot geo-location points
 #'
 ptValCheck <- function(x) {
   # Only one site ID per site
@@ -315,7 +306,7 @@ ptValCheck <- function(x) {
     stop("NAs in `point_id` are not allowed")
   }
 
-  # Corner IDs must be unique within a plot
+  # Point IDs must be unique within a plot
   if (any(unlist(lapply(split(x, x$plot_id), function(y) { 
         any(duplicated(y$point_id))
     })))) {
@@ -423,7 +414,7 @@ loadWFOCache <- function(x) {
   lockBinding("the", pkg_env) 
 }
 
-# Check if object is sf type
+#' Check if object is `sf` type
 #'
 #' @param x object subject to test
 #' @param type optional character vector of acceptable sf geometry types
@@ -481,40 +472,6 @@ pasteVals <- function(..., sep = "", collapse = NULL,
   }
 }
 
-#' Identify discrete censuses from a vector of measurement dates
-#'
-#' @param x vector of measurement dates, character or Date
-#' @param gap number of days above which consecutive measurement dates will be
-#'     split into different censuses
-#'
-#' @return character vector of census mid-dates (median) for each value in `x`
-#' 
-censusGen <- function(x, gap) {
-  # Store original order and create a working data frame
-  orig_order <- seq_along(x)
-  dat <- data.frame(m_date = as.Date(x), id = orig_order)
-  
-  # Sort by date to identify chronological gaps
-  dat <- dat[order(dat$m_date), ]
-  
-  # Calculate gaps and assign census IDs
-  # diff() on Date returns days
-  # Prepend 0 to keep length consistent
-  gaps <- c(0, diff(dat$m_date))
-  dat$census_id <- cumsum(gaps > gap)
-  
-  # Calculate mid-date (median) per census
-  # Convert to numeric for ave(), then back to Date
-  dat$census_date <- as.character(as.Date(
-    ave(as.numeric(dat$m_date), dat$census_id, FUN = median)))
-  
-  # Restore original order 
-  out <- dat[order(dat$id), "census_date"]
-  
-  # Return
-  return(out)
-}
-
 #' Get valid UTM zone from latitude and longitude in WGS84 decimal degrees
 #'
 #' @param lon vector of longitude coordinates in decimal degrees
@@ -542,7 +499,7 @@ getUTM <- function(lon, lat, epsg = TRUE) {
   }
 }
 
-#' Create empty columns based on a vector of column names
+#' Create empty columns in a dataframe based on a vector of column names
 #'
 #' @param x dataframe 
 #' @param col_names vector of column names
@@ -583,4 +540,63 @@ colGen <- function(x, col_names, col_classes) {
   }
   
   return(x)
+}
+
+#' Extract function names and titles from roxygen2 markup from an R script
+#'
+#' Reads an R script and extracts the first line of every roxygen documentation 
+#' block (typically the title) along with the name of the function immediately 
+#' following that block.
+#'
+#' @param file_path character string. The file path to the R script you want to parse.
+#'
+#' @return A data frame with two columns:
+#'   * `fn`: The name of the function (character).
+#'   * `title`: The extracted first line of the roxygen documentation (character).
+#' 
+#' @examples
+#' \dontrun{
+#' roxy_data <- extract_roxygen_info("R/my_functions.R")
+#' print(roxy_data)
+#' }
+#'
+#' @export
+extractRoxygen <- function(file_path) {
+  lines <- readLines(file_path, warn = FALSE)
+  
+  # Find indices of all lines that start with a roxygen comment
+  roxy_idx <- grep("^\\s*#'", lines)
+  
+  if (length(roxy_idx) == 0) return(data.frame())
+  
+  # Identify start and end of each roxygen block
+  starts <- roxy_idx[!(roxy_idx - 1) %in% roxy_idx]
+  ends   <- roxy_idx[!(roxy_idx + 1) %in% roxy_idx]
+  
+  # Extract and clean titles
+  titles <- sub("^\\s*#'\\s*", "", lines[starts])
+  
+  # Extract function names by looking at the line right after the block ends
+  func_names <- sapply(ends, function(idx) {
+    # Loop forward to skip any blank lines between the roxygen block and the function
+    for (i in (idx + 1):length(lines)) {
+      if (grepl("^\\s*$", lines[i])) next # Skip empty lines
+      
+      # Look for the pattern "functionName <- function" or "functionName = function"
+      if (grepl("^\\s*([A-Za-z0-9_.]+)\\s*(<-|=)\\s*function", lines[i])) {
+        # Extract just the function name
+        return(sub("^\\s*([A-Za-z0-9_.]+)\\s*(<-|=)\\s*function.*", "\\1", lines[i]))
+      }
+      
+      # If we hit a line of code that isn't a function definition, stop looking
+      break
+    }
+    return(NA_character_)
+  })
+  
+  # Create dataframe
+  out <- data.frame(fn = unname(func_names), title = titles)
+
+  # Return
+  return(out)
 }

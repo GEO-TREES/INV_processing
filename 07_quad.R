@@ -7,6 +7,15 @@
 # through "sd_coord" argument, it needs to be transformed in a data frame containing (for each plot) 
 # the average standard deviation of the GPS measurements for each corner on the X and Y axes
 
+# Select only relevant columns from stems dataframe
+# Filter to only plots with spatial coordinates
+stem_sel <- stem %>% 
+  dplyr::select(record_id, plot_id, x_rel_m, y_rel_m) %>% 
+  filter(
+    plot_id %in% plot_pt$plot_id,
+    !is.na(x_rel_m),
+    !is.na(y_rel_m))
+
 # Extract plot corners
 plot_check <- plotPolygonFit(
   point_data = plot_pt,
@@ -18,7 +27,7 @@ plot_check <- plotPolygonFit(
   plot_col = "plot_id",
   max_dist = 10,
   rm_outliers = TRUE,
-  tree_data = stem[stem$plot_id %in% plot_pt$plot_id,],
+  tree_data = stem_sel,
   tree_rel_col = c("x_rel_m", "y_rel_m"),
   tree_plot_col = "plot_id",
   raster = NULL,
@@ -55,6 +64,9 @@ plot_poly <- plot_check$polygon %>%
 
 # Create quadrat polygons
 quad_pt <- plot_divide$sub_corner_coord %>% 
+  mutate(
+    x_utm = x_proj,
+    y_utm = y_proj) %>% 
   st_as_sf(., coords = c("x_proj", "y_proj"), crs = unique(plot_pt$crs_epsg)) %>% 
   mutate(    
     site_id = param$site_id,
@@ -74,11 +86,15 @@ quad_poly <- quad_pt %>%
 
 # Create stem points
 stem_pt <- plot_divide$tree_data %>% 
+  mutate(
+    x_utm = x_proj,
+    y_utm = y_proj) %>% 
   filter(!is.na(x_proj), !is.na(y_proj)) %>% 
   st_as_sf(., coords = c("x_proj", "y_proj"), crs = unique(plot_pt$crs_epsg)) %>% 
   dplyr::select(
     record_id,
-    quadrat_id = subplot_ID)
+    quadrat_id = subplot_ID,
+    x_utm, y_utm)
 
 # Write plot polygons to file
 st_write(plot_poly, file.path(outdir, "plot_poly.gpkg"), delete_dsn = TRUE)
@@ -90,10 +106,8 @@ st_write(plot_pt, file.path(outdir, "plot_corner.gpkg"), delete_dsn = TRUE)
 st_write(quad_poly, file.path(outdir, "quad_poly.gpkg"), delete_dsn = TRUE)
 
 # Write quadrat points to file
-st_write(quad_pt, file.path(outdir, "quad_corner.gpkg"), delete_dsn = TRUE)
+st_write(quad_pt, file.path(outdir, "quad_pt.gpkg"), delete_dsn = TRUE)
 
 # Write global stem coordinates to file
 st_write(stem_pt, file.path(outdir, "stem_pt.gpkg"), delete_dsn = TRUE)
 
-# Write output of divide_plot() to file
-saveRDS(plot_divide, file.path(outdir, "plot_divide.rds"))

@@ -4,12 +4,12 @@
 
 # Filter stem data
 record_fil <- stem %>% 
-  left_join(., stem_pt, by = "record_id") %>% 
   left_join(., plot[,c("plot_id", "meas_diam_min_cm")], 
     by = "plot_id") %>% 
   filter(
     !is.na(diam_cm),
-    !is.na(quadrat_id),
+    !is.na(x_rel_m),
+    !is.na(y_rel_m),
     diam_cm >= meas_diam_min_cm,
     grepl("A", code),
     grepl("S", code),

@@ -1,0 +1,10 @@
+site_id: "Amacayacu"
+acquisition_id: "2024-08-03"
+out_dir: "./dat/sites/Amacayacu/PDA/2024-08-03/v3"
+raw_dir: "./dat/sites/Amacayacu/PDA/2024-08-03/L0"
+s3_dir: "johngodlee/GEO-TREES_PDA/dat/sites/Amacayacu/L0"
+quad_dim: [100, 100]
+opt_s3: false
+product_version: "v3"
+height_method: "regional"
+wd_method: "regional"

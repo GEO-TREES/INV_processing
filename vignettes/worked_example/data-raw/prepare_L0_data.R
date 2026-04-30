@@ -68,6 +68,10 @@ param_anon$out_dir <- paste0("./dat/sites/Site1/PDA/", unique(stem$acquisition_i
 param_anon$raw_dir <- paste0("./dat/sites/Site1/PDA/", unique(stem$acquisition_id), "/L0")
 param_anon$s3_dir <- paste0("GEO-TREES_PDA/dat/sites/Site1/", unique(stem$acquisition_id), "/L0")
 
+# Thin out stem data
+stem_fil <- stem_anon %>% 
+  slice_sample(n = 5000)
+
 # Clean taxonomy data
 taxa_clean <- taxa %>%
   mutate(
@@ -84,7 +88,9 @@ taxa_clean <- taxa %>%
     taxon_species = speciesAccepted,
     taxon_subspecies,
     taxon_variety) %>% 
-  filter(taxon_name != "")
+  filter(
+    taxon_name != "",
+    taxon_name %in% stem_fil$taxon_name)
 
 # Create synthetic height-diameter data
 hd_syn <- stem_anon %>% 
@@ -141,7 +147,7 @@ wd_syn <- wd %>%
     wood_density_n)
 
 # Check output dataframes
-colCheck(stem_anon, stem_cols)
+colCheck(stem_fil, stem_cols)
 colCheck(plot_anon, plot_cols)
 colCheck(pt_anon, pt_cols)
 colCheck(taxa_clean, taxon_cols)
@@ -150,14 +156,14 @@ colCheck(hd_syn, height_cols)
     
 valCheck(
   plot = plot_anon,
-  stem = stem_anon,
+  stem = stem_fil,
   pt = pt_anon,
   taxon = taxa_clean,
   height = hd_syn,
   wd = wd_syn)
 
 # Write files
-write.csv(stem_anon, "./data/stem.csv", row.names = FALSE)
+write.csv(stem_fil, "./data/stem.csv", row.names = FALSE)
 write.csv(plot_anon, "./data/plot.csv", row.names = FALSE)
 write.csv(pt_anon, "./data/pt.csv", row.names = FALSE)
 write.csv(taxa_clean, "./data/taxa.csv", row.names = FALSE)

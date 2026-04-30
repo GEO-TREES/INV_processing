@@ -48,7 +48,7 @@ if (all(sort(names(param)) != sort(param_name_vec))) {
 # sort(names(param))
 # sort(param_name_vec)
 
-# Optionally load S3 package
+# Optionally load AWS S3 package
 if (param$opt_s3) {
   library(paws)
 }
@@ -255,6 +255,11 @@ record_fil <- readLines(file.path(param$out_dir, software_version_sanit, "07_rec
 stem_wd <- read.csv(file.path(param$out_dir, software_version_sanit, "04_wd", "stem_wd.csv"))
 stem_pt <- st_read(file.path(param$out_dir, software_version_sanit, "03_quad", "stem_pt.gpkg"))
 plot_poly <- st_read(file.path(param$out_dir, software_version_sanit, "03_quad", "plot_poly.gpkg"))
+plot_divide <- readRDS(file.path(param$out_dir, software_version_sanit, "03_quad", "plot_divide.rds"))
+stem_agb <- read.csv(file.path(param$out_dir, software_version_sanit, "06_agb_stem", "stem_agb.csv"))
+if (param$height_method == "field") { 
+  height_mod <- readRDS(file.path(param$out_dir, software_version_sanit, "05_height", "height_mod.rds"))
+}
 runFn("./08_agb_mc.R")
 
 # Create master stem summary object

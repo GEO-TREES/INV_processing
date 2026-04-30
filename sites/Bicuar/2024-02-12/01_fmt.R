@@ -11,6 +11,7 @@ plot_corners <- read_sf(file.path(indir, "plot_corners.shp"))
 # Process plot corners
 pt <- plot_corners %>% 
   mutate(
+    corner = TRUE,
     site_id = param$site_id,
     acquisition_id = param$acquisition_id,
     point_id = gsub(".*[0-9]+", "", name)) %>%

@@ -8,6 +8,7 @@ stem_taxa_all <- left_join(stem, taxa, by = c("taxon_name" = "nameOriginal"))
 # Optionally process local wood density data
 if (param$wd_method == "field") { 
   wd_summ <- wd %>%
+    mutate(wood_density_n = ifelse(is.na(wood_density_n), 1, wood_density_n)) %>% 
     group_by(site_id, taxon_name) %>%
     summarise(
       wood_density_n_total = sum(wood_density_n, na.rm = TRUE),
@@ -37,10 +38,12 @@ if (param$wd_method == "field") {
       .groups = "drop"
     ) %>% 
     left_join(., taxa, by = c("taxon_name" = "nameOriginal")) %>% 
-    group_by(
+    dplyr::select(
       family = familyAccepted,
       genus = genusAccepted,
-      species = speciesAccepted)
+      species = speciesAccepted,
+      meanWD,
+      sdWD)
 }
 
 # Estimate wood density for each stem measurement

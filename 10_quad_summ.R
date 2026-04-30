@@ -5,10 +5,12 @@
 # Calculate area of each quadrat
 quad_poly_area <- st_drop_geometry(quad_poly)
 quad_poly_area$quadrat_area_ha <- drop_units(st_area(quad_poly)) * 0.0001
+quad_poly_area$quadrat_dim_x_m <- param$quad_dim[1]
+quad_poly_area$quadrat_dim_y_m <- param$quad_dim[2]
 
 # Calculate quadrat summary values
 quad_summ <- stem_summ %>% 
-  filter(record_id %in% record_fil) %>% 
+  filter(in_quadrat_calc == TRUE) %>% 
   st_drop_geometry() %>% 
   group_by(site_id, acquisition_id, plot_id, quadrat_id, census_date) %>% 
   summarise(
@@ -21,6 +23,7 @@ quad_summ <- stem_summ %>%
     diam_cm_q90 = quantile(diam_cm, 0.9, na.rm = TRUE),
     diam_cm_q95 = quantile(diam_cm, 0.95, na.rm = TRUE),
     height_m_pred_mean = mean(height_m_pred, na.rm = TRUE),
+    height_m_pred_max_rse = height_m_pred_rse[which(height_m_pred == max(height_m_pred, na.rm = TRUE))][1],
     height_m_pred_max = max(height_m_pred, na.rm = TRUE),
     height_m_pred_q80 = quantile(height_m_pred, 0.8, na.rm = TRUE),
     height_m_pred_q90 = quantile(height_m_pred, 0.9, na.rm = TRUE),

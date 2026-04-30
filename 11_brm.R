@@ -34,7 +34,7 @@ L1_plot <- plot
 
 # Prepare L2 stems dataset
 L2_stem <- stem_summ %>% 
-  filter(record_id %in% record_fil) %>% 
+  filter(in_quadrat_calc == TRUE) %>% 
   st_transform(., 4326) %>% 
   bind_cols(., st_coordinates(.)) %>% 
   st_drop_geometry() %>% 
@@ -52,10 +52,10 @@ L2_stem <- stem_summ %>%
     WD_stem_uncertainty = sdWD,
     AGB_stem_estimate = agb_Mg_mean,
     AGB_stem_uncertainty = agb_Mg_sd,
-    Height_stem_estimate = height_m_pred)#,
-    # TODO: Height_tree_uncertainty = )
+    Height_stem_estimate = height_m_pred,
+    Height_stem_uncertainty = height_m_pred_rse)
 
-# Prepare L1 plot polygons dataset 
+# Prepare L2 plot polygons dataset 
 L2_poly <- plot_poly %>% 
   dplyr::select(
     BRM_site = site_id,
@@ -76,10 +76,13 @@ L3_quad <- quad_summ %>%
     AGBD_stand_estimate = agb_Mg_sum_mc_mean_ha,
     AGBD_stand_uncertainty = agb_Mg_sum_mc_sd_ha,
     Height_stand_estimate = height_m_pred_max,
-    # Height_stand_uncertainty = # TODO: Canopy height standard deviation, reporting the L2 uncertainty propagated to stand-level estimate. 
+    Height_stand_uncertainty = height_m_pred_max_rse,
     Basal_area = ba_m2_sum_ha,
     Lorey_height = lorey_height_m,
-    Wood_density = meanWD_wm_ba) 
+    Wood_density = meanWD_wm_ba,
+    Quadrat_area = quadrat_area_ha,
+    Quadrat_dim_x = quadrat_dim_x_m,
+    Quadrat_dim_y = quadrat_dim_y_m)
 
 # Check all values filled
 stopifnot(all(!is.na(L3_quad$AGBD_stand_estimate)))

@@ -38,13 +38,13 @@ if (param$height_method == "regional") {
 
   # Create output dataframe
   out <- s_cent %>% 
-    dplyr::select(record_id, height_m_pred)
+    dplyr::select(record_id, height_m_pred, height_m_pred_rse)
 } else if (param$height_method == "field") { 
 
   # Compare height diameter models
   height_mod_comp <- modelHD(
-    D = s_height$diam_cm,
-    H = s_height$height_m,
+    D = height$diam_cm,
+    H = height$height_m,
     bayesian = FALSE,
     useCache = FALSE,
     drawGraph = FALSE)
@@ -56,8 +56,8 @@ if (param$height_method == "regional") {
 
   # Fit best height diameter model
   height_mod <- modelHD(
-    D = s_height$diam_cm,
-    H = s_height$height_m,
+    D = height$diam_cm,
+    H = height$height_m,
     method = height_mod_best,
     bayesian = FALSE,
     useCache = FALSE,
@@ -70,14 +70,16 @@ if (param$height_method == "regional") {
 
   # Create output dataframe
   out <- stem %>% 
-    mutate(height_m_pred = height_est$H) %>% 
-    dplyr::select(record_id, height_m_pred)
+    mutate(
+      height_m_pred = height_est$H,
+      height_m_pred_rse = height_est$RSE) %>% 
+    dplyr::select(record_id, height_m_pred, height_m_pred_rse)
 }
 
 # Write height estimates to file
 write.csv(out, file.path(outdir, "stem_height.csv"), row.names = FALSE)
 
 # Write height-diameter model to file
-if (param$height_method == "field" && exists(height_mod)) {
+if (param$height_method == "field" && exists("height_mod")) {
   saveRDS(height_mod, file.path(outdir, "height_mod.rds"))
 }

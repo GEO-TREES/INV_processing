@@ -19,13 +19,13 @@ See `./templates/*` for guidance on which columns should be included in these fi
 In the root directory there are additional scripts which process data from any site:
 
 * `./02_taxa.R` - correct taxonomic information
-* `./03_quad.R` - create quadrats in each plot 
-* `./04_wd.R` - estimate wood density for each stem measurement
-* `./05_height.R` - estimate stem height for each stem measurement
-* `./06_agb_stem.R` - estimate above-ground woody biomass for each stem measurement
-* `./07_stem_summ.R` - create master stem measurement table
-* `./08_stem_fil.R` - filter stem measurements before AGB Monte-Carlo 
-* `./09_agb_mc.R` - AGB Monte-Carlo error propagation
+* `./03_wd.R` - estimate wood density for each stem measurement
+* `./04_height.R` - estimate stem height for each stem measurement
+* `./05_agb_stem.R` - estimate above-ground woody biomass for each stem measurement
+* `./06_record_fil.R` - filter stem data before estimating AGBD
+* `./07_quad.R` - create quadrats in each plot 
+* `./08_agb_mc.R` - AGB Monte-Carlo error propagation
+* `./09_stem_summ.R` - create master stem measurement table
 * `./10_quad_summ.R` - summarise quadrat measurements
 * `./11_brm.R` - Create L1, L2 and L3 datasets
 
@@ -40,13 +40,12 @@ Key outputs from each site include:
 
 * `./02_taxa.R`:
     * `wfo_cache.rds` - Cache generated from taxonomic name cleaning. Documents choices made by user.
-* `./07_stem_summ.R`:
-    * `stem_summ.gpkg` - Combined stem-level dataset. Includes data from `02_taxa/stem_taxa.csv`, `03_quad/stem_pt.gpkg`, `04_wd/stem_wd.csv`, `05_height/stem_height.csv`, `06_agb/stem_agb.csv`.
-* `./10_quad_summ.R`:
-    * `quad_summ.gpkg` - Combined quadrat-level dataset. Includes data from `04_quad/quad_poly.gpkg`, `07_stem_summ/stem_summ.gpkg`.
+* `./09_stem_summ.R`: `stem_summ.gpkg` - Combined stem-level dataset. 
+* `./10_quad_summ.R`: `quad_summ.gpkg` - Combined quadrat-level dataset.
 * `./11_brm.R`:
     * L1
         * `*_L1_*_stem.csv` - GEO-TREES L1 stem measurement data
+        * `*_L1_*_plot.csv` - GEO-TREES L1 plot meta-data 
         * `*_L1_*_pt.gpkg` - GEO-TREES L1 plot spatial reference points
     * L2
         * `*_L2_*_stem.csv` - GEO-TREES L2 stem AGB estimates

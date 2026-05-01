@@ -53,6 +53,10 @@ Key outputs from each site include:
     * L3
         * `*_L3_*_quad.gpkg` - GEO-TREES L3 quadrat AGBD estimates
 
+## Documentation
+
+`./vignettes/worked_example/` contains a Quarto notebook which provides extensive documentation and additional explanation for each step of this data processing workflow. 
+
 ## Environment 
 
 This repository uses `renv` ([https://github.com/rstudio/renv](https://github.com/rstudio/renv)) to manage a reproducible R environment. This project only installs the specific packages used in the production scripts.

@@ -15,6 +15,7 @@ quad_summ_pre <- stem_summ %>%
   group_by(site_id, acquisition_id, plot_id, quadrat_id, census_date) %>% 
   summarise(
     n_stem = n(),
+    agb_Mg_sum = sum(agb_Mg, na.rm = TRUE),
     ba_m2_sum = sum(ba_m2, na.rm = TRUE),
     volume_m3_sum = sum(volume_m3, na.rm = TRUE),
     diam_cm_mean = mean(diam_cm, na.rm = TRUE),
@@ -57,9 +58,11 @@ quad_summ <- quad_poly %>%
       "ba_m2_sum_ha",
       "volume_m3_sum",
       "volume_m3_sum_ha",
+      "agb_Mg_sum",
+      "agb_Mg_sum_ha",
       "agb_Mg_sum_mc_mean", 
-      "agb_Mg_sum_mc_median",
       "agb_Mg_sum_mc_mean_ha", 
+      "agb_Mg_sum_mc_median",
       "agb_Mg_sum_mc_median_ha")), ~ifelse(is.na(.x), 0, .x))) 
 
 # Write to file

@@ -64,7 +64,7 @@ L2_poly <- plot_poly %>%
 
 # Check all values filled
 stopifnot(all(!is.na(L2_stem$AGB_tree_estimate)))
-# stopifnot(all(!is.na(L2_stem$AGB_tree_uncertainty)))
+stopifnot(all(!is.na(L2_stem$AGB_tree_uncertainty)))
 
 # Prepare L3 quadrat dataset
 L3_quad <- quad_summ %>% 
@@ -86,7 +86,7 @@ L3_quad <- quad_summ %>%
 
 # Check all values filled
 stopifnot(all(!is.na(L3_quad$AGBD_stand_estimate)))
-# stopifnot(all(!is.na(L3_quad$AGBD_stand_uncertainty)))
+stopifnot(all(!is.na(L3_quad$AGBD_stand_uncertainty)))
 
 # Construct output filenames
 L1_filename <- paste(
@@ -250,26 +250,26 @@ rocrate_list <- lapply(names(L_outfile_list), function(x) {
     context = "https://w3id.org/ro/crate/1.2/context",
     datePublished = as.character(Sys.Date()),
     name = paste("GEO-TREES Bicuar PDA", x)
-  ) |> 
-    add_entity(me) |>
-    add_entity(aff) |>
-    add_entity(lic) |>
-    add_entity(indir) |>
-    add_entity(yaml) |>
-    add_entity(code) |>
+  ) %>% 
+    add_entity(me) %>%
+    add_entity(aff) %>%
+    add_entity(lic) %>%
+    add_entity(indir) %>%
+    add_entity(yaml) %>%
+    add_entity(code) %>%
     add_entity(exec)
 
   for (i in L_outfile_list[[x]]) {
-    rc <- rc |> add_entity(i)
+    rc <- rc %>% add_entity(i)
   }
 
   L_outfile_id_list <- unname(lapply(L_outfile_list[[x]], function(i) { 
     list(`@id` = i$`@id`) 
   }))
 
-  rc |>
-    add_entity_value(id = "./", key = "author", value = list(`@id` = me$`@id`)) |>
-    add_entity_value(id = "./", key = "license", value = list(`@id` = lic$`@id`)) |>
+  rc %>%
+    add_entity_value(id = "./", key = "author", value = list(`@id` = me$`@id`)) %>%
+    add_entity_value(id = "./", key = "license", value = list(`@id` = lic$`@id`)) %>%
     add_entity_value(id = "./", key = "hasPart", 
       value = c(
         list(
@@ -279,18 +279,18 @@ rocrate_list <- lapply(names(L_outfile_list), function(x) {
         ),
         L_outfile_id_list
       )
-    ) |>
+    ) %>%
     add_entity_value(id = "./", key = "mentions", value = list(
         list(`@id` = exec$`@id`),
         list(`@id` = code$`@id`)
-      )) |>
-    add_entity_value(id = me$`@id`, key = "affiliation", value = list(`@id` = aff$`@id`)) |>
+      )) %>%
+    add_entity_value(id = me$`@id`, key = "affiliation", value = list(`@id` = aff$`@id`)) %>%
     add_entity_value(id = exec$`@id`, key = "object", 
       value = list(
         list(`@id` = yaml$`@id`),
         list(`@id` = indir$`@id`)
-      )) |>
-    add_entity_value(id = exec$`@id`, key = "result", value = L_outfile_id_list) |>
+      )) %>%
+    add_entity_value(id = exec$`@id`, key = "result", value = L_outfile_id_list) %>%
     add_entity_value(id = exec$`@id`, key = "instrument", value = list(`@id` = code$`@id`))
 })
 names(rocrate_list) <- names(L_outfile_list)

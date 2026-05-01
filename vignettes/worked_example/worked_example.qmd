@@ -3,7 +3,14 @@ title: "GEO-TREES Tree Inventory Data Processing Workflow"
 format: 
   html:
     toc: true
-    toc-depth: 3
+    toc-location: left
+    toc-title: "Contents"
+    number-sections: true
+    code-fold: true
+    code-summary: "Show code"
+    df-print: "paged"
+    page-layout: full
+    html-math-method: katex
 bibliography: worked_example.bib
 vignette: >
   %\VignetteIndexEntry{GEO-TREES Tree Inventory Data Processing Workflow}
@@ -15,6 +22,8 @@ knitr:
     comment: "#>"
     warning: false
     message: false
+execute:
+  cache: true
 ---
 
 ## Introduction
@@ -23,38 +32,37 @@ This purpose of this vignette is to demonstrate and document the complete
 workflow for processing tree inventory data for the GEO-TREES initiative. The
 code in this vignette matches the code in the R scripts elsewhere in this
 repository. For automated processing of GEO-TREES tree inventory data it is
-recommended to run the R scripts directly, not to use this vignette. Throughout
-the vignette there are sign-posts to each R script.
+recommended to run the R scripts directly, not to use this vignette. This
+vignette also includes additional data visualisations to help understand how
+the data is processed, and may provide a useful guide when processing a site
+for the first time. Throughout the vignette there are sign-posts to the relevant R
+script in the automated workflow.
 
-Key steps:
+Key steps of the workflow:
 
 * Format raw field data to match the GEO-TREES L0 data format
-* Align taxonomic names
-* Fit plot spatial polygons
-* Estimate stem height, wood density, and biomass 
+* Align taxonomic names for each stem measurement
+* Estimate height, wood density, and above-ground woody biomass of tree stems 
+* Fit spatial polygons for each plot
 * Calculate summary statistics of forest structure and biomass stocks within 50x50 m quadrats 
+
 
 ::: {#fig-flow fig-alt="GEO-TREES tree inventory processing workflow diagram." fig-align="center"}
 ![](img/tree_inv_geo-trees_flow.png)
-Flow diagram of the GEO-TREES tree inventory processing workflow. Shaded 
-boxes indicate core GEO-TREES data products (L1 = yellow, L2 = orange, L3 = 
-green). Decisions on how data are analysed are taken at various stages of the 
-processing chain: 1) stem height estimation, 2) wood density estimation, 3) 
-stem AGB estimation, 4) stem filtering, 5) polygon fitting, 6) AGBD Monte-Carlo 
-error propagation. Auxiliary field datasets can be included at multiple steps 
-in this workflow, e.g.: local wood density, stem height measurements, crown 
-dimensions (crown-distributed AGBD).
+
+Flow diagram of the GEO-TREES tree inventory processing workflow. Shaded boxes indicate core GEO-TREES data products (L1 = yellow, L2 = orange, L3 = green). Decisions on how data are analysed are taken at various stages of the processing chain: 1) stem height estimation, 2) wood density estimation, 3) stem AGB estimation, 4) stem filtering, 5) polygon fitting, 6) AGBD Monte-Carlo error propagation. Auxiliary field datasets can be included at multiple steps in this workflow, e.g.: local wood density, stem height measurements, crown dimensions (crown-distributed AGBD).
 :::
 
 This vignette uses an anonymised dataset, based on real data from a tropical
 wet forest site in South America. To illustrate the use of all supported
 auxiliary datasets and processing steps, some synthetic data have been
-included. 
+generated. 
 
-Synthetic datasets are provided for:
+Synthetic data are provided for:
 
 * Locally-measured wood density estimates
 * Locally-measured tree height estimates
+* Local biomass allometries
 
 ## Setup
 
@@ -65,12 +73,12 @@ Required packages:
 #| warning: false
 #| message: false
 #| results: hide
-library(dplyr)
+library(dplyr)  # Dataframe manipulation
 library(sf)  # Spatial data 
 library(BIOMASS)  # AGB estimation, H:D allometry, 
 library(yaml)  # read_yaml() - Read YAML files with parameters
 library(rocrateR)  # rocrate() etc. - Create RO-Crate meta-data files
-library(kableExtra)  # Print dataframes in Quarto documents
+library(kableExtra)  # Print dataframes in Quarto documents, only for the vignette
 ```
 
 Source additional functions:
@@ -82,6 +90,7 @@ source("../../func.R")
 These are the functions provided by `func.R`:
 
 ```{r}
+#| echo: false
 # Extract function descriptions
 kable(extractRoxygen("../../func.R"))
 ```
@@ -98,21 +107,27 @@ outdir <- "./out"
 This part of the workflow will vary among sites, depending on the structure of
 the raw field data. Consult the [GEO-TREES Tree Inventory Data Collection
 Guidelines]() Section 16: _Data format_ for information on the GEO-TREES L0
-data format. This repository also contains template files for formatting raw
-data, in the `templates/` folder.
+data format. [The current repository](https://github.com/GEO-TREES/PDA_processing) also contains template files for formatting raw
+data, in the `./templates/` folder.
 
 We provide various functions to help create valid GEO-TREES L0 data products:
 
+* `pasteVals()` intelligently pastes values together, replacing NAs with blanks, useful for combining values in the `code` column.
+* `colGen()` creates empty columns in a dataframe if they don't already exist, using a spec. table.
 * `colCheck()` checks whether the columns in a dataframe exactly match those in a spec. table based on their name and class (e.g. numeric, character).
 * `valCheck()` runs a series of simple logical checks on the different GEO-TREES Tree Inventory L0 data objects. 
-* `colGen()` creates empty columns in a dataframe if they don't already exist, using a spec. table.
-* `pasteVals()` intelligently pastes values together, replacing NAs with blanks, useful for combining values in the `code` column.
+
+You can see various examples of R scripts used to transform raw field data into
+L0 data in `./sites/<SITE NAME>/<ACQUISITION ID>/01_fmt.R`.
 
 ## Specify processing parameters
 
-Choices made during the processing workflow, for example the choice to use a local or regional height-diameter estimation method, should be specified in a `param.yaml` YAML configuration file. This file also defines some site meta-data and filepaths. 
+Choices made during the processing workflow, for example the choice to use a
+local or regional height-diameter estimation method, should be specified in a
+`param.yaml` YAML configuration file. This file also defines some site
+meta-data and filepaths. 
 
-There should be one `param.yaml` file for each version of the dataset.
+There should be one `param.yaml` file for each version of the processed data.
 
 `param.yaml` files should contain the following parameters:
 
@@ -127,11 +142,14 @@ There should be one `param.yaml` file for each version of the dataset.
 * `height_method` -- Method used to estimate stem height, e.g. `"regional"`, `"local"`
 * `wd_method` -- Method used to estimate wood density, e.g. `"regional"`, `"local"`
 
-Import `param.yaml`:
+Import the example `param.yaml`:
 
 ```{r}
+# Import param.yaml
 # p <- yaml::read_yaml("./sites/<SITE>/<ACQUISITION>/<PRODUCTVERSION>/param.yaml")
 p <- read_yaml(file.path(indir, "param.yaml"))
+
+# Import software version
 software_version <- read_yaml(file.path(indir, "version.yaml"))
 
 # Merge parameters lists
@@ -158,6 +176,13 @@ if (all(sort(names(param)) != sort(param_name_vec))) {
       paste(param_name_vec, collapse = ", "))
 }
 
+# Print parameters
+param
+```
+
+If `opt_s3` is `true`, the `paws` package should be loaded to allow data data to be retrieved from an AWS S3 bucket. This is only relevant if data processing is happening on the [MAAP](https://docs.maap-project.org/en/hub/index.html) platform.
+
+```{r}
 # Optionally load AWS S3 package
 if (param$opt_s3) {
   library(paws)
@@ -167,7 +192,7 @@ if (param$opt_s3) {
 ## Import L0 data
 
 For convenience, we create a list `L0` where each element is a different L0
-tree-inventory dataset.
+tree inventory data object.
 
 ```{r}
 # Import raw L0 data
@@ -188,15 +213,121 @@ L0 <- list(
   wd = read.csv(file.path(indir, "wd.csv")),
 
   # Import additional height-diameter measurements (optional)
-  height = read.csv(file.path(indir, "hd.csv"))
+  height = read.csv(file.path(indir, "hd.csv"))#,
+
+  # TODO: Import local biomass allometry
+  # agb_allom <- readRDS(file.path(indir, "agb_allom.rds"))
+
+  # TODO: Import local height-diameter allometry
+  # hd_allom <- readRDS(file.path(indir, "hd_allom.rds"))
 )
-
-# TODO: Import local biomass allometry
-# agb_allom <- readRDS(file.path(indir, "agb_allom.rds"))
-
-# TODO: Import local height-diameter allometry
-# hd_allom <- readRDS(file.path(indir, "hd_allom.rds"))
 ```
+
+If you are on the MAAP platform and data is stored in an S3 bucket, use this
+method to copy the files to a local directory first.
+
+```{r}
+# If S3, copy raw data from S3 bucket to local directory
+if (param$opt_s3) {
+  # Get object list from S3
+  s3_client <- s3(region = "us-west-2")
+
+  # Define S3 bucket where MAAP user directories are located
+  # YOU MAY NEED CHANGE THIS
+  bucket <- "maap-ops-workspace"
+
+  # Identify files in dir_input
+  s3_response <- s3_client$list_objects_v2(Bucket = bucket, Prefix = param$s3_dir)
+
+  # Collect S3 paths from bucket
+  shared_objects <- sapply(s3_response$Contents, "[[", "Key")
+
+  # Check files detected
+  if (length(shared_objects) == 0) { 
+    stop("No raw data files detected in S3 bucket")
+  }
+  
+  # Retrieve all files
+  for (i in shared_objects) {
+    # Construct new key in destination folder
+    dest_key <- sub(param$s3_dir, param$raw_dir, i)
+
+    # Copy files to local directory
+    s3_client$download_file(Bucket = bucket, Key = i, Filename = dest_key)
+  }
+}
+```
+
+## Inspect L0 data
+
+The stem measurement table contains one row per stem measurement. Stems may be
+measured multiple times within a single census, for example if multiple
+diameter measurements are collected at different Points of Measurement (POMs)
+along the length of the stem.
+
+The `record_id` column is a unique identifier for the stem measurement record
+within the site, essentially the row number of the stem measurement table. 
+
+```{r}
+kable(head(L0$stem, 10))
+```
+
+The plot meta-data table contains one row per census per plot. It contains
+additional information on field methodology, and qualitative information on
+local environmental conditions and vegetation structure. These data are used
+mostly for interpretation.
+
+```{r}
+kable(L0$plot)
+```
+
+The plot geo-location table contains one row per location estimate of a single
+survey point. Survey points may have multiple location estimates which are then
+averaged when fitting the plot polygon. This table contains many columns
+reserved for additional information provided when differential GNSS equipment
+is used. In the example dataset these columns are blank ebcause the survey
+points were collected with a single handheld GNSS unit. 
+
+```{r}
+kable(head(L0$pt, 5))
+```
+
+The optional taxa table contains additional taxonomic information. Each row is
+a taxonomic name that features in the stem table, and columns contain corrected
+taxonomic name information. This table is only used for interpretation. It is
+useful in the case where codes or short-hand taxonomic names were used in the
+field and those need to be linked with the full taxonomic name.
+
+```{r}
+kable(head(L0$taxa, 5))
+```
+
+The optional wood density table contains local field-measured wood density.
+These measurements do not have to come from the plots, or even the same site,
+but should be representative of the trees in the site. Each row is a taxonomic
+name that features in the stem table. Where multiple wood density measurements
+were collected for a single taxon, these should be aggregated to a mean,
+standard deviation and the number of measurements.
+
+```{r}
+kable(head(L0$wd, 5))
+```
+
+The optional stem height table contains local field-measured stem diameter and
+height measurements. These measurements do not have to come from the plots, or
+even the same site, but should be representative of the trees in the site. In
+this case, the measurements were colelcted within the same site, but outside
+the plots, hence the `site_id` column is filled, but the `plot_id` column is
+filled with `NA` values.
+
+```{r}
+kable(head(L0$height, 5))
+```
+
+TODO: local biomass allometry
+
+TODO: local height-diameter allometry
+
 
 ## Correct taxonomy 
 
@@ -211,14 +342,33 @@ The argument `interactive = TRUE` means that when a name matches multiple
 taxonomic names in the WFO database, users will be prompted to pick the correct
 taxonomic name from a list in the R console. 
 
-In the example dataset the taxonomic names are strings containing the genus,
-species, any infra-specific epithets such as variety or subspecies, or a
-higher-order taxonomic rank such as just the genus or family. Some examples:
+Example of the interactive dialogue returned by `correctTaxo()` for the name `"Julbernardia pan"`:
 
-* "_Burkea africana_"
-* "_Pseudolachnostylis maprouneifolia_ var. _glabra_"
-* "_Quercus_"
-* "_Fagaceae_"
+```
+--- Pick a name ---
+Matching string:        julbernardia pan
+1   wfo-4000019655      Julbernardia    Pellegr.        accepted        Code/Plantae/Pteridobiotina/Angiosperms/Fabales/Fabaceae/Detarioideae/Julbernardia
+2   wfo-0000169035      Julbernardia baumii     (Harms) Troupin synonym Code/Plantae/Pteridobiotina/Angiosperms/Fabales/Fabaceae/Detarioideae/Julbernardia/paniculata$Julbernardia/baumii
+3   wfo-0000169220      Julbernardia paniculata (Benth.) Troupin        accepted        Code/Plantae/Pteridobiotina/Angiosperms/Fabales/Fabaceae/Detarioideae/Julbernardia/paniculata
+4   wfo-0000169080      Julbernardia normandii  Pellegr.        synonym Code/Plantae/Pteridobiotina/Angiosperms/Fabales/Fabaceae/Detarioideae/Julbernardia/brieyi$Julbernardia/normandii
+5   wfo-0000169069      Julbernardia brieyi     (De Wild.) Troupin      accepted        Code/Plantae/Pteridobiotina/Angiosperms/Fabales/Fabaceae/Detarioideae/Julbernardia/brieyi
+6   wfo-0000169273      Julbernardia seretii    (De Wild.) Troupin      accepted        Code/Plantae/Pteridobiotina/Angiosperms/Fabales/Fabaceae/Detarioideae/Julbernardia/seretii
+7   wfo-0000169317      Julbernardia unijugata  J.Léonard       accepted        Code/Plantae/Pteridobiotina/Angiosperms/Fabales/Fabaceae/Detarioideae/Julbernardia/unijugata
+8   wfo-0000169251      Julbernardia pellegriniana      Troupin accepted        Code/Plantae/Pteridobiotina/Angiosperms/Fabales/Fabaceae/Detarioideae/Julbernardia/pellegriniana
+9   wfo-0000169284      Julbernardia ogoouensis Pellegr.        synonym Code/Plantae/Pteridobiotina/Angiosperms/Fabales/Fabaceae/Detarioideae/Julbernardia/seretii$Julbernardia/ogoouensis
+10  wfo-0000169673      Julbernardia polyphylla (Harms) Troupin synonym Code/Plantae/Pteridobiotina/Angiosperms/Fabales/Fabaceae/Detarioideae/Tetraberlinia/polyphylla$Julbernardia/polyphylla
+
+> Enter a number to pick a row from the list, a valid WFO ID, 'N' for the next page, 'P' for the previous page, 'S' or press Enter to skip:
+```
+
+In the example dataset the taxonomic names are strings containing the genus,
+species, any infra-specific epithets such as variety (`var.`) or subspecies (`subsp.`), or a
+higher-order taxonomic rank such as just the genus or family. Some examples of valid names:
+
+* "Burkea africana"
+* "Pseudolachnostylis maprouneifolia var. glabra"
+* "Quercus"
+* "Fagaceae"
 
 `correctTaxo()` also allows the user to pass separate `genus` and `species`
 (species epithet) columns if your data is formatted that way.
@@ -241,7 +391,7 @@ if (file.exists(wfo_path)) {
 }
 
 # Check names
-taxa <- BIOMASS::correctTaxo(
+stem_taxa_all <- BIOMASS::correctTaxo(
   genus = taxon_vec, 
   species = NULL,
   interactive = TRUE, 
@@ -256,13 +406,290 @@ taxa <- BIOMASS::correctTaxo(
 
 # Optionally write WFO cache to file for future processing
 # saveRDS(BIOMASS:::the$wfo_cache, file.path(outdir, "wfo_cache.rds"))
+
+# Inspect taxa table
+kable(head(stem_taxa_all))
 ```
+
+## Estimate stem wood density
+
+`03_wd.R`
+
+Here we estimate the wood density of each stem measurement using the
+`BIOMASS::getWoodDensity()` function, which uses taxonomic names to extract
+wood density estimates from the Global Wood Density Database [@Zanne2009],
+which we have also aligned with the World Flora Online in the `zz_wd_prep.R`
+script.
+
+```{r}
+# Join taxonomy data to stem data
+taxa_all <- left_join(L0$stem, stem_taxa_all, by = c("taxon_name" = "nameOriginal"))
+```
+
+In the example dataset there are local field-measured wood density estimates
+that we can use. For `getWoodDensity()` to use them we need to summarise
+individual measurements to the species-level mean and standard deviation.
+
+```{r}
+# Optionally process local wood density data
+wd_summ <- L0$wd %>%
+  mutate(wood_density_n = ifelse(is.na(wood_density_n), 1, wood_density_n)) %>% 
+  group_by(site_id, taxon_name) %>%
+  summarise(
+    wood_density_n_total = sum(wood_density_n, na.rm = TRUE),
+    meanWD = sum(wood_density_gcm3 * wood_density_n, na.rm = TRUE) / 
+      sum(wood_density_n[!is.na(wood_density_gcm3)], na.rm = TRUE),
+    sdWD = {
+      # Filter to rows that have both mean and n 
+      valid_rows = !is.na(wood_density_gcm3) & !is.na(wood_density_n)
+      
+      # if SD is NA, treat as 0 (no variance) 
+      # but still account distance from grand mean
+      clean_sd = ifelse(is.na(wood_density_sd_gcm3), 0, wood_density_sd_gcm3)
+      
+      # Components for grand variance
+      ss_within  = sum((wood_density_n[valid_rows] - 1) * 
+        clean_sd[valid_rows]^2, na.rm = TRUE)
+      ss_between = sum(wood_density_n[valid_rows] * 
+        (wood_density_gcm3[valid_rows] - meanWD)^2, na.rm = TRUE)
+      
+      # If wood_density_n_total <= 1, return NA; otherwise calculate SD
+      if (wood_density_n_total > 1) {
+        sqrt((ss_within + ss_between) / (wood_density_n_total - 1)) 
+      } else {
+        NA_real_
+      }
+    },
+    .groups = "drop"
+  ) %>% 
+  left_join(., stem_taxa_all, by = c("taxon_name" = "nameOriginal")) %>% 
+  dplyr::select(
+    family = familyAccepted,
+    genus = genusAccepted,
+    species = speciesAccepted,
+    meanWD,
+    sdWD)
+```
+
+```{r}
+# Estimate wood density for each stem measurement
+wd_all <- BIOMASS::getWoodDensity(
+  genus = taxa_all$genusAccepted, 
+  species = taxa_all$speciesAccepted,
+  stand = taxa_all$plot_id,
+  family = taxa_all$familyAccepted,
+  addWoodDensity = if (param$wd_method == "field") { wd_summ },
+  verbose = TRUE)
+
+# Create output dataframe
+stem_wd_all <- cbind(record_id = taxa_all$record_id, wd_all)
+```
+
+## Estimate stem height
+
+`04_height.R`
+
+Here we estimate the height of each stem measurement. Height estimates are required for most stem AGB allometries.
+
+There are multiple approaches to estimating stem height. In general, we recommend this approach:
+
+If there is an appropriate existing local height-diameter allometry, use that to estimate the height of all stems in the site. A local height-diameter allometry is deemed appropriate if the underlying data approximately span the range of stem heights measured in the tree inventory data, the species composition is similar to that found in the tree inventory data, and the local conditions (water availability, temperature, topography) of the location where the underlying data were collected are similar to that of the GEO-TREES site.
+
+Otherwise if there is no existing local height-diameter allometry available, if you have at least 50 local and reliable estimates of stem height and diameter, spanning the range of stem size across the plots, fit a local height-diameter allometry using the `BIOMASS::modelHD()` function.
+
+Finally, if neither of the above are appropriate, use the `BIOMASS::retrieveH()` function and supply plot coordinates to estimate stem height from a regional height-diameter allometry [@Chave2014].
+
+Where an existing local height-diameter allometry is available:
+
+```{r}
+# TODO:
+```
+
+Where sufficient local height data are available:
+
+```{r}
+# Compare height diameter models
+height_mod_comp <- modelHD(
+  D = L0$height$diam_cm,
+  H = L0$height$height_m,
+  bayesian = FALSE,
+  useCache = FALSE,
+  drawGraph = FALSE)
+
+# Choose best height diameter model
+# Based on average bias
+height_mod_best <- height_mod_comp[
+  height_mod_comp$Average_bias == min(height_mod_comp$Average_bias), "method"]
+
+# Fit best height diameter model
+height_mod <- modelHD(
+  D = L0$height$diam_cm,
+  H = L0$height$height_m,
+  method = height_mod_best,
+  bayesian = FALSE,
+  useCache = FALSE,
+  drawGraph = TRUE)
+
+# Predict with best height diameter model
+height_est <- retrieveH(
+  D = L0$stem$diam_cm,
+  model = height_mod)
+
+# Create output dataframe
+stem_height_all <- L0$stem %>% 
+  mutate(
+    height_m_pred = height_est$H,
+    height_m_pred_rse = height_est$RSE) %>% 
+  dplyr::select(record_id, height_m_pred, height_m_pred_rse)
+```
+
+Using a regional height-diameter allometry where no height data are available:
+
+```{r}
+# Extract plot centres
+plot_pt_split <- split(L0$pt, L0$pt$crs_epsg)
+p_cent <- bind_rows(lapply(plot_pt_split, function(x) { 
+  st_as_sf(x, coords = c("rover_easting_utm_m", "rover_northing_utm_m"), 
+    crs = unique(x$crs_epsg)) %>% 
+  st_transform(., 4326) 
+})) %>% 
+group_by(site_id, plot_id) %>% 
+summarise() %>% 
+st_centroid() %>% 
+cbind(., st_coordinates(.)) %>% 
+st_drop_geometry() %>% 
+dplyr::select(plot_id, X, Y)
+
+# Add plot centres to stem data
+s_cent <- L0$stem %>% 
+  left_join(., p_cent, by = "plot_id")
+
+stopifnot(all(!is.na(s_cent$X)))
+stopifnot(all(!is.na(s_cent$Y)))
+
+# Retrieve stem heights using plot locations
+height_pred <- retrieveH(
+  D = s_cent$diam_cm, 
+  coord = s_cent[,c("X", "Y")])
+
+height_pred$RSE <- rep(0.243, length(height_pred$H))
+
+s_cent$height_m_pred <- height_pred$H
+s_cent$height_m_pred_rse <- height_pred$RSE
+
+# Create output dataframe
+stem_height_all <- s_cent %>% 
+  dplyr::select(record_id, height_m_pred, height_m_pred_rse)
+```
+
+## Estimate stem AGB 
+
+`05_agb_stem.R`
+
+Here we estimate the above-ground woody biomass (AGB, `agb_Mg`) of each stem
+measurement using the `BIOMASS::computeAGB()` function. Generally, Equation 4
+from @Chave2014 is used to estimate AGB with measurements of stem diameter
+(`D`), stem height (`H`), and wood density (`WD`). Because the @Chave2014 model
+was fitted using mostly data from tropical wet forests, it may fail to
+accurately capture the relationship between stem diameter, height, and volume
+in other vegetation types. For these sites, a local AGB allometry may be more
+appropriate. 
+
+You may also choose to have different AGB allometries for different functional
+groups in the tree inventory data. For example, if there are large baobab trees
+(_Adansonia_ sp.), bamboos, or lianas which have drastically different
+physiognomy to other trees in the dataset.
+
+We also create some additional variables like stem basal area (`ba_m2`) and
+stem volume (`volume_m3`).
+
+```{r}
+# Estimate stem-level AGB
+stem_agb_all <- L0$stem %>% 
+  left_join(., stem_wd_all, by = "record_id") %>% 
+  left_join(., stem_height_all, by = "record_id") %>% 
+  mutate(
+    agb_Mg = BIOMASS::computeAGB(
+      allometry = chave2014,
+      D = .$diam_cm,
+      WD = .$meanWD,
+      H = .$height_m_pred)[[1]],
+    ba_m2 = base::pi * (.$diam_cm / 2)^2 / 10000,
+    volume_m3 = agb_Mg / meanWD) %>% 
+  dplyr::select(
+    record_id, 
+    agb_Mg,
+    ba_m2,
+    volume_m3)
+```
+
+Where a local biomass allometry is available:
+
+```{r}
+# TODO:
+```
+
+Where some stem measurements specify a custom biomass allometry, e.g. for bamboos:
+
+```{r}
+# TODO:
+```
+
+## Filter stem data 
+
+`06_record_fil.R`
+
+Here we filter the tree inventory data prior to estimating above-ground biomass
+density in each 50x50 m quadrat. 
+
+We apply the following filters:
+
+* Remove stems with no diameter measurement. 
+* Remove stems that are not found within any 50x50 m quadrat.
+* Remove stems with diameter less than the stated minimum diameter threshold.
+* Include only living stems.
+* Include only standing stems.
+* Remove stems that are broken below the diameter Point of Measurement (POM).
+* Remove "missing" stems. I.e. stems which were not measured during the census.
+* Where stems were measured multiple times at multiple POMs, choose the highest POM, latest measurement date, and largest diameter measurement.
+
+```{r}
+# Filter stem data
+record_fil <- L0$stem %>% 
+  left_join(., L0$plot[,c("plot_id", "meas_diam_min_cm")], 
+    by = "plot_id") %>% 
+  filter(
+    !is.na(diam_cm),
+    !is.na(x_rel_m),
+    !is.na(y_rel_m),
+    diam_cm >= meas_diam_min_cm,
+    grepl("A", code),
+    grepl("S", code),
+    !grepl("B", code),
+    !grepl("T", code),
+    !grepl("M", code)
+  ) %>% 
+  group_by(site_id, plot_id, tree_id, stem_id) %>% 
+  slice_max(
+    order_by = tibble(pom_m, measurement_date, diam_cm), 
+    n = 1, 
+    with_ties = FALSE) %>%
+  ungroup() %>% 
+  pull(record_id) %>% 
+  as.character()
+```
+
+TODO: Estimate missing AGB (missing diameter, missing coordinates) 
 
 ## Fit plot spatial polygons
 
-`03_quad.R`
+`07_quad.R`
 
-Here, we create spatial polygons representing the area of each plot, using field-measured geo-location estimates of survey points collected with GNSS devices. See the [GEO-TREES Plot Geo-location Protocol]() for more guidance on how to collect these data. We use the `BIOMASS::plotPolygonFit()` function to do this.
+Here, we create spatial polygons representing the area of each plot, using
+field-measured geo-location estimates of survey points collected with GNSS
+devices. See the [GEO-TREES Plot Geo-location Protocol](https://docs.google.com/document/d/1OhKswemZykDQaX7irfUTQI0AuXsUJuYtQf_9SPV3WI0/edit?usp=sharing) for more guidance on
+how to collect these data. We use the `BIOMASS::plotPolygonFit()` function to
+do this.
 
 `plotPolygonFit()` also projects stem map coordinates into a global coordinate
 reference system.
@@ -306,6 +733,15 @@ geometry of the plot may be warped, meaning the geographic distances between
 projected trees may not perfectly match the distances measured in the field.
 
 ```{r}
+# Select only relevant columns from stems dataframe
+# Filter to only plots with spatial coordinates
+stem_sel <- L0$stem %>% 
+  dplyr::select(record_id, plot_id, x_rel_m, y_rel_m) %>% 
+  filter(
+    plot_id %in% L0$pt$plot_id,
+    !is.na(x_rel_m),
+    !is.na(y_rel_m))
+
 # Extract plot corners
 plot_check <- BIOMASS::plotPolygonFit(
   point_data = L0$pt,
@@ -317,14 +753,14 @@ plot_check <- BIOMASS::plotPolygonFit(
   plot_col = "plot_id",
   max_dist = 10,
   rm_outliers = TRUE,
-  tree_data = L0$stem[L0$stem$plot_id %in% L0$pt$plot_id,],
+  tree_data = stem_sel[stem_sel$plot_id %in% L0$pt$plot_id,],
   tree_rel_col = c("x_rel_m", "y_rel_m"),
   tree_plot_col = "plot_id",
   raster = NULL,
   shapefile = NULL,
   prop_tree = NULL,
   threshold_tree = NULL, 
-  draw_plot = FALSE,
+  draw_plot = TRUE,
   ask = FALSE)
 ```
 
@@ -333,7 +769,7 @@ Next we divide the plot into 50x50 m (0.25 ha) quadrats using the
 to individual quadrats.
 
 ```{r}
-# Divide plot
+# Divide plot into 50x50 m quadrats
 plot_divide <- BIOMASS::divide_plot(
   corner_data = plot_check$corner_coord,
   rel_coord = c("x_rel", "y_rel"),
@@ -348,9 +784,15 @@ plot_divide <- BIOMASS::divide_plot(
   tree_plot_ID = "plot_ID",
   sd_coord = NULL, 
   n = 100)
+
+# Inspect output
+kable(head(plot_divide$sub_corner_coord))
+
+kable(head(plot_divide$tree_data))
 ```
 
-Finally, we clean up the outputs of `plotPolygonFit()` and `divide_plot()` and create `sf` spatial objects. We now have the following objects:
+Finally, we clean up the outputs of `plotPolygonFit()` and `divide_plot()` and
+create `sf` spatial objects. We now have the following objects:
 
 * `plot_poly` - `sf` object with a spatial polygon for each plot.
 * `quad_poly` - `sf` object with spatial polygons for each 50x50 m quadrat.
@@ -366,8 +808,11 @@ plot_poly <- plot_check$polygon %>%
     acquisition_id = param$acquisition_id, 
     .before = everything())
 
-# Create quadrat polygons
+# Create quadrat corner spatial points
 quad_pt <- plot_divide$sub_corner_coord %>% 
+  mutate(
+    x_utm = x_proj,
+    y_utm = y_proj) %>% 
   st_as_sf(., coords = c("x_proj", "y_proj"), crs = unique(L0$pt$crs_epsg)) %>% 
   mutate(    
     site_id = param$site_id,
@@ -379,274 +824,34 @@ quad_pt <- plot_divide$sub_corner_coord %>%
     x_rel_m = x_rel,
     y_rel_m = y_rel)
 
+# Create quadrat polygons
 quad_poly <- quad_pt %>% 
   group_by(site_id, acquisition_id, plot_id, quadrat_id) %>%
   summarise() %>% 
   st_convex_hull() %>%
   ungroup()
 
-# Create stem points
+# Create stem spatial points
 stem_pt <- plot_divide$tree_data %>% 
+  mutate(
+    x_utm = x_proj,
+    y_utm = y_proj) %>% 
   filter(!is.na(x_proj), !is.na(y_proj)) %>% 
   st_as_sf(., coords = c("x_proj", "y_proj"), crs = unique(L0$pt$crs_epsg)) %>% 
   dplyr::select(
     record_id,
-    quadrat_id = subplot_ID)
+    quadrat_id = subplot_ID,
+    x_utm, y_utm)
 ```
 
-## Estimate stem wood density
-
-`04_wd.R`
-
-Here we estimate the wood density of each stem measurement using the
-`BIOMASS::getWoodDensity()` function, which uses taxonomic names to extract
-wood density estimates from the Global Wood Density Database [@Zanne2009],
-which we have also aligned with the World Flora Online in the `zz_wd_prep.R`
-script.
+The quadrat polygons `sf` dataframe looks like this:
 
 ```{r}
-# Join taxonomy data to stem data
-stem_taxa_all <- left_join(L0$stem, taxa, by = c("taxon_name" = "nameOriginal"))
-```
-
-In the example dataset there are local field-measured wood density estimates
-that we can use. For `getWoodDensity()` to use them we need to summarise
-individual measurements to the species-level mean and standard deviation.
-
-```{r}
-# Optionally process local wood density data
-wd_summ <- L0$wd %>%
-  group_by(site_id, taxon_name) %>%
-  summarise(
-    wood_density_n_total = sum(wood_density_n, na.rm = TRUE),
-    meanWD = sum(wood_density_gcm3 * wood_density_n, na.rm = TRUE) / 
-      sum(wood_density_n[!is.na(wood_density_gcm3)], na.rm = TRUE),
-    sdWD = {
-      # Filter to rows that have both mean and n 
-      valid_rows = !is.na(wood_density_gcm3) & !is.na(wood_density_n)
-      
-      # if SD is NA, treat as 0 (no variance) 
-      # but still account distance from grand mean
-      clean_sd = ifelse(is.na(wood_density_sd_gcm3), 0, wood_density_sd_gcm3)
-      
-      # Components for grand variance
-      ss_within  = sum((wood_density_n[valid_rows] - 1) * 
-        clean_sd[valid_rows]^2, na.rm = TRUE)
-      ss_between = sum(wood_density_n[valid_rows] * 
-        (wood_density_gcm3[valid_rows] - meanWD)^2, na.rm = TRUE)
-      
-      # If wood_density_n_total <= 1, return NA; otherwise calculate SD
-      if (wood_density_n_total > 1) {
-        sqrt((ss_within + ss_between) / (wood_density_n_total - 1)) 
-      } else {
-        NA_real_
-      }
-    },
-    .groups = "drop"
-  ) %>% 
-  left_join(., taxa, by = c("taxon_name" = "nameOriginal")) %>% 
-  group_by(
-    family = familyAccepted,
-    genus = genusAccepted,
-    species = speciesAccepted)
+kable(head(quad_poly))
 ```
 
 ```{r}
-# Estimate wood density for each stem measurement
-wd_all <- BIOMASS::getWoodDensity(
-  genus = stem_taxa_all$genusAccepted, 
-  species = stem_taxa_all$speciesAccepted,
-  stand = stem_taxa_all$plot_id,
-  family = stem_taxa_all$familyAccepted,
-  addWoodDensity = if (param$wd_method == "field") { wd_summ },
-  verbose = TRUE)
-
-# Create output dataframe
-wd_out <- cbind(record_id = stem_taxa_all$record_id, wd_all)
-```
-
-## Estimate stem height
-
-`05_height.R`
-
-Here we estimate the height of each stem measurement. Height estimates are required for most stem AGB allometries.
-
-There are multiple approaches to estimating stem height. In general, we recommend this approach:
-
-If there is an appropriate existing local height-diameter allometry, use that to estimate the height of all stems in the site. A local height-diameter allometry is deemed appropriate if the underlying data approximately span the range of stem heights measured in the tree inventory data, the species composition is similar to that found in the tree inventory data, and the local conditions (water availability, temperature, topography) of the location where the underlying data were collected are similar to that of the GEO-TREES site.
-
-Otherwise if there is no existing local height-diameter allometry available, if you have at least 50 local and reliable estimates of stem height and diameter, spanning the range of stem size across the plots, fit a local height-diameter allometry using the `BIOMASS::modelHD()` function.
-
-Finally, if neither of the above are appropriate, use the `BIOMASS::retrieveH()` function and supply plot coordinates to estimate stem height from a regional height-diameter allometry [@Chave2014].
-
-Where an existing local height-diameter allometry is available:
-
-```{r}
-# TODO:
-```
-
-Where sufficient local height data are available:
-
-```{r}
-# Compare height-diameter models
-height_mod_comp <- modelHD(
-  D = s_height$diam_cm,
-  H = s_height$height_m,
-  bayesian = FALSE,
-  useCache = FALSE,
-  drawGraph = FALSE)
-
-# Choose best height diameter model
-# Based on average bias
-height_mod_best <- height_mod_comp[
-  height_mod_comp$Average_bias == min(height_mod_comp$Average_bias), "method"]
-
-# Fit best height diameter model
-height_mod <- modelHD(
-  D = s_height$diam_cm,
-  H = s_height$height_m,
-  method = height_mod_best,
-  bayesian = FALSE,
-  useCache = FALSE,
-  drawGraph = TRUE)
-
-# Predict with best height diameter model
-height_est <- retrieveH(
-  D = stem$diam_cm,
-  model = height_mod)
-
-# Create output dataframe
-stem_height <- stem %>% 
-  mutate(height_m_pred = height_est$H) %>% 
-  dplyr::select(record_id, height_m_pred)
-```
-
-Using a regional height-diameter allometry where no height data are available:
-
-```{r}
-# Extract plot centres
-plot_pt_split <- split(L0$pt, L0$pt$crs_epsg)
-p_cent <- bind_rows(lapply(plot_pt_split, function(x) { 
-  st_as_sf(x, coords = c("rover_easting_utm_m", "rover_northing_utm_m"), 
-    crs = unique(x$crs_epsg)) %>% 
-  st_transform(., 4326) 
-})) %>% 
-group_by(site_id, plot_id) %>% 
-summarise() %>% 
-st_centroid() %>% 
-cbind(., st_coordinates(.)) %>% 
-st_drop_geometry() %>% 
-dplyr::select(plot_id, X, Y)
-
-# Add plot centres to stem data
-s_cent <- L0$stem %>% 
-  left_join(., p_cent, by = "plot_id")
-
-stopifnot(all(!is.na(s_cent$X)))
-stopifnot(all(!is.na(s_cent$Y)))
-
-# Retrieve stem heights using plot locations
-height_pred <- retrieveH(
-  D = s_cent$diam_cm, 
-  coord = s_cent[,c("X", "Y")])
-
-height_pred$RSE <- rep(0.243, length(height_pred$H))
-
-s_cent$height_m_pred <- height_pred$H
-s_cent$height_m_pred_rse <- height_pred$RSE
-
-# Create output dataframe
-stem_height <- s_cent %>% 
-  dplyr::select(record_id, height_m_pred)
-```
-
-## Estimate stem AGB 
-
-`06_agb_stem.R`
-
-Here we estimate the above-ground woody biomass (AGB, `agb_Mg`) of each stem measurement using the `BIOMASS::computeAGB()` function. Generally, Equation 4 from @Chave2014 is used to estimate AGB with measurements of stem diameter (`D`), stem height (`H`), and wood density (`WD`). Because the @Chave2014 model was fitted using mostly data from tropical wet forests, it may fail to accurately capture the relationship between stem diameter, height, and volume in other vegetation types. For these sites, a local AGB allometry may be more appropriate. 
-
-You may also choose to have different AGB allometries for different functional
-groups in the tree inventory data. For example, if there are large baobab trees
-(_Adansonia_ sp.), bamboos, or lianas which have drastically different
-physiognomy to other trees in the dataset.
-
-We also create some additional variables like stem basal area (`ba_m2`) and stem volume (`volume_m3`).
-
-```{r}
-# Estimate stem-level AGB
-stem_agb <- L0$stem %>% 
-  left_join(., wd_out, by = "record_id") %>% 
-  left_join(., stem_height, by = "record_id") %>% 
-  mutate(
-    agb_Mg = BIOMASS::computeAGB(
-      allometry = chave2014,
-      D = .$diam_cm,
-      WD = .$meanWD,
-      H = .$height_m_pred)[[1]],
-    ba_m2 = base::pi * (.$diam_cm / 2)^2 / 10000,
-    volume_m3 = agb_Mg / meanWD) %>% 
-  dplyr::select(
-    record_id, 
-    agb_Mg,
-    ba_m2,
-    volume_m3)
-```
-
-Where a local biomass allometry is available:
-
-```{r}
-# TODO:
-```
-
-Where some stem measurements specify a custom biomass allometry, e.g. for bamboos:
-
-```{r}
-# TODO:
-```
-
-## Filter stem data 
-
-`07_record_fil.R`
-
-Here we filter the tree inventory data prior to estimating above-ground biomass density in each 50x50 m quadrat. 
-
-We apply the following filters:
-
-TODO: Estimate missing AGB (missing diameter, missing coordinates) 
-* Remove stems with no diameter measurement. 
-* Remove stems that are not found within any 50x50 m quadrat.
-* Remove stems with diameter less than the stated minimum diameter threshold.
-* Include only living stems.
-* Include only standing stems.
-* Remove stems that are broken below the diameter Point of Measurement (POM).
-* Remove "missing" stems. I.e. stems which were not measured during the census.
-* Where stems were measured multiple times at multiple POMs, choose the highest POM, latest measurement date, and largest diameter measurement.
-
-```{r}
-# Filter stem data
-record_fil <- L0$stem %>% 
-  left_join(., stem_pt, by = "record_id") %>% 
-  left_join(., L0$plot[,c("plot_id", "meas_diam_min_cm")], 
-    by = "plot_id") %>% 
-  filter(
-    !is.na(diam_cm),
-    !is.na(quadrat_id),
-    diam_cm >= meas_diam_min_cm,
-    grepl("A", code),
-    grepl("S", code),
-    !grepl("B", code),
-    !grepl("T", code),
-    !grepl("M", code)
-  ) %>% 
-  group_by(site_id, plot_id, tree_id, stem_id) %>% 
-  slice_max(
-    order_by = tibble(pom_m, measurement_date, diam_cm), 
-    n = 1, 
-    with_ties = FALSE) %>%
-  ungroup() %>% 
-  pull(record_id) %>% 
-  as.character()
+plot(quad_poly)
 ```
 
 ## Estimate quadrat AGBD and propagate error
@@ -656,27 +861,40 @@ record_fil <- L0$stem %>%
 Here we estimate the above-ground woody biomass density (AGBD) in each 50x50 m
 quadrat using the `BIOMASS::AGBmonteCarlo()` function, which implements a
 Monte-Carlo error propagation routine to provide an error-bounded estimate with
-a 95% confidence interval.
+a 95% confidence interval. We also use the `BIOMASS::subplot_summary()`
+function to extract the distribution of simulation AGBD estimates from the
+Monte-Carlo error propagation.
 
 First we prepare the input dataset:
 
 ```{r}
-# Extract plot centres
-p_cent <- plot_poly %>% 
-  st_transform(., crs = 4326) %>% 
-  group_by(site_id, plot_id, acquisition_id) %>% 
-  summarise() %>% 
-  st_centroid() %>% 
-  cbind(., st_coordinates(.)) %>% 
-  st_drop_geometry() %>% 
-  dplyr::select(plot_id, X, Y)
-
 # Filter stems data
-stem_fil <- L0$stem %>% 
-  left_join(., p_cent, by = "plot_id") %>% 
-  left_join(., wd_out, by = "record_id") %>% 
-  left_join(., stem_pt, by = "record_id") %>% 
-  filter(record_id %in% record_fil)
+stem_fil <- stem_pt %>% 
+  filter(record_id %in% record_fil) %>% 
+  left_join(., L0$stem, by = "record_id") %>% 
+  left_join(., stem_wd_all, by = "record_id") %>% 
+  left_join(., stem_height_all, by = "record_id") %>% 
+  left_join(., stem_agb_all, by = "record_id") %>% 
+  bind_cols(., st_coordinates(.)) %>% 
+  mutate(
+    plot_ID = plot_id,
+    subplot_ID = quadrat_id,
+    x_rel = x_rel_m,
+    y_rel = y_rel_m,
+    x_proj = x_utm,
+    y_proj = y_utm) %>% 
+  st_drop_geometry()
+
+# Format quadrat corner points
+quad_pt_clean <- quad_pt %>% 
+  st_drop_geometry() %>% 
+  dplyr::select(
+    plot_ID = plot_id,
+    subplot_ID = quadrat_id,
+    x_rel = x_rel_m,
+    y_rel = y_rel_m,
+    x_proj = x_utm,
+    y_proj = y_utm)
 
 # Split by quadrat
 stem_split <- split(stem_fil, stem_fil$quadrat_id)
@@ -694,7 +912,7 @@ nsim <- 1000
 # Run AGB MC error propagation
 quad_length <- length(stem_split)
 quad_agb_mc_list <- lapply(seq_along(stem_split), function(x) { 
-  message(paste0(x, " / ", quad_length, " - ", names(stem_split)[x]))
+  # message(paste0(x, " / ", quad_length, " - ", names(stem_split)[x]))
   if (nrow(stem_split[[x]]) < 2) {
     out <- list(
       "meanAGB" = stem_split[[x]]$agb_Mg,
@@ -702,35 +920,55 @@ quad_agb_mc_list <- lapply(seq_along(stem_split), function(x) {
       "sdAGB" = NA_real_,
       "credibilityAGB" = c("2.5%" = NA_real_, "97.5%" = NA_real_),
       "AGB_simu" = NA_real_)
+
+    simu_all <- data.frame()
   } else {
-    out <- BIOMASS::AGBmonteCarlo(
+    # Run AGB MC error propagation
+    out <- AGBmonteCarlo(
       D = stem_split[[x]]$diam_cm,
       WD = stem_split[[x]]$meanWD,
-      coord = st_drop_geometry(stem_split[[x]][,c("X", "Y")]),
-      Dpropag = "chave2004",
       errWD = stem_split[[x]]$sdWD,
-      n = nsim)
-    # here add HDmodel (from 05 step) so that all uncertainties are propagated
+      H = if (param$height_method == "regional") stem_split[[x]]$height_m_pred else NULL,
+      errH = if (param$height_method == "regional") stem_split[[x]]$height_m_pred_rse else NULL,
+      HDmodel = if (param$height_method == "field") height_mod else NULL,
+      coord = NULL,
+      Dpropag = "chave2004",
+      n = nsim,
+      Carbon = FALSE,
+      Dlim = NULL,
+      fitted_allom = "chave2014",
+      var_in_data = NULL,
+      volume_allom = FALSE,
+      return_volume = FALSE)
+
+    # Extract individual simulations of AGBD 
+    plot_divide_tmp <- list(
+      sub_corner_coord = quad_pt_clean[
+        quad_pt_clean$subplot_ID == unique(stem_split[[x]]$quadrat_id),],
+      tree_data = stem_split[[x]])
+
+    simu_all <- suppressMessages(as.data.frame(BIOMASS::subplot_summary(
+      subplots = plot_divide_tmp, 
+      value = "agb_Mg",
+      AGB_simu = out$AGB_simu,
+      draw_plot = FALSE,
+      per_ha = FALSE,
+      fun = sum)$long_AGB_simu) %>% 
+      dplyr::select(
+        quadrat_id = subplot_ID,
+        sim = N_simu,
+        sumAGB = AGBD))
   }
+  return(list(out, simu_all))
 })
 names(quad_agb_mc_list) <- names(stem_split)
 
-# Sum stem-level AGB simulations, to get AGBD per quadrat per simulation
-quad_agb_simu <- bind_rows(lapply(names(quad_agb_mc_list), function(x) { 
-  out <- data.frame(
-    quadrat_id = x,
-    sim = seq_len(nsim),
-    sumAGB = colSums(as.matrix(quad_agb_mc_list[[x]]$AGB_simu))
-  )
-  rownames(out) <- NULL
-  out
-}))
-# here can be done with BIOMASS::subplot_summary and thus includes uncertainties 
-# on coordinates, needs divide_plot outputs from 03_quad
+# Create dataframe of all simulations
+quad_agb_simu <- bind_rows(lapply(quad_agb_mc_list, "[[", 2))
 
 # Calculate mean and standard deviation of stem AGB
 stem_agb_mc <- bind_rows(lapply(seq_along(quad_agb_mc_list), function(x) {
-  simu <- quad_agb_mc_list[[x]]$AGB_simu
+  simu <- quad_agb_mc_list[[x]][[1]]$AGB_simu
   if (is.matrix(simu)) {
     agb_Mg_mean <- apply(simu, 1, mean)
     agb_Mg_sd <- apply(simu, 1, sd)
@@ -746,15 +984,15 @@ Finally extract relevant summary statistics from the AGBD error propagation:
 
 ```{r}
 # Extract summary statistics from AGB MC error propagation simulations
-quad_agb_mc_summ <- bind_rows(lapply(names(quad_agb_mc_list), function(x) { 
+quad_agb <- bind_rows(lapply(names(quad_agb_mc_list), function(x) { 
   data.frame(
     quadrat_id = x,
-    agb_Mg_sum_mc_mean = quad_agb_mc_list[[x]]$meanAGB,
-    agb_Mg_sum_mc_median = quad_agb_mc_list[[x]]$medAGB,
-    agb_Mg_sum_mc_sd = quad_agb_mc_list[[x]]$sdAGB,
-    agb_Mg_sum_mc_se = quad_agb_mc_list[[x]]$sdAGB / nsim,
-    agb_Mg_sum_mc_ci2.5 = unname(quad_agb_mc_list[[x]]$credibilityAGB[1]),
-    agb_Mg_sum_mc_ci97.5 = unname(quad_agb_mc_list[[x]]$credibilityAGB[2]))
+    agb_Mg_sum_mc_mean = quad_agb_mc_list[[x]][[1]]$meanAGB,
+    agb_Mg_sum_mc_median = quad_agb_mc_list[[x]][[1]]$medAGB,
+    agb_Mg_sum_mc_sd = quad_agb_mc_list[[x]][[1]]$sdAGB,
+    agb_Mg_sum_mc_se = quad_agb_mc_list[[x]][[1]]$sdAGB / nsim,
+    agb_Mg_sum_mc_ci2.5 = unname(quad_agb_mc_list[[x]][[1]]$credibilityAGB[1]),
+    agb_Mg_sum_mc_ci97.5 = unname(quad_agb_mc_list[[x]][[1]]$credibilityAGB[2]))
 }))
 ```
 
@@ -766,31 +1004,45 @@ quad_agb_mc_summ <- bind_rows(lapply(names(quad_agb_mc_list), function(x) {
 
 Now we have everything needed to create the GEO-TREES L1, L2 and L3 data products.
 
+First we create a master stem table containing all the calculated values from
+the previous steps. This table contains many more columns than will be in the
+official GEO-TREES data products.
+
 ```{r}
 # Combine stem dataframes
-stem_summ <- stem %>%
-  left_join(., stem_agb, by = "record_id") %>% 
+stem_summ <- L0$stem %>%
+  left_join(., stem_taxa_all, by = c("taxon_name" = "nameOriginal")) %>% 
+  left_join(., stem_wd_all, by = "record_id") %>% 
+  left_join(., stem_height_all, by = "record_id") %>% 
+  left_join(., stem_agb_all, by = "record_id") %>% 
   left_join(., stem_agb_mc, by = "record_id") %>% 
-  left_join(., stem_height, by = "record_id") %>% 
-  left_join(., stem_wd, by = "record_id") %>% 
-  left_join(., taxa, by = c("taxon_name" = "nameOriginal")) %>% 
   left_join(., stem_pt, by = "record_id") %>% 
+  mutate(
+    in_quadrat_calc = ifelse(record_id %in% record_fil, TRUE, FALSE)) %>% 
   # {
   #   if (exists("taxon")) {
   #     left_join(., taxon, by = "taxon_name")
   #   } else { . }
   # } %>% 
   st_sf()
+
+# Inspect master stem table
+kable(head(stem_summ, 10))
 ```
+
+Similarly, we create a master quadrat table, with many calculated values, more
+than will be in the official GEO-TREES data products.
 
 ```{r}
 # Calculate area of each quadrat
 quad_poly_area <- st_drop_geometry(quad_poly)
-quad_poly_area$quadrat_area_ha <- drop_units(st_area(quad_poly)) * 0.0001
+quad_poly_area$quadrat_area_ha <- as.vector(st_area(quad_poly)) * 0.0001
+quad_poly_area$quadrat_dim_x_m <- param$quad_dim[1]
+quad_poly_area$quadrat_dim_y_m <- param$quad_dim[2]
 
 # Calculate quadrat summary values
-quad_summ <- stem_summ %>% 
-  filter(record_id %in% record_fil) %>% 
+quad_summ_pre <- stem_summ %>% 
+  filter(in_quadrat_calc == TRUE) %>% 
   st_drop_geometry() %>% 
   group_by(site_id, acquisition_id, plot_id, quadrat_id, census_date) %>% 
   summarise(
@@ -803,6 +1055,7 @@ quad_summ <- stem_summ %>%
     diam_cm_q90 = quantile(diam_cm, 0.9, na.rm = TRUE),
     diam_cm_q95 = quantile(diam_cm, 0.95, na.rm = TRUE),
     height_m_pred_mean = mean(height_m_pred, na.rm = TRUE),
+    height_m_pred_max_rse = height_m_pred_rse[which(height_m_pred == max(height_m_pred, na.rm = TRUE))][1],
     height_m_pred_max = max(height_m_pred, na.rm = TRUE),
     height_m_pred_q80 = quantile(height_m_pred, 0.8, na.rm = TRUE),
     height_m_pred_q90 = quantile(height_m_pred, 0.9, na.rm = TRUE),
@@ -820,14 +1073,14 @@ quad_summ <- stem_summ %>%
       ~.x / quadrat_area_ha, .names = "{.col}_ha"),
     across(
       .cols = where(~inherits(.x, "units")), 
-      .fns = drop_units),
+      .fns = as.vector),
     across(
       everything(), 
       ~ifelse(.x == -Inf, NA_real_, .x))) 
 
 # Add quadrat polygons, fill in quadrats with no trees
-quad_summ_out <- quad_poly %>% 
-  left_join(., quad_summ, 
+quad_summ <- quad_poly %>% 
+  left_join(., quad_summ_pre, 
     by = c("site_id", "acquisition_id", "plot_id", "quadrat_id")) %>% 
   mutate(
     across(all_of(c(
@@ -840,12 +1093,19 @@ quad_summ_out <- quad_poly %>%
       "agb_Mg_sum_mc_median",
       "agb_Mg_sum_mc_mean_ha", 
       "agb_Mg_sum_mc_median_ha")), ~ifelse(is.na(.x), 0, .x))) 
+
+# Inspect master quadrat table
+kable(head(quad_summ, 10))
 ```
 
-Create L1, L2 and L3 data products.
+Then we can create the L1, L2 and L3 GEO-TREES tree inventory data products.
 
-Each product has an associated "RO-Crate" file which records the version of the
-code and the input data sources so they can be reproduced.
+Each product has an associated
+[RO-Crate](https://www.researchobject.org/ro-crate/) file which records the
+version of the code and the input data sources so they can be reproduced. These
+files are created programmatically in R using the `rocrateR` package.
+
+These are the official GEO-TREES tree inventory data products:
 
 * L1 re-formatted stem measurements.
 * L1 re-formatted plot geo-location points
@@ -854,8 +1114,9 @@ code and the input data sources so they can be reproduced.
 * L1 plot polygons.
 * L3 AGBD estimates within plot quadrats.
 
+First we create the data objects.
+
 ```{r}
-# Prepare L1 stems dataset
 L1_stem <- stem_summ %>% 
   st_transform(., 4326) %>% 
   bind_cols(., st_coordinates(.)) %>% 
@@ -880,14 +1141,14 @@ L1_stem <- stem_summ %>%
     Code = code)
 
 # Prepare L1 GNSS dataset
-L1_pt <- plot_pt
+L1_pt <- L0$pt
 
 # Prepare L1 plot meta-data 
-L1_plot <- plot
+L1_plot <- L0$plot
 
 # Prepare L2 stems dataset
 L2_stem <- stem_summ %>% 
-  filter(record_id %in% record_fil) %>% 
+  filter(in_quadrat_calc == TRUE) %>% 
   st_transform(., 4326) %>% 
   bind_cols(., st_coordinates(.)) %>% 
   st_drop_geometry() %>% 
@@ -905,10 +1166,10 @@ L2_stem <- stem_summ %>%
     WD_stem_uncertainty = sdWD,
     AGB_stem_estimate = agb_Mg_mean,
     AGB_stem_uncertainty = agb_Mg_sd,
-    Height_stem_estimate = height_m_pred)#,
-    # TODO: Height_tree_uncertainty = )
+    Height_stem_estimate = height_m_pred,
+    Height_stem_uncertainty = height_m_pred_rse)
 
-# Prepare L1 plot polygons dataset 
+# Prepare L2 plot polygons dataset 
 L2_poly <- plot_poly %>% 
   dplyr::select(
     BRM_site = site_id,
@@ -917,7 +1178,7 @@ L2_poly <- plot_poly %>%
 
 # Check all values filled
 stopifnot(all(!is.na(L2_stem$AGB_tree_estimate)))
-# stopifnot(all(!is.na(L2_stem$AGB_tree_uncertainty)))
+stopifnot(all(!is.na(L2_stem$AGB_tree_uncertainty)))
 
 # Prepare L3 quadrat dataset
 L3_quad <- quad_summ %>% 
@@ -929,39 +1190,76 @@ L3_quad <- quad_summ %>%
     AGBD_stand_estimate = agb_Mg_sum_mc_mean_ha,
     AGBD_stand_uncertainty = agb_Mg_sum_mc_sd_ha,
     Height_stand_estimate = height_m_pred_max,
-    # Height_stand_uncertainty = # TODO: Canopy height standard deviation, reporting the L2 uncertainty propagated to stand-level estimate. 
+    Height_stand_uncertainty = height_m_pred_max_rse,
     Basal_area = ba_m2_sum_ha,
     Lorey_height = lorey_height_m,
-    Wood_density = meanWD_wm_ba) 
+    Wood_density = meanWD_wm_ba,
+    Quadrat_area = quadrat_area_ha,
+    Quadrat_dim_x = quadrat_dim_x_m,
+    Quadrat_dim_y = quadrat_dim_y_m)
 
 # Check all values filled
 stopifnot(all(!is.na(L3_quad$AGBD_stand_estimate)))
-# stopifnot(all(!is.na(L3_quad$AGBD_stand_uncertainty)))
+stopifnot(all(!is.na(L3_quad$AGBD_stand_uncertainty)))
+```
+
+Then we create the filenames and output directories for the data objects, which
+are a concatenation of the following values, matching the order of the
+directory structure.
+
+* Site ID
+* Data type, in this case "PDA" for tree inventory data
+* Acquisition ID
+* Product version
+* Software version
+* Data product level (L1 -- L3)
+* Data product name
+
+```{r}
+# Create sanitised software version string for filenames
+software_version_sanit <- gsub("\\.", "-", param$software_version)
 
 # Construct output filenames
 L1_filename <- paste(
     param$site_id, 
     "PDA", 
     param$acquisition_id, 
-    "L1", 
+    param$product_version,
     software_version_sanit, 
+    "L1", 
   sep = "_")
 
 L2_filename <- paste(
     param$site_id, 
     "PDA", 
     param$acquisition_id, 
-    "L2", 
+    param$product_version,
     software_version_sanit, 
+    "L2", 
   sep = "_")
 
 L3_filename <- paste(
     param$site_id, 
     "PDA", 
     param$acquisition_id, 
-    "L3", 
+    param$product_version,
     software_version_sanit, 
+    "L3", 
   sep = "_")
+
+# Create output directories
+L_list <- c("L1", "L2", "L3")
+L_dir_list <- lapply(L_list, function(x) { 
+  file.path(param$out_dir, software_version_sanit, x)
+})
+names(L_dir_list) <- L_list
+```
+
+Then we can write the data objects to files:
+
+```{r}
+#| eval: false
+lapply(L_dir_list, dir.create, recursive = TRUE, showWarnings = FALSE)
 
 # Write L1 dataset to file
 write.csv(L1_stem, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_stem", ".csv")), row.names = FALSE)
@@ -974,7 +1272,12 @@ st_write(L2_poly , file.path(L_dir_list[["L1"]], paste0(L1_filename, "_poly", ".
 
 # Write L3 dataset to file
 st_write(L3_quad, file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")), delete_dsn = TRUE)
+```
 
+Finally, we can can construct the RO-Crate files which sit alongside each data
+product:
+
+```{r}
 # Construct RO-crates
 
 # Author 
@@ -1097,26 +1400,26 @@ rocrate_list <- lapply(names(L_outfile_list), function(x) {
     context = "https://w3id.org/ro/crate/1.2/context",
     datePublished = as.character(Sys.Date()),
     name = paste("GEO-TREES Bicuar PDA", x)
-  ) |> 
-    add_entity(me) |>
-    add_entity(aff) |>
-    add_entity(lic) |>
-    add_entity(indir) |>
-    add_entity(yaml) |>
-    add_entity(code) |>
+  ) %>%
+    add_entity(me) %>%
+    add_entity(aff) %>%
+    add_entity(lic) %>%
+    add_entity(indir) %>%
+    add_entity(yaml) %>%
+    add_entity(code) %>%
     add_entity(exec)
 
   for (i in L_outfile_list[[x]]) {
-    rc <- rc |> add_entity(i)
+    rc <- rc %>% add_entity(i)
   }
 
   L_outfile_id_list <- unname(lapply(L_outfile_list[[x]], function(i) { 
     list(`@id` = i$`@id`) 
   }))
 
-  rc |>
-    add_entity_value(id = "./", key = "author", value = list(`@id` = me$`@id`)) |>
-    add_entity_value(id = "./", key = "license", value = list(`@id` = lic$`@id`)) |>
+  rc %>%
+    add_entity_value(id = "./", key = "author", value = list(`@id` = me$`@id`)) %>%
+    add_entity_value(id = "./", key = "license", value = list(`@id` = lic$`@id`)) %>%
     add_entity_value(id = "./", key = "hasPart", 
       value = c(
         list(
@@ -1126,22 +1429,25 @@ rocrate_list <- lapply(names(L_outfile_list), function(x) {
         ),
         L_outfile_id_list
       )
-    ) |>
+    ) %>%
     add_entity_value(id = "./", key = "mentions", value = list(
         list(`@id` = exec$`@id`),
         list(`@id` = code$`@id`)
-      )) |>
-    add_entity_value(id = me$`@id`, key = "affiliation", value = list(`@id` = aff$`@id`)) |>
+      )) %>%
+    add_entity_value(id = me$`@id`, key = "affiliation", value = list(`@id` = aff$`@id`)) %>%
     add_entity_value(id = exec$`@id`, key = "object", 
       value = list(
         list(`@id` = yaml$`@id`),
         list(`@id` = indir$`@id`)
-      )) |>
-    add_entity_value(id = exec$`@id`, key = "result", value = L_outfile_id_list) |>
+      )) %>%
+    add_entity_value(id = exec$`@id`, key = "result", value = L_outfile_id_list) %>%
     add_entity_value(id = exec$`@id`, key = "instrument", value = list(`@id` = code$`@id`))
 })
 names(rocrate_list) <- names(L_outfile_list)
+```
 
+```{r}
+#| eval: false
 # Write crates to file
 lapply(names(rocrate_list), function(x) { 
   write_rocrate(rocrate_list[[x]], 
@@ -1156,7 +1462,7 @@ lapply(L_dir_list, function(x) {
 
 ## Next steps
 
-The L3 Tree Inventory data product is passed to the AGBD geo-spatial modelling
+The L3 tree inventory data product is passed to the AGBD geo-spatial modelling
 workflow to produce landscape-level estimates of AGBD at 50 x 50 m gridded
 resolution, in combination with the ALS L3 data products.
 

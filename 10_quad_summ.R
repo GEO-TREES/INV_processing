@@ -4,12 +4,12 @@
 
 # Calculate area of each quadrat
 quad_poly_area <- st_drop_geometry(quad_poly)
-quad_poly_area$quadrat_area_ha <- drop_units(st_area(quad_poly)) * 0.0001
+quad_poly_area$quadrat_area_ha <- as.vector(st_area(quad_poly)) * 0.0001
 quad_poly_area$quadrat_dim_x_m <- param$quad_dim[1]
 quad_poly_area$quadrat_dim_y_m <- param$quad_dim[2]
 
 # Calculate quadrat summary values
-quad_summ <- stem_summ %>% 
+quad_summ_pre <- stem_summ %>% 
   filter(in_quadrat_calc == TRUE) %>% 
   st_drop_geometry() %>% 
   group_by(site_id, acquisition_id, plot_id, quadrat_id, census_date) %>% 
@@ -41,14 +41,14 @@ quad_summ <- stem_summ %>%
       ~.x / quadrat_area_ha, .names = "{.col}_ha"),
     across(
       .cols = where(~inherits(.x, "units")), 
-      .fns = drop_units),
+      .fns = as.vector),
     across(
       everything(), 
       ~ifelse(.x == -Inf, NA_real_, .x))) 
 
 # Add quadrat polygons, fill in quadrats with no trees
-quad_summ_out <- quad_poly %>% 
-  left_join(., quad_summ, 
+quad_summ <- quad_poly %>% 
+  left_join(., quad_summ_pre, 
     by = c("site_id", "acquisition_id", "plot_id", "quadrat_id")) %>% 
   mutate(
     across(all_of(c(
@@ -63,5 +63,5 @@ quad_summ_out <- quad_poly %>%
       "agb_Mg_sum_mc_median_ha")), ~ifelse(is.na(.x), 0, .x))) 
 
 # Write to file
-st_write(quad_summ_out, file.path(outdir, "quad_summ.gpkg"), delete_dsn = TRUE)
+st_write(quad_summ, file.path(outdir, "quad_summ.gpkg"), delete_dsn = TRUE)
 

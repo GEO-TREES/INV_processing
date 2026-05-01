@@ -11,6 +11,10 @@ drawio/*.drawio.bkp
 drawio/*.pdf
 drawio/*.png
 
+# Ignore cache files for vignettes
+vignettes/worked_example/worked_example_cache/
+vignettes/worked_example/worked_example_files/
+
 # macOS system files
 .DS_Store
 .LSOverride

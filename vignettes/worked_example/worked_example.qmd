@@ -77,6 +77,7 @@ library(dplyr)  # Dataframe manipulation
 library(sf)  # Spatial data 
 library(BIOMASS)  # AGB estimation, H:D allometry, 
 library(yaml)  # read_yaml() - Read YAML files with parameters
+library(ggplot2)  # Create plots and graphs
 library(rocrateR)  # rocrate() etc. - Create RO-Crate meta-data files
 library(kableExtra)  # Print dataframes in Quarto documents, only for the vignette
 ```
@@ -87,10 +88,9 @@ Source additional functions:
 source("../../func.R")
 ```
 
-These are the functions provided by `func.R`:
-
 ```{r}
 #| echo: false
+#| tbl-cap: "Functions provided in `func.R` and their descriptions."
 # Extract function descriptions
 kable(extractRoxygen("../../func.R"))
 ```
@@ -107,8 +107,8 @@ outdir <- "./out"
 This part of the workflow will vary among sites, depending on the structure of
 the raw field data. Consult the [GEO-TREES Tree Inventory Data Collection
 Guidelines]() Section 16: _Data format_ for information on the GEO-TREES L0
-data format. [The current repository](https://github.com/GEO-TREES/PDA_processing) also contains template files for formatting raw
-data, in the `./templates/` folder.
+data format. [The current repository](https://github.com/GEO-TREES/PDA_processing) 
+also contains template files for formatting raw data, in the `./templates/` folder.
 
 We provide various functions to help create valid GEO-TREES L0 data products:
 
@@ -119,6 +119,11 @@ We provide various functions to help create valid GEO-TREES L0 data products:
 
 You can see various examples of R scripts used to transform raw field data into
 L0 data in `./sites/<SITE NAME>/<ACQUISITION ID>/01_fmt.R`.
+
+::: {.callout-warning title="TODO"}
+GEO-TREES also provides guidance on Quality Assurance and Quality Control of
+tree inventory data.
+:::
 
 ## Specify processing parameters
 
@@ -213,15 +218,20 @@ L0 <- list(
   wd = read.csv(file.path(indir, "wd.csv")),
 
   # Import additional height-diameter measurements (optional)
-  height = read.csv(file.path(indir, "hd.csv"))#,
-
-  # TODO: Import local biomass allometry
-  # agb_allom <- readRDS(file.path(indir, "agb_allom.rds"))
-
-  # TODO: Import local height-diameter allometry
-  # hd_allom <- readRDS(file.path(indir, "hd_allom.rds"))
+  height = read.csv(file.path(indir, "hd.csv"))
 )
 ```
+
+::: {.callout-warning title="TODO"}
+```{r}
+#| eval: false
+# Import local biomass allometry
+agb_allom <- readRDS(file.path(indir, "agb_allom.rds"))
+
+# Import local height-diameter allometry
+hd_allom <- readRDS(file.path(indir, "hd_allom.rds"))
+```
+:::
 
 If you are on the MAAP platform and data is stored in an S3 bucket, use this
 method to copy the files to a local directory first.
@@ -258,8 +268,6 @@ if (param$opt_s3) {
 }
 ```
 
-## Inspect L0 data
-
 The stem measurement table contains one row per stem measurement. Stems may be
 measured multiple times within a single census, for example if multiple
 diameter measurements are collected at different Points of Measurement (POMs)
@@ -269,6 +277,7 @@ The `record_id` column is a unique identifier for the stem measurement record
 within the site, essentially the row number of the stem measurement table. 
 
 ```{r}
+#| tbl-cap: "Example of L0 stem measurement table."
 kable(head(L0$stem, 10))
 ```
 
@@ -278,6 +287,7 @@ local environmental conditions and vegetation structure. These data are used
 mostly for interpretation.
 
 ```{r}
+#| tbl-cap: "Example of L0 plot meta-data table."
 kable(L0$plot)
 ```
 
@@ -289,6 +299,7 @@ is used. In the example dataset these columns are blank ebcause the survey
 points were collected with a single handheld GNSS unit. 
 
 ```{r}
+#| tbl-cap: "Example of L0 plot geo-location measurements table."
 kable(head(L0$pt, 5))
 ```
 
@@ -299,6 +310,7 @@ useful in the case where codes or short-hand taxonomic names were used in the
 field and those need to be linked with the full taxonomic name.
 
 ```{r}
+#| tbl-cap: "Example of optional L0 taxa table."
 kable(head(L0$taxa, 5))
 ```
 
@@ -310,6 +322,7 @@ were collected for a single taxon, these should be aggregated to a mean,
 standard deviation and the number of measurements.
 
 ```{r}
+#| tbl-cap: "Example of optional L0 wood density estimates table."
 kable(head(L0$wd, 5))
 ```
 
@@ -321,13 +334,15 @@ the plots, hence the `site_id` column is filled, but the `plot_id` column is
 filled with `NA` values.
 
 ```{r}
+#| tbl-cap: "Example of optional L0 diameter-height measurements table."
 kable(head(L0$height, 5))
 ```
 
-TODO: local biomass allometry
+::: {.callout-warning title="TODO"}
+Local biomass allometry
 
-TODO: local height-diameter allometry
-
+Local height-diameter allometry
+:::
 
 ## Correct taxonomy 
 
@@ -406,7 +421,10 @@ stem_taxa_all <- BIOMASS::correctTaxo(
 
 # Optionally write WFO cache to file for future processing
 # saveRDS(BIOMASS:::the$wfo_cache, file.path(outdir, "wfo_cache.rds"))
+```
 
+```{r}
+#| tab-cap: "Example of output of `BIOMASS::correctTaxo()`."
 # Inspect taxa table
 kable(head(stem_taxa_all))
 ```
@@ -485,6 +503,12 @@ wd_all <- BIOMASS::getWoodDensity(
 stem_wd_all <- cbind(record_id = taxa_all$record_id, wd_all)
 ```
 
+```{r}
+#| tab-cap: "Example of output of `BIOMASS::getWoodDensity()`."
+# Inspect output
+kable(head(stem_wd_all))
+```
+
 ## Estimate stem height
 
 `04_height.R`
@@ -499,23 +523,36 @@ Otherwise if there is no existing local height-diameter allometry available, if 
 
 Finally, if neither of the above are appropriate, use the `BIOMASS::retrieveH()` function and supply plot coordinates to estimate stem height from a regional height-diameter allometry [@Chave2014].
 
+
+
+::: {.callout-warning title="TODO"}
 Where an existing local height-diameter allometry is available:
 
 ```{r}
-# TODO:
 ```
+:::
+
 
 Where sufficient local height data are available:
 
 ```{r}
+#| fig-cap: "Fitted height-diameter models of different forms."
 # Compare height diameter models
 height_mod_comp <- modelHD(
   D = L0$height$diam_cm,
   H = L0$height$height_m,
   bayesian = FALSE,
   useCache = FALSE,
-  drawGraph = FALSE)
+  drawGraph = TRUE)
+```
 
+```{r}
+#| tab-cap: "Example of output of `BIOMASS::modelHD() model fit comparison table`."
+# Inspect tabular output of modelHD()
+kable(height_mod_comp)
+```
+
+```{r}
 # Choose best height diameter model
 # Based on average bias
 height_mod_best <- height_mod_comp[
@@ -582,6 +619,17 @@ stem_height_all <- s_cent %>%
   dplyr::select(record_id, height_m_pred, height_m_pred_rse)
 ```
 
+```{r}
+#| fig-cap: "Predicted relationship between stem diameter and stem height using a regional diameter-height allometry from @Feldpausch2012."
+# Inspect predictions 
+ggplot(s_cent, aes(x = diam_cm, y = height_m_pred)) + 
+  geom_line() + 
+  theme_bw() + 
+  labs(
+    x = "Stem diameter (cm)",
+    y = "Predicted stem height (m)")
+```
+
 ## Estimate stem AGB 
 
 `05_agb_stem.R`
@@ -623,17 +671,41 @@ stem_agb_all <- L0$stem %>%
     volume_m3)
 ```
 
+```{r}
+#| fig-cap: "Histogram of stem-level Above-ground woody biomass (AGB) estimates."
+# Visualise distribution of stem-level AGB
+ggplot(stem_agb_all, aes(x = agb_Mg)) + 
+  geom_histogram(colour = "black", fill = "grey", binwidth = 1, boundary = 0) + 
+  theme_bw() + 
+  labs(
+    x = "Above-ground woody biomass (Mg)",
+    y = "N stems")
+```
+
+```{r}
+#| fig-cap: "Relationship between stem basal area and above-ground woody biomass (AGB) estimates."
+# Visualise relationship between basal area and AGB
+ggplot(stem_agb_all, aes(x = ba_m2, y = agb_Mg)) + 
+  geom_point(alpha = 0.5) + 
+  theme_bw() + 
+  labs(
+    x = expression("Basal area"~(m^2)),
+    y = "Above-ground woody biomass (Mg)")
+```
+
+::: {.callout-warning title="TODO"}
 Where a local biomass allometry is available:
 
 ```{r}
-# TODO:
 ```
+:::
 
+::: {.callout-warning title="TODO"}
 Where some stem measurements specify a custom biomass allometry, e.g. for bamboos:
 
 ```{r}
-# TODO:
 ```
+:::
 
 ## Filter stem data 
 
@@ -677,9 +749,13 @@ record_fil <- L0$stem %>%
   ungroup() %>% 
   pull(record_id) %>% 
   as.character()
+
+head(record_fil)
 ```
 
-TODO: Estimate missing AGB (missing diameter, missing coordinates) 
+::: {.callout-warning title="TODO"}
+Estimate missing AGB (missing diameter, missing coordinates) 
+:::
 
 ## Fit plot spatial polygons
 
@@ -741,7 +817,10 @@ stem_sel <- L0$stem %>%
     plot_id %in% L0$pt$plot_id,
     !is.na(x_rel_m),
     !is.na(y_rel_m))
+```
 
+```{r}
+#| fig-cap: "Fitted plot polygon and stem coordinates transformed to local UTM coordinate reference system."
 # Extract plot corners
 plot_check <- BIOMASS::plotPolygonFit(
   point_data = L0$pt,
@@ -784,7 +863,10 @@ plot_divide <- BIOMASS::divide_plot(
   tree_plot_ID = "plot_ID",
   sd_coord = NULL, 
   n = 100)
+```
 
+```{r}
+#| tab-cap: "Example of output of `BIOMASS::divide_plot()`."
 # Inspect output
 kable(head(plot_divide$sub_corner_coord))
 
@@ -844,14 +926,20 @@ stem_pt <- plot_divide$tree_data %>%
     x_utm, y_utm)
 ```
 
-The quadrat polygons `sf` dataframe looks like this:
-
 ```{r}
+#| tab-cap: "Example of quadrat polygons object`."
 kable(head(quad_poly))
 ```
 
 ```{r}
-plot(quad_poly)
+#| fig-cap: "Map of the fitted plot polygon (blue polygon), quadrats (red polygons), and a sample of 100 stems coloured by their quadrat ID."
+# Visualise the plot polygon, quadrat polygon, and stems assigned to quadrats
+ggplot() + 
+  geom_sf(data = plot_poly, colour = "blue", fill = NA, linewidth = 2) + 
+  geom_sf(data = quad_poly, colour = "red", fill = NA) + 
+  geom_sf(data = stem_pt %>% slice_sample(n = 100), aes(colour = quadrat_id)) + 
+  theme_bw() + 
+  theme(legend.position = "none")
 ```
 
 ## Estimate quadrat AGBD and propagate error
@@ -996,6 +1084,42 @@ quad_agb <- bind_rows(lapply(names(quad_agb_mc_list), function(x) {
 }))
 ```
 
+```{r}
+#| fig-cap: "Interval plot showing the mean above-ground woody biomass density (AGBD) estimate for each quadrat, with 95% confidence interval."
+# Visualise the distribution of AGBD estimates among quadrats, with their 95% CI
+ggplot(quad_agb, aes(x = agb_Mg_sum_mc_mean, y = reorder(quadrat_id, agb_Mg_sum_mc_mean))) +
+  geom_vline(xintercept = 0, linetype = 2) + 
+  geom_point() + 
+  geom_errorbar(aes(xmin = agb_Mg_sum_mc_ci2.5, xmax = agb_Mg_sum_mc_ci97.5), orientation = "y") + 
+  theme_bw() + 
+  theme(
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank()) + 
+  labs(
+    x = expression("Above-ground woody biomass"~(Mg~ha^-1)),
+    y = "Quadrat")
+```
+
+```{r}
+#| fig-cap: "Distribution of Monte-Carlo simulations of above-ground woody biomass density (AGBD) for the top 10 quadrats with the highest AGBD."
+# Select top 10 highest biomass quadrats for clarity
+quadrat_agb_top <- quad_agb %>% 
+  slice_max(agb_Mg_sum_mc_mean, n = 10) %>% 
+  pull(quadrat_id)
+
+# Visualise Monte-Carlo AGBD simulations for each of the top 10 quadrats with the highest AGBD 
+quad_agb_simu %>% 
+  filter(quadrat_id %in% quadrat_agb_top) %>% 
+  ggplot(., aes(x = sumAGB)) +
+    geom_line(aes(group = quadrat_id), stat = "density", alpha = 0.8) + 
+    theme_bw() + 
+    labs(
+      x = expression("AGBD Monte-Carlo simulations"~(Mg~ha^-1)), 
+      y = "N simulations")
+```
+
 ## Compile GEO-TREES L1, L2, and L3 data products 
 
 `09_stem_summ.R`
@@ -1025,7 +1149,10 @@ stem_summ <- L0$stem %>%
   #   } else { . }
   # } %>% 
   st_sf()
+```
 
+```{r}
+#| tab-cap: "Example of master stems table."
 # Inspect master stem table
 kable(head(stem_summ, 10))
 ```
@@ -1093,9 +1220,33 @@ quad_summ <- quad_poly %>%
       "agb_Mg_sum_mc_median",
       "agb_Mg_sum_mc_mean_ha", 
       "agb_Mg_sum_mc_median_ha")), ~ifelse(is.na(.x), 0, .x))) 
+```
 
+```{r}
+#| tab-cap: "Example of master quadrats table."
 # Inspect master quadrat table
 kable(head(quad_summ, 10))
+```
+
+```{r}
+#| fig-cap: "Map of quadrats shaded by their above-ground woody biomass density (AGBD)."
+# Map quadrat AGBD
+ggplot() + 
+  geom_sf(data = quad_summ, aes(fill = agb_Mg_sum_mc_mean_ha)) + 
+  scale_fill_gradient(name = expression("Above-ground woody biomass"~(Mg~ha^-1)), low = "white", high = "red") + 
+  theme_bw() + 
+  theme(legend.position = "bottom")
+```
+
+```{r}
+#| fig-cap: "Relationship between the 95th percentile of stem diameter and above-ground woody biomass density (AGBD) of each quadrat."
+# Plot the relationship between maximum tree size and AGBD
+ggplot(quad_summ, aes(x = diam_cm_q95, y = agb_Mg_sum_mc_mean_ha)) + 
+  geom_point() +
+  theme_bw() + 
+  labs(
+    x = "95th percentile of stem diameter (cm)",
+    y = expression("Above-ground woody biomass density"~(Mg~ha^-1)))
 ```
 
 Then we can create the L1, L2 and L3 GEO-TREES tree inventory data products.

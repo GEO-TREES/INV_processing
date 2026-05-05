@@ -306,6 +306,6 @@ lapply(names(rocrate_list), function(x) {
 
 # Copy param.yaml to each data output
 lapply(L_dir_list, function(x) { 
-  file.copy("./param.yaml", file.path(x, "param.yaml"))
+  file.copy(p_file, file.path(x, "param.yaml"))
 })
 

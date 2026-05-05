@@ -17,7 +17,8 @@ library(rocrateR)
 source("./func.R")
 
 # Load YAML file with parameters for 
-# p <- yaml::read_yaml("./sites/<SITE>/<ACQUISITION>/<PRODUCTVERSION>/param.yaml")
+# p_file <- "./sites/Amacayacu/2024-08-03/v1/param.yaml"
+p <- yaml::read_yaml(p_file)
 
 # Load YAML file with software version
 software_version <- read_yaml("./version.yaml")

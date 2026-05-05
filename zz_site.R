@@ -210,7 +210,7 @@ outdir <- file.path(param$out_dir, software_version_sanit, "04_height")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), colClasses = stem_col_class)
 if (param$height_method == "regional") { 
-  plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"))
+  plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"), colClasses = pt_col_class)
 }
 if (param$height_method == "field") { 
   height <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "height.csv"))

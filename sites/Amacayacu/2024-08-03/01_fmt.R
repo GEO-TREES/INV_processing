@@ -37,7 +37,7 @@ pt <- poly %>%
       point_id %in% c("SW", "SE") ~ 0,
       point_id %in% c("NW", "NE") ~ 500,
       TRUE ~ NA_real_),
-    crs_epsg = as.character(crs),
+    crs_epsg = as.integer(crs),
     crs_name = crs_name,
     rover_model = "Garmin GPSMap 65s", 
     corner = TRUE) %>% 

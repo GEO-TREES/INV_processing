@@ -2,6 +2,9 @@
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2025-07-09
 
+# Ensure plot IDs are character class
+quad_poly$plot_id <- as.character(quad_poly$plot_id)
+
 # Calculate area of each quadrat
 quad_poly_area <- st_drop_geometry(quad_poly)
 quad_poly_area$quadrat_area_ha <- as.vector(st_area(quad_poly)) * 0.0001

@@ -86,7 +86,10 @@ L3_quad <- quad_summ %>%
 
 # Check all values filled
 stopifnot(all(!is.na(L3_quad$AGBD_stand_estimate)))
-stopifnot(all(!is.na(L3_quad$AGBD_stand_uncertainty)))
+# stopifnot(all(!is.na(L3_quad$AGBD_stand_uncertainty)))  # Some plots have not trees
+
+# Check not all AGBD estimates should be zero
+stopifnot(!all(L3_quad$AGBD_stand_estimate == 0))
 
 # Construct output filenames
 L1_filename <- paste(

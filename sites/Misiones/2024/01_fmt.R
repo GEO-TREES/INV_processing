@@ -11,13 +11,20 @@ recs <- read_excel(file.path(indir, "Medicion2024 planilla compartida GEO-TREES.
 polys <- st_read(file.path(indir, "parcela_ubicacion_campo_2026-02-24.kml")) %>% 
   mutate(
     site_id = param$site_id,
-    plot_id = as.character(Name)) %>% 
-  st_transform(., 4326)
+    plot_id = as.character(Name)) 
   
-point_id_list <- rep(list(c("SW", "NW", "NE", "SE")), nrow(polys))
-pt <- bind_rows(lapply(seq_len(nrow(polys)), function(i) {
+st_cent <- polys %>% 
+  summarise() %>% 
+  st_centroid() %>% 
+  st_coordinates() 
+
+polys_utm <- polys %>% 
+  st_transform(., getUTM(st_cent[1], st_cent[2]))
+
+point_id_list <- rep(list(c("SW", "NW", "NE", "SE")), nrow(polys_utm))
+pt <- bind_rows(lapply(seq_len(nrow(polys_utm)), function(i) {
   # Isolate polygon
-  xsel <- polys[i,]
+  xsel <- polys_utm[i,]
 
   # Extract corner coordinates
   xc <- as.data.frame(sf::st_coordinates(sf::st_union(xsel)))
@@ -38,14 +45,22 @@ pt <- bind_rows(lapply(seq_len(nrow(polys)), function(i) {
   # Return selected corner coordinate(s)
   g <- st_sfc(lapply(1:nrow(xs), function(j) {
       st_point(as.matrix(xs[j,1:2]))
-    }), crs = st_crs(polys))
-  d <- st_drop_geometry(polys[rep(i, nrow(xs)), "plot_id"])
+    }), crs = st_crs(polys_utm))
+  d <- st_drop_geometry(polys_utm[rep(i, nrow(xs)), "plot_id"])
   d$point_id <- xs$point_id
   st_sf(d, geometry = g)
 })) %>% 
+  bind_cols(., st_coordinates(.)) %>%
+  st_drop_geometry() %>% 
+  rename(
+    rover_easting_utm_m = X, 
+    rover_northing_utm_m = Y) %>%
   mutate(
+    crs_name = getUTM(st_cent[1], st_cent[2], epsg = FALSE),
+    crs_epsg = as.integer(getUTM(st_cent[1], st_cent[2], epsg = TRUE)),
     site_id = param$site_id,
     acquisition_id = param$acquisition_id,
+    corner = TRUE,
     x_rel_m = case_when(
       point_id %in% c("SW", "NW") ~ 0,
       point_id %in% c("SE", "NE") ~ 100,
@@ -54,6 +69,7 @@ pt <- bind_rows(lapply(seq_len(nrow(polys)), function(i) {
       point_id %in% c("SW", "SE") ~ 0,
       point_id %in% c("NW", "NE") ~ 100,
       TRUE ~ NA_real_)) %>% 
+  colGen(., pt_cols$column_name, pt_cols$class) %>% 
   dplyr::select(all_of(pt_cols$column_name))
 
 # Clean stem data
@@ -84,7 +100,7 @@ s_clean <- s %>%
     missing = "",
     broken = ifelse(grepl("B|R", danio_24), "B", ""),
     code = pasteVals(alive, fallen, broken, missing),
-    census_id = as.integer(1),
+    census_id = "1",
     measurement_date = as.character(measurement_date),
     x_rel_m = case_when(
       x_rel_m == "1,2" ~ 12,
@@ -124,7 +140,7 @@ recs_clean <- recs %>%
     missing = "",
     broken = ifelse(grepl("B|R", danio_24), "B", ""),
     code = pasteVals(alive, fallen, broken, missing),
-    census_id = as.integer(1),
+    census_id = "1",
     measurement_date = "2024",
     height_m = as.numeric(height_m),
     x_rel_m = case_when(
@@ -162,7 +178,9 @@ s_all <- bind_rows(s_clean, recs_clean) %>%
       taxon_name == "Sola1" ~ "Solanum",
       taxon_name == "LIANA" ~ NA_character_,
       taxon_name == "Liana" ~ NA_character_,
-      TRUE ~ taxon_name)) %>% 
+      TRUE ~ taxon_name),
+    growth_form = NA_character_,
+    height_allometry = NA_character_) %>% 
   left_join(., sp[,c("cod_sp", "accepted_name", "life_form")], by = c("taxon_name" = "cod_sp")) %>% 
   mutate(taxon_name = ifelse(is.na(accepted_name), taxon_name, accepted_name)) %>% 
   filter(plot_id %in% pt$plot_id) %>% 
@@ -172,7 +190,7 @@ s_all <- bind_rows(s_clean, recs_clean) %>%
 plots <- polys %>% 
   st_drop_geometry() %>% 
   mutate(
-    census_id = as.integer(1),
+    census_id = "1",
     census_date = unique(s_all$measurement_date),
     measurement_date_min = census_date,
     measurement_date_max = census_date) %>% 
@@ -194,6 +212,9 @@ plots <- polys %>%
     meas_liana = TRUE,
     meas_palm = TRUE,
     meas_bamboo = NA,
+    meas_plot_loc = NA_character_,
+    meas_stem_loc = NA_character_,
+    vegetation_type = NA_character_,
     meas_protocol = "https://doi.org/10.1016/j.foreco.2022.120290",
     notes_meas = NA_character_,
     forest_status = "Secondary",
@@ -220,7 +241,7 @@ valCheck(
   pt = pt)
 
 # Write corner points to file
-st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
+write.csv(pt, file.path(outdir, "plot_pt.csv"), row.names = FALSE)
 
 # Write plot meta-data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)

@@ -27,7 +27,7 @@ base_elevation_m,numeric,Elevation (typically orthometric height) of the referen
 base_ellipse_height_m,numeric,Ellipsoidal height of the reference base-station.,m,-100,10000,
 base_model,character,"Model identifier of the reference base-station,  e.g. Emlid Reach RS4+.",NA,,,
 crs_name,character,"Name of the coordinate reference system, preferably the local WGS84 UTM zone, e.g. 'UTM 18S'.",NA,,,
-crs_epsg,character,"EPSG code of the coordinate reference system, e.g. 32718 for UTM zone 18S.",NA,,,
+crs_epsg,integer,"EPSG code of the coordinate reference system, e.g. 32718 for UTM zone 18S.",NA,,,
 rover_satellite_n,integer,Number of satellites used in the solution during geo-referencing.,NA,0,NA,
 geoid_model,character,"Mathematical model of the Earth's mean sea level used by the receiver or software to convert raw ellipsoidal heights into standard orthometric elevations. E.g. GEOID18, EGM2008.",NA,,,
 rover_solution_status,character,"Calculation mode of the post-processed rover position. E.g. ""PPK Fixed"" for highest precision, ""PPK Float"", ""DGPS"", ""Single/Autonomous"", ""RTK Fixed"", ""RTK Float"".",NA,,,

@@ -32,13 +32,14 @@ crs <- unique(getUTM(ptc[,1], ptc[,2], epsg = TRUE))
 crs_name <- unique(getUTM(ptc[,1], ptc[,2], epsg = FALSE))
 
 pt_clean <- pt %>% 
+  filter(plot_id != "P16") %>% 
   st_transform(., crs = crs) %>% 
   bind_cols(., st_coordinates(.)) %>% 
   rename(
     rover_easting_utm_m = X,
     rover_northing_utm_m = Y) %>% 
   mutate(
-    crs_epsg = as.character(crs),
+    crs_epsg = as.integer(crs),
     crs_name = "UTM 33S",
     rover_model = "Garmin GPSMap 65s") %>% 
   colGen(., pt_cols$column_name, pt_cols$class) %>% 
@@ -76,7 +77,23 @@ s_clean <- s %>%
     height_allometry = NA_character_,
     agb_allometry = NA_character_,
     subplot_id = as.character(subplot_id)) %>% 
-  group_by(plot_id) %>% 
+  mutate(
+    year = gsub("-.*", "", measurement_date),
+    census_id = case_when(
+      plot_id %in% paste0("P", 1:4) & year == "2018" ~ "1",
+      plot_id %in% paste0("P", 2:4) & year == "2021" ~ "2",
+      plot_id %in% paste0("P", 2:4) & year == "2024" ~ "3",
+      plot_id %in% paste0("P", 5:15) & year == "2019" ~ "1",
+      plot_id %in% paste0("P", 5:15) & year == "2021" ~ "2",
+      plot_id %in% paste0("P", 5:15) & year == "2024" ~ "3",
+      plot_id %in% paste0("P", 16) & year == "2021" ~ "1",
+      plot_id %in% paste0("P", 16) & year == "2024" ~ "2",
+      plot_id %in% paste0("M", 1:3) & year == "2022" ~ "1",
+      plot_id %in% paste0("M", 1:3) & year == "2024" ~ "2",
+      plot_id %in% paste0("O", 1:2) & year == "2024" ~ "1",
+      plot_id %in% paste0("B", 1:2) & year == "2024" ~ "1",
+      TRUE ~ NA_character_)) %>% 
+  group_by(plot_id, census_id) %>% 
   mutate(census_date = as.character(median(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
   group_by(plot_id, stem_id) %>% 
@@ -85,8 +102,9 @@ s_clean <- s %>%
 
 s_out <- s_clean %>% 
   mutate(record_id = row_number()) %>% 
-  filter(grepl("2024", census_date)) %>% 
-  mutate(census_id = "3") %>% 
+  filter(
+    plot_id != "P16",
+    grepl("2024", census_date)) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
 # Create optional height measurements table
@@ -105,8 +123,9 @@ plots <- p %>%
   dplyr::select(-plot_id) %>% 
   rename(plot_id = plot_name) %>% 
   mutate(site_id = param$site_id) %>% 
-  filter(grepl("2024", census_date)) %>% 
-  filter(plot_id != "P1") %>% 
+  filter(
+    grepl("2024", census_date),
+    !plot_id %in% c("P1", "P16")) %>% 
   mutate(
     acquisition_id = param$acquisition_id,
     census_id = "3",

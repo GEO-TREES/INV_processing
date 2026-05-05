@@ -195,8 +195,17 @@ pts <- st_cast(polys, "POINT") %>%
       plot_id == "Soberania" & point_id == 4 ~ 100,
       TRUE ~ NA_real_)
     ) %>% 
-  st_transform(., 4326) %>% 
-  dplyr::select(any_of(pt_cols$column_name))
+  bind_cols(., st_coordinates(.)) %>% 
+  st_drop_geometry() %>% 
+  mutate(
+    corner = TRUE,
+    crs_name = "UTM 17N",
+    crs_epsg = as.integer(32617)) %>% 
+  rename(
+    rover_easting_utm_m = X,
+    rover_northing_utm_m = Y) %>% 
+  colGen(., pt_cols$column_name, pt_cols$class) %>% 
+  dplyr::select(all_of(pt_cols$column_name))
 
 # Joe's polygons 
 # Define function to generate other corners 
@@ -309,13 +318,21 @@ joe_corner_all <- bind_rows(lapply(1:nrow(joe_corner_fil), function(i) {
       plot_id == "Zetek" & point_id == "NW" ~ 300,
       plot_id == "Zetek" & point_id == "NE" ~ 300,
       TRUE ~ NA_real_)) %>% 
-  st_transform(., 4326) %>% 
+  bind_cols(., st_coordinates(.)) %>% 
+  st_drop_geometry() %>% 
+  rename(
+    rover_easting_utm_m = X,
+    rover_northing_utm_m = Y) %>% 
   mutate(
+    corner = TRUE,
+    crs_name = "UTM 17N",
+    crs_epsg = as.integer(32617),
     plot_id = case_when(
       plot_id == "10-ha" ~ "10ha",
       plot_id == "25-ha" ~ "25ha",
       TRUE ~ plot_id)) %>% 
-  dplyr::select(any_of(pt_cols$column_name))
+  colGen(., pt_cols$column_name, pt_cols$class) %>% 
+  dplyr::select(all_of(pt_cols$column_name))
 
 pts_all <- bind_rows(pts, joe_corner_all) %>% 
   dplyr::select(all_of(pt_cols$column_name))
@@ -432,6 +449,7 @@ s_all <- bind_rows(s_clean, s2_clean, s3_clean) %>%
   mutate(census_date = as.character(median(as.Date(measurement_date), na.rm = TRUE))) %>% 
   ungroup() %>%
   mutate(
+    census_id = as.character(census_id),
     site_id = param$site_id,
     acquisition_id = param$acquisition_id,
     subplot_id = as.character(subplot_id),
@@ -441,6 +459,8 @@ s_all <- bind_rows(s_clean, s2_clean, s3_clean) %>%
     height_m = NA_real_,
     taxon_name = gsub("NA NA", "Indet indet", taxon_name),
     diam_cm = ifelse(diam_cm == 0, NA_real_, diam_cm),
+    growth_form = NA_character_,
+    height_allometry = NA_character_,
     agb_allometry = NA_character_) %>%
   group_by(plot_id, census_date, stem_id) %>% 
   mutate(measurement_id = row_number()) %>% 
@@ -449,7 +469,7 @@ s_all <- bind_rows(s_clean, s2_clean, s3_clean) %>%
 
 # Prepare census table
 plots  <- s_all %>% 
-  dplyr::select(site_id, acquisition_id, plot_id, census_date) %>% 
+  dplyr::select(site_id, acquisition_id, plot_id, census_date, census_id) %>% 
   distinct() %>% 
   mutate(
     plot_width_m = case_when(
@@ -517,6 +537,9 @@ plots  <- s_all %>%
       plot_id == "Pearson" ~ 20,
       plot_id == "Zetek" ~ 20,
       TRUE ~ NA_real_),
+    meas_plot_loc = NA_character_,
+    meas_stem_loc = NA_character_,
+    vegetation_type = NA_character_,
     meas_pom_default_m = 1.3,
     meas_tree_stem = TRUE,
     meas_tree_group = TRUE,
@@ -536,7 +559,7 @@ plots  <- s_all %>%
     flood_regime = NA_character_,
     earth_regime = NA_character_,
     herbivory_regime = NA_character_,
-    notes_disturbance = NA_character_) %>% 
+    notes_disturbance = NA_character_) %>%
   dplyr::select(all_of(plot_cols$column_name))
 
 # Check all columns in output objects
@@ -551,7 +574,7 @@ valCheck(
   pt = pts_all)
 
 # Write origin points to file
-st_write(pts_all, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
+write.csv(pts_all, file.path(outdir, "plot_pt.csv"), row.names = FALSE)
 
 # Write stem data to file
 write.csv(s_all, file.path(outdir, "stem.csv"), row.names = FALSE)

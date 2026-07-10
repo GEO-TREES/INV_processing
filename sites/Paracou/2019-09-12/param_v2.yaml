@@ -1,0 +1,10 @@
+site_id: "Paracou"
+acquisition_id: "2019-09-12"
+out_dir: "./dat/sites/Paracou/INV/2019-09-12/v2"
+raw_dir: "./dat/sites/Paracou/INV/2019-09-12/L0"
+s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/Paracou/L0"
+quad_dim: [25, 25]
+opt_s3: false
+product_version: "v2"
+height_method: "regional"
+wd_method: "regional"

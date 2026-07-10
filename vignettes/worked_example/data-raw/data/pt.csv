@@ -1,5 +1,5 @@
 "site_id","acquisition_id","plot_id","point_id","corner","x_rel_m","y_rel_m","rover_easting_utm_m","rover_northing_utm_m","rover_elevation_m","rover_ellipse_height_m","rover_easting_rms_m","rover_northing_rms_m","rover_elevation_rms_m","rover_lateral_rms_m","rover_antenna_height_m","rover_start_time","rover_end_time","rover_sample_n","rover_model","rover_pdop","rover_gdop","base_easting_utm_m","base_northing_utm_m","base_elevation_m","base_ellipse_height_m","base_model","crs_name","crs_epsg","rover_satellite_n","geoid_model","rover_solution_status"
-"Site1","2024-08-03","Plot1","SW",TRUE,0,0,359197.349698516,9578860.0781111,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,"Garmin GPSMap 65s",NA,NA,NA,NA,NA,NA,NA,"UTM 19S","32719",NA,NA,NA
-"Site1","2024-08-03","Plot1","NW",TRUE,0,500,359165.083657981,9579358.98955991,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,"Garmin GPSMap 65s",NA,NA,NA,NA,NA,NA,NA,"UTM 19S","32719",NA,NA,NA
-"Site1","2024-08-03","Plot1","NE",TRUE,500,500,359666.235931735,9579391.11627563,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,"Garmin GPSMap 65s",NA,NA,NA,NA,NA,NA,NA,"UTM 19S","32719",NA,NA,NA
-"Site1","2024-08-03","Plot1","SE",TRUE,500,0,359698.499261493,9578892.20552807,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,"Garmin GPSMap 65s",NA,NA,NA,NA,NA,NA,NA,"UTM 19S","32719",NA,NA,NA
+"Site1","2024-08-03","Plot1","SW",TRUE,0,0,359197.349698516,9578860.0781111,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,"Garmin GPSMap 65s",NA,NA,NA,NA,NA,NA,NA,"UTM 19S",32719,NA,NA,NA
+"Site1","2024-08-03","Plot1","NW",TRUE,0,500,359165.083657981,9579358.98955991,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,"Garmin GPSMap 65s",NA,NA,NA,NA,NA,NA,NA,"UTM 19S",32719,NA,NA,NA
+"Site1","2024-08-03","Plot1","NE",TRUE,500,500,359666.235931735,9579391.11627563,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,"Garmin GPSMap 65s",NA,NA,NA,NA,NA,NA,NA,"UTM 19S",32719,NA,NA,NA
+"Site1","2024-08-03","Plot1","SE",TRUE,500,0,359698.499261493,9578892.20552807,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,"Garmin GPSMap 65s",NA,NA,NA,NA,NA,NA,NA,"UTM 19S",32719,NA,NA,NA

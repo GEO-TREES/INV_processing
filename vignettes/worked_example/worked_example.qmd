@@ -33,9 +33,9 @@ workflow for processing tree inventory data for the GEO-TREES initiative. The
 code in this vignette matches the code in the R scripts elsewhere in this
 repository. For automated processing of GEO-TREES tree inventory data it is
 recommended to run the R scripts directly, not to use this vignette. This
-vignette also includes additional data visualisations to help understand how
-the data is processed, and may provide a useful guide when processing a site
-for the first time. Throughout the vignette there are sign-posts to the relevant R
+vignette includes additional data visualisations to help understand how the
+data is processed, and may provide a useful guide when processing a site for
+the first time. Throughout the vignette there are sign-posts to the relevant R
 script in the automated workflow.
 
 Key steps of the workflow:
@@ -106,9 +106,10 @@ outdir <- "./out"
 
 This part of the workflow will vary among sites, depending on the structure of
 the raw field data. Consult the [GEO-TREES Tree Inventory Data Collection
-Guidelines]() Section 16: _Data format_ for information on the GEO-TREES L0
-data format. [The current repository](https://github.com/GEO-TREES/PDA_processing) 
-also contains template files for formatting raw data, in the `./templates/` folder.
+Guidelines](https://docs.google.com/document/d/1Q5Wy_LbNEa0tNaGVntL0Bku41Z3t-TeU85_IxZuC6Uc/edit?usp=sharing)
+Section 16: _Data format_ for information on the GEO-TREES L0 data format. [The
+current repository](https://github.com/GEO-TREES/INV_processing) also contains
+template files for formatting raw data, in the `./templates/` folder.
 
 We provide various functions to help create valid GEO-TREES L0 data products:
 
@@ -138,12 +139,13 @@ There should be one `param.yaml` file for each version of the processed data.
 
 * `site_id` -- Name of the site, e.g. `"Bicuar"`
 * `acquisition_id` -- ID of data acquisition, e.g. `"2024-08-03"`
-* `out_dir` -- Path to where processed data will be exported, e.g. `"./dat/sites/Bicuar/PDA/2024-08-03/v1"`
-* `raw_dir` -- Path to the raw input data, e.g. `"./dat/sites/Bicuar/PDA/2024-08-03/L0"`
-* `s3_dir` -- Optional, path to AWS S3 directory containing raw input data, e.g. `"johngodlee/GEO-TREES_PDA/dat/sites/Amacayacu/L0"`
-* `quad_dim` -- Dimensions in metres of quadrats, e.g. `[50, 50]`
-* `opt_s3` -- Boolean (`true`/`false`). If true, raw input data will be pulled from AWS S3
-* `product_version` -- String specifying the version of the data products, e.g. `"v1"`
+* `out_dir` -- Path to where processed data will be exported, e.g. `"./dat/sites/Bicuar/INV/2024-08-03/v1"`
+* `raw_dir` -- Path to the raw input data, e.g. `"./dat/sites/Bicuar/INV/2024-08-03/L0"`
+* `s3_dir` -- Optional, path to AWS S3 directory containing raw input data, e.g. `"johngodlee/GEO-TREES_INV/dat/sites/Amacayacu/L0"`
+* `quad_dim` -- Dimensions in metres of quadrats, e.g. `[50, 50]` for 50x50 m square quadrats
+* `opt_s3` -- Boolean (`true`/`false`). If `true`, raw input data will be pulled from an AWS S3 bucket specified in `s3_dir`, otherwise a local directory specified in `raw_dir`
+* `product_version` -- String specifying the version of the data products, e.g. `"v1"`. Data products may be specified with different parameter sets, for example different size quadrats (`quad_dim`) or different methods of estimating stem height (`height_method`). 
+* `software_version` -- String specifying the version of the code used to generate the data products, normally a GitHub release version, e.g. `"v2.4"`
 * `height_method` -- Method used to estimate stem height, e.g. `"regional"`, `"local"`
 * `wd_method` -- Method used to estimate wood density, e.g. `"regional"`, `"local"`
 
@@ -193,6 +195,47 @@ if (param$opt_s3) {
   library(paws)
 }
 ```
+
+## Data structure 
+
+GEO-TREES data products are organised in a strict directory hierarchy:
+
+* SITE - The site name. Matches the `site_id` column in tree inventory datasets.
+* DATATYPE - in this case "INV" tree inventory data. Alternatively, e.g. "ALS" (airborne laser scanning) or "TLS" (terrestrial laser scanning)
+* ACQUISITION - The ID of the discrete period when L0 data was acquired in the field using a particular platform, normally including the date of acquisition in YYYY-MM-DD format. Where a L0 dataset was acquired over multiple days, prefer the mid-acquisition date.
+* PRODUCT - Data product level, either:
+  * "L0" - raw data 
+  * "L1" - re-formatted raw data (raw instrument)
+  * "L2" - model-derived products at matching resolution of L1 
+  * "L3" - variables mapped to uniform space-time grid scales
+* PRODUCTVERSION - Version of the code used to produce the data product, normally a GitHub release version of the code used to produce that data product.
+
+Not all data products must utilise all levels of the directory hierarchy, and
+certain products may include additional levels where specified, but the order
+of the basic hierarchy does not change. This directory structure means that
+sub-directory levels are never mixed within a parent directory. See below for a
+breakdown of these levels:
+
+Data product files are named according to the full directory hierarchy, with
+levels separated by underscores (_), and a consistent suffix across files of a
+given type within a product. Thus, hierarchy levels should not contain
+underscores ("\_"). To prevent interference with file extensions, hierarchy
+levels should also not contain dots (periods, "."). Both these characters
+should be replaced with a hyphen ("-"). For example, for the tree inventory
+(INV) L3 quadrat-level AGBD estimates for site "PanamaCanal", acquired on the
+1st January 2025, processed using version 2.4 of the tree inventory processing
+pipeline, using the v2 parameter set:
+
+SITE: PanamaCanal
+DATATYPE: INV
+ACQUISITION: 2025-01-01
+PRODUCTVERSION: v2
+SOFTWAREVERSION: v2.4
+PRODUCT: L3
+File: quad
+
+Directory path: PanamaCanal/INV/2025-01-01/v2/v2-4/L3/
+Filename: PanamaCanal_INV_2025-01-01_v2_v2-4_L3_quad.gpkg
 
 ## Import L0 data
 
@@ -513,15 +556,28 @@ kable(head(stem_wd_all))
 
 `04_height.R`
 
-Here we estimate the height of each stem measurement. Height estimates are required for most stem AGB allometries.
+Here we estimate the height of each stem measurement. Height estimates are
+required for most stem AGB allometries.
 
-There are multiple approaches to estimating stem height. In general, we recommend this approach:
+There are multiple approaches to estimating stem height. In general, we
+recommend this approach:
 
-If there is an appropriate existing local height-diameter allometry, use that to estimate the height of all stems in the site. A local height-diameter allometry is deemed appropriate if the underlying data approximately span the range of stem heights measured in the tree inventory data, the species composition is similar to that found in the tree inventory data, and the local conditions (water availability, temperature, topography) of the location where the underlying data were collected are similar to that of the GEO-TREES site.
+If there is an appropriate existing local height-diameter allometry, use that
+to estimate the height of all stems in the site. A local height-diameter
+allometry is deemed appropriate if the underlying data approximately span the
+range of stem heights measured in the tree inventory data, the species
+composition is similar to that found in the tree inventory data, and the local
+conditions (water availability, temperature, topography) of the location where
+the underlying data were collected are similar to that of the GEO-TREES site.
 
-Otherwise if there is no existing local height-diameter allometry available, if you have at least 50 local and reliable estimates of stem height and diameter, spanning the range of stem size across the plots, fit a local height-diameter allometry using the `BIOMASS::modelHD()` function.
+Otherwise if there is no existing local height-diameter allometry available, if
+you have at least 50 local and reliable estimates of stem height and diameter,
+spanning the range of stem size across the plots, fit a local height-diameter
+allometry using the `BIOMASS::modelHD()` function.
 
-Finally, if neither of the above are appropriate, use the `BIOMASS::retrieveH()` function and supply plot coordinates to estimate stem height from a regional height-diameter allometry [@Chave2014].
+Finally, if neither of the above are appropriate, use the
+`BIOMASS::retrieveH()` function and supply plot coordinates to estimate stem
+height from a regional height-diameter allometry [@Chave2014].
 
 
 
@@ -1251,10 +1307,28 @@ ggplot(quad_summ, aes(x = diam_cm_q95, y = agb_Mg_sum_mc_mean_ha)) +
 
 Then we can create the L1, L2 and L3 GEO-TREES tree inventory data products.
 
-Each product has an associated
-[RO-Crate](https://www.researchobject.org/ro-crate/) file which records the
-version of the code and the input data sources so they can be reproduced. These
-files are created programmatically in R using the `rocrateR` package.
+Each data product has an associated
+[RO-Crate](https://www.researchobject.org/ro-crate/) manifest file in the same
+directory (`*_ro-crate-metadata.json`), which records the version of the code and
+the input data sources so they can be reproduced. These files are created
+programmatically in R using the `rocrateR` package. The RO-Crate format is
+flexible so you can add additional information as needed to reproduce the
+output data product. 
+
+Below is the contents of an example RO-Crate file for the L3 tree inventory
+(INV) quadrat-level AGBD estimates. It specifies the input data, the version of
+the INV_processing GitHub repository containing the code, and the output data
+product. It includes meta-data describing each input and output dataset,
+meta-data on who executed the workflow and when. 
+
+```{r}
+rocrate_example <- rocrateR::read_rocrate("./data-raw/data/ro-crate-metadata.json")
+
+print(rocrate_example)
+```
+
+For the tree inventory data we also include a copy of the `param.yaml` file to
+record the parameters used by that PRODUCTVERSION.
 
 These are the official GEO-TREES tree inventory data products:
 
@@ -1262,7 +1336,7 @@ These are the official GEO-TREES tree inventory data products:
 * L1 re-formatted plot geo-location points
 * L1 re-formatted plot meta-data
 * L2 stem AGB estimates.
-* L1 plot polygons.
+* L2 plot polygons.
 * L3 AGBD estimates within plot quadrats.
 
 First we create the data objects.
@@ -1356,15 +1430,7 @@ stopifnot(all(!is.na(L3_quad$AGBD_stand_uncertainty)))
 
 Then we create the filenames and output directories for the data objects, which
 are a concatenation of the following values, matching the order of the
-directory structure.
-
-* Site ID
-* Data type, in this case "PDA" for tree inventory data
-* Acquisition ID
-* Product version
-* Software version
-* Data product level (L1 -- L3)
-* Data product name
+GEO-TREES directory hierarchy.
 
 ```{r}
 # Create sanitised software version string for filenames
@@ -1373,7 +1439,7 @@ software_version_sanit <- gsub("\\.", "-", param$software_version)
 # Construct output filenames
 L1_filename <- paste(
     param$site_id, 
-    "PDA", 
+    "INV", 
     param$acquisition_id, 
     param$product_version,
     software_version_sanit, 
@@ -1382,7 +1448,7 @@ L1_filename <- paste(
 
 L2_filename <- paste(
     param$site_id, 
-    "PDA", 
+    "INV", 
     param$acquisition_id, 
     param$product_version,
     software_version_sanit, 
@@ -1391,7 +1457,7 @@ L2_filename <- paste(
 
 L3_filename <- paste(
     param$site_id, 
-    "PDA", 
+    "INV", 
     param$acquisition_id, 
     param$product_version,
     software_version_sanit, 
@@ -1513,11 +1579,11 @@ yaml <- entity(
 
 # Software 
 code <- entity(
-  x = paste0("#PDA_processing_", param$software_version),
+  x = paste0("#INV_processing_", param$software_version),
   type = c("SoftwareApplication", "SoftwareSourceCode"),
   name = "GEO-TREES AGBD processing pipeline",
   version = param$software_version,
-  url = paste0("https://github.com/GEO-TREES/PDA_processing/releases/tag/", param$software_version),
+  url = paste0("https://github.com/GEO-TREES/INV_processing/releases/tag/", param$software_version),
   programmingLanguage = "R"
 )
 
@@ -1550,7 +1616,7 @@ rocrate_list <- lapply(names(L_outfile_list), function(x) {
   rc <- rocrate(
     context = "https://w3id.org/ro/crate/1.2/context",
     datePublished = as.character(Sys.Date()),
-    name = paste("GEO-TREES Bicuar PDA", x)
+    name = paste("GEO-TREES Bicuar INV", x)
   ) %>%
     add_entity(me) %>%
     add_entity(aff) %>%
@@ -1614,6 +1680,6 @@ lapply(L_dir_list, function(x) {
 ## Next steps
 
 The L3 tree inventory data product is passed to the AGBD geo-spatial modelling
-workflow to produce landscape-level estimates of AGBD at 50 x 50 m gridded
+workflow to produce landscape-level estimates of AGBD at 50x50 m gridded
 resolution, in combination with the ALS L3 data products.
 

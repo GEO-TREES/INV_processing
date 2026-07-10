@@ -1,0 +1,10 @@
+site_id: "Pasoh"
+acquisition_id: "2016-08-15"
+product_version: "v3"
+out_dir: "./dat/sites/Pasoh/INV/2016-08-15/v3"
+raw_dir: "./dat/sites/Pasoh/INV/2016-08-15/L0"
+s3_raw_dir: "johngodlee/GEO-TREES_INV/dat/sites/Pasoh/L0"
+quad_dim: [100, 100]
+opt_s3: false
+height_method: "regional"
+wd_method: "regional"

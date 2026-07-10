@@ -1,8 +1,8 @@
 site_id: Site1
 acquisition_id: '2024-08-03'
-out_dir: ./dat/sites/Site1/PDA/2024-08-03/v1
-raw_dir: ./dat/sites/Site1/PDA/2024-08-03/L0
-s3_dir: GEO-TREES_PDA/dat/sites/Site1/2024-08-03/L0
+out_dir: ./dat/sites/Site1/INV/2024-08-03/v1
+raw_dir: ./dat/sites/Site1/INV/2024-08-03/L0
+s3_dir: GEO-TREES_INV/dat/sites/Site1/2024-08-03/L0
 quad_dim:
 - 50
 - 50

@@ -3,8 +3,8 @@
 # Last updated: 2026-04-23
 
 # Set input directory
-indir <- "~/gdrive/geo-trees/PDA_processing/dat/sites/Amacayacu/PDA/2024-08-03/v1/v0-1"
-paramfile <- "~/gdrive/geo-trees/PDA_processing/sites/Amacayacu/2024-08-03/v1/param.yaml"
+indir <- "~/gdrive/geo-trees/INV_processing/dat/sites/Amacayacu/INV/2024-08-03/v1/v0-1"
+paramfile <- "~/gdrive/geo-trees/INV_processing/sites/Amacayacu/2024-08-03/v1/param.yaml"
 
 # Ensure reproducibility
 set.seed(42)
@@ -36,8 +36,8 @@ wd_col_class <- setNames(wd_cols$class, wd_cols$column_name)
 stem <- read.csv(file.path(indir, "01_fmt/stem.csv"), colClasses = stem_col_class)
 plot <- read.csv(file.path(indir, "01_fmt/plot.csv"), colClasses = plot_col_class)
 pt <- read.csv(file.path(indir, "01_fmt/plot_pt.csv"), colClasses = pt_col_class)
-wd <- read.csv(file.path(indir, "04_wd/stem_wd.csv"))
-hd <- read.csv(file.path(indir, "05_height/stem_height.csv"))
+wd <- read.csv(file.path(indir, "03_wd/stem_wd.csv"))
+hd <- read.csv(file.path(indir, "04_height/stem_height.csv"))
 taxa <- read.csv(file.path(indir, "02_taxa/stem_taxa.csv"))
 param <- read_yaml(paramfile)
 
@@ -64,9 +64,9 @@ pt_anon <- pt %>%
 # Anonymise param.yaml
 param_anon <- param 
 param_anon$site_id <- "Site1"
-param_anon$out_dir <- paste0("./dat/sites/Site1/PDA/", unique(stem$acquisition_id), "/v1")
-param_anon$raw_dir <- paste0("./dat/sites/Site1/PDA/", unique(stem$acquisition_id), "/L0")
-param_anon$s3_dir <- paste0("GEO-TREES_PDA/dat/sites/Site1/", unique(stem$acquisition_id), "/L0")
+param_anon$out_dir <- paste0("./dat/sites/Site1/INV/", unique(stem$acquisition_id), "/v1")
+param_anon$raw_dir <- paste0("./dat/sites/Site1/INV/", unique(stem$acquisition_id), "/L0")
+param_anon$s3_dir <- paste0("GEO-TREES_INV/dat/sites/Site1/", unique(stem$acquisition_id), "/L0")
 
 # Thin out stem data
 stem_fil <- stem_anon %>% 
@@ -181,4 +181,10 @@ file.copy(
 file.copy(
   from = "../../../version.yaml",
   to = "./data/version.yaml",
+  overwrite = TRUE)
+
+# Copy RO-Crate JSON file
+file.copy(
+  from = file.path(indir, "L3/ro-crate-metadata.json"),
+  to = "./data/ro-crate-metadata.json",
   overwrite = TRUE)

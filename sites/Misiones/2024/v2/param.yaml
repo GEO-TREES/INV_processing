@@ -1,8 +1,8 @@
 site_id: "Misiones"
 acquisition_id: "2024"
-out_dir: "./dat/sites/Misiones/PDA/2024/v2"
-raw_dir: "./dat/sites/Misiones/PDA/2024/L0"
-s3_dir: "johngodlee/GEO-TREES_PDA/dat/sites/Misiones/L0"
+out_dir: "./dat/sites/Misiones/INV/2024/v2"
+raw_dir: "./dat/sites/Misiones/INV/2024/L0"
+s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/Misiones/L0"
 quad_dim: [25, 25]
 opt_s3: false
 product_version: "v2"

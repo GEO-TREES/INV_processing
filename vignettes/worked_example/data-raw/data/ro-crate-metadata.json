@@ -1,0 +1,116 @@
+{
+  "@context": "https://w3id.org/ro/crate/1.2/context",
+  "@graph": [
+    {
+      "@id": "ro-crate-metadata.json",
+      "@type": "CreativeWork",
+      "about": {
+        "@id": "./"
+      },
+      "conformsTo": {
+        "@id": "https://w3id.org/ro/crate/1.2"
+      }
+    },
+    {
+      "@id": "./",
+      "@type": "Dataset",
+      "name": "GEO-TREES Bicuar INV L3",
+      "description": "",
+      "datePublished": "2026-05-12",
+      "license": {
+        "@id": "TERMS.md"
+      },
+      "author": {
+        "@id": "#john-godlee"
+      },
+      "hasPart": [
+        {
+          "@id": "param.yaml"
+        },
+        {
+          "@id": "./dat/sites/Amacayacu/INV/2024-08-03/L0/"
+        },
+        {
+          "@id": "TERMS.md"
+        },
+        {
+          "@id": "./dat/sites/Amacayacu/INV/2024-08-03/v1/v0-1/L3/Amacayacu_INV_2024-08-03_v1_v0-1_L3_quad.gpkg"
+        }
+      ],
+      "mentions": [
+        {
+          "@id": "#run-tree_inventory_pipeline"
+        },
+        {
+          "@id": "#INV_processing_v0.1"
+        }
+      ]
+    },
+    {
+      "@id": "#john-godlee",
+      "@type": "Person",
+      "name": "John L. Godlee",
+      "email": "GodleeJ@si.edu",
+      "affiliation": {
+        "@id": "#si-org"
+      }
+    },
+    {
+      "@id": "#si-org",
+      "@type": "Organization",
+      "name": "Smithsonian Institution"
+    },
+    {
+      "@id": "TERMS.md",
+      "@type": ["File", "CreativeWork"]
+    },
+    {
+      "@id": "./dat/sites/Amacayacu/INV/2024-08-03/L0/",
+      "@type": "Dataset",
+      "description": "Directory containing raw L0 data."
+    },
+    {
+      "@id": "param.yaml",
+      "@type": "File",
+      "description": "Configuration parameters.",
+      "encodingFormat": "application/yaml"
+    },
+    {
+      "@id": "#INV_processing_v0.1",
+      "@type": ["SoftwareApplication", "SoftwareSourceCode"],
+      "name": "GEO-TREES AGBD processing pipeline",
+      "version": "v0.1",
+      "url": "https://github.com/GEO-TREES/INV_processing/releases/tag/v0.1",
+      "programmingLanguage": "R"
+    },
+    {
+      "@id": "#run-tree_inventory_pipeline",
+      "@type": "CreateAction",
+      "name": "Tree inventory pipeline execution",
+      "description": "Execute tree inventory pipeline to generate data products",
+      "endTime": "2026-05-12T21:15:35Z",
+      "object": [
+        {
+          "@id": "param.yaml"
+        },
+        {
+          "@id": "./dat/sites/Amacayacu/INV/2024-08-03/L0/"
+        }
+      ],
+      "result": [
+        {
+          "@id": "./dat/sites/Amacayacu/INV/2024-08-03/v1/v0-1/L3/Amacayacu_INV_2024-08-03_v1_v0-1_L3_quad.gpkg"
+        }
+      ],
+      "instrument": {
+        "@id": "#INV_processing_v0.1"
+      }
+    },
+    {
+      "@id": "./dat/sites/Amacayacu/INV/2024-08-03/v1/v0-1/L3/Amacayacu_INV_2024-08-03_v1_v0-1_L3_quad.gpkg",
+      "@type": "File",
+      "description": "L3 AGBD estimates within plot quadrats.",
+      "encodingFormat": "application/geopackage+sqlite3"
+    }
+  ]
+}

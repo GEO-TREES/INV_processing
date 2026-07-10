@@ -1,0 +1,11 @@
+site_id: "Mpala"
+acquisition_id: "2025-02-14"
+product_version: "v1"
+out_dir: "./dat/sites/Mpala/INV/2025-02-14/v1"
+raw_dir: "./dat/sites/Mpala/INV/2025-02-14/L0"
+s3_raw_dir: "johngodlee/GEO-TREES_INV/dat/sites/Mpala/L0"
+quad_dim: [50, 50]
+opt_s3: false
+height_method: "regional"
+wd_method: "regional"
+polygon_method: "exact"

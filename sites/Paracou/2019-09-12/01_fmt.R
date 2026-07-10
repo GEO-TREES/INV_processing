@@ -20,6 +20,10 @@ s_P4 <- read.csv(file.path(indir, "Paracou Disturbance Experiment - Level3 Treat
 s_P8 <- read.csv(file.path(indir, "Paracou Disturbance Experiment - Level3 Treatment Plots/2024-04-18_ParacouP8AllYears.csv"))
 s_P12 <- read.csv(file.path(indir, "Paracou Disturbance Experiment - Level3 Treatment Plots/2024-04-18_ParacouP12AllYears.csv"))
 
+s_P1 <- read.csv(file.path(indir, "Control Plots/2024-08-29_ParacouP1AllYears.csv"))
+s_P6 <- read.csv(file.path(indir, "Control Plots/2024-08-29_ParacouP6AllYears.csv"))
+s_P11 <- read.csv(file.path(indir, "Control Plots/2024-08-29_ParacouP11AllYears.csv"))
+
 # Check all columns are identical 
 stopifnot(all(
   names(s_P13) == names(s_P14),
@@ -33,7 +37,10 @@ stopifnot(all(
   names(s_P13) == names(s_P10),
   names(s_P13) == names(s_P4),
   names(s_P13) == names(s_P8),
-  names(s_P13) == names(s_P12)
+  names(s_P13) == names(s_P12),
+  names(s_P13) == names(s_P1),
+  names(s_P13) == names(s_P6),
+  names(s_P13) == names(s_P11)
 ))
 
 s <- bind_rows(
@@ -49,7 +56,10 @@ s <- bind_rows(
   s_P10,
   s_P4,
   s_P8,
-  s_P12)
+  s_P12,
+  s_P1,
+  s_P6,
+  s_P11)
 
 # Import plot metadata
 plot_meta <- read.csv(file.path(indir, "ParacouDescription.csv"))
@@ -81,13 +91,22 @@ pt <- plot_meta %>%
   dplyr::select(
     plot_id = Plot,
     point_id,
-    longitude = Lon,
-    latitude = Lat, 
+    rover_easting_utm_m = Lon,
+    rover_northing_utm_m = Lat, 
     PlotArea) %>% 
   filter(plot_id != "17(Arbocel)") %>% 
   distinct() %>% 
-  st_as_sf(., coords = c("longitude", "latitude"), crs = 4326) %>% 
+  st_as_sf(., coords = c("rover_easting_utm_m", "rover_northing_utm_m"), crs = 4326) %>% 
+  st_transform(., 32621) %>% 
+  bind_cols(., st_coordinates(.)) %>% 
+  rename(
+    rover_easting_utm_m = X,
+    rover_northing_utm_m = Y) %>% 
+  st_drop_geometry() %>% 
   mutate(
+    corner = TRUE,
+    crs_name = "UTM 21N",
+    crs_epsg = as.integer(32621),
     site_id = param$site_id,
     acquisition_id = param$acquisition_id,
     x_rel_m = case_when(
@@ -100,7 +119,7 @@ pt <- plot_meta %>%
       point_id %in% c("NW", "NE") & PlotArea == 6.25 ~ 250,
       point_id %in% c("NW", "NE") & PlotArea == 25 ~ 500,
       TRUE ~ NA_real_)) %>% 
-  filter(!plot_id %in% c("1", "11", "6")) %>% 
+  colGen(., pt_cols$column_name, pt_cols$class) %>% 
   dplyr::select(all_of(pt_cols$column_name))
 
 # Prepare stem data 
@@ -131,10 +150,12 @@ s_clean <- s %>%
     missing = "",
     code = pasteVals(alive, broken, fallen, missing),
     agb_allometry = NA_character_,
+    height_allometry = NA_character_,
+    growth_form = NA_character_,
     notes = NA_character_
     ) %>% 
   group_by(plot_id) %>% 
-  mutate(census_id = dense_rank(census_id)) %>% 
+  mutate(census_id = as.character(dense_rank(census_id))) %>% 
   ungroup() %>% 
   group_by(plot_id, tree_id, stem_id, census_id) %>% 
   mutate(measurement_id = row_number()) %>% 
@@ -142,6 +163,9 @@ s_clean <- s %>%
   group_by(plot_id, census_id) %>% 
   mutate(census_date = format(mean(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
+  filter(
+    (plot_id != "16" & grepl("2019", census_date)) | 
+    (plot_id == "16" & grepl("2020", census_date))) %>% 
   mutate(record_id = row_number()) %>% 
   mutate(
     col = (as.numeric(subplot_id) - 1) %% 5,
@@ -152,18 +176,11 @@ s_clean <- s %>%
     y_rel_m = case_when(
       plot_id == "16" ~ y_rel_m + 100 * row,
       TRUE ~ y_rel_m)) %>% 
-  dplyr::select(any_of(stem_cols$column_name))
-
-write.csv(t(table("plot_id" = s_clean$plot_id, "census_date" = gsub("-.*", "", s_clean$census_date))), "~/Desktop/paracou_years.csv")
-
-s_clean %>% 
-  filter(grepl("2020", census_date), grepl("16", plot_id)) %>% 
-  pull(census_date) %>% 
-  unique()
+  dplyr::select(all_of(stem_cols$column_name))
 
 # Create plots table
 plots <- s_clean %>% 
-  group_by(plot_id, census_date) %>% 
+  group_by(plot_id, census_date, census_id) %>% 
   summarise(census_date = format(mean(as.Date(measurement_date)))) %>% 
   ungroup() %>% 
   mutate(
@@ -191,9 +208,12 @@ plots <- s_clean %>%
     meas_liana = TRUE,
     meas_palm = TRUE,
     meas_bamboo = TRUE,
+    meas_plot_loc = NA_character_,
+    meas_stem_loc = NA_character_,
     meas_protocol = NA_character_,
     notes_meas = NA_character_,
     forest_status = NA_character_,
+    vegetation_type = NA_character_,
     land_use = NA_character_,
     treatment = NA_character_,
     treatment_ref = NA_character_,
@@ -217,7 +237,7 @@ valCheck(
   pt = pt)
 
 # Write corner points to file
-st_write(pt, file.path(outdir, "plot_pt.gpkg"), delete_dsn = TRUE)
+write.csv(pt, file.path(outdir, "plot_pt.csv"), row.names = TRUE)
 
 # Write stem data to file
 write.csv(s_clean, file.path(outdir, "stem.csv"), row.names = FALSE)

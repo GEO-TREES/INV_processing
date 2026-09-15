@@ -1,8 +1,8 @@
 column_name,class,description,units,min_val,max_val,derived
 site_id,character,GEO-TREES site name.,NA,,,
-acquisition_id,character,"Acquisition ID. The mid-date of GNSS measurement acquisition within the site. YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,,,TRUE
 plot_id,character,"Plot name, unique within the site.",NA,,,
 point_id,character,ID of the rover geo-reference point,NA,,,
+measurement_date,character,The date of the GNSS measurement. This should ideally be YYYY-MM-DD. YYYY-MM and YYYY are also accepted.,NA,,,
 corner,logical,TRUE if the point is a plot corner,NA,,,
 x_rel_m,numeric,X coordinate of the stem map at this point relative to the entire plot (m).,m,,,
 y_rel_m,numeric,Y coordinate of the stem map at this point relative to the entire plot (m).,m,,,

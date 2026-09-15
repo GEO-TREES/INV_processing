@@ -5,4 +5,7 @@ S,Standing. Opposite of “F” (fallen).
 F,Stem fallen to the ground (prone) and/or not supporting its own weight. Opposite of “S” (standing).
 M,Missing. Stem was not found during this census.
 B,Stem is broken above the POM (material above break is detached).
-T,Stem is broken below the POM (diameter should not be measured)
+T,Stem is broken below the POM (diameter should not be measured).
+U,Stem has a large buttress requiring that the POM is moved up.
+I,Stem is irregular where measured.
+H,Stem is hollow.

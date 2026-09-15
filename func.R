@@ -115,7 +115,7 @@ stemValCheck <- function(x) {
   }
 
   # Codes must only contain some values
-  code_allowed <- c("A", "D", "S", "F", "M", "B", "T") # Letters and spaces
+  code_allowed <- c("A", "D", "S", "F", "M", "B", "T", "U", "I") # Letters and spaces
   if (any(grepl(paste0("[^", paste(code_allowed, collapse = ""), "]"), x$code))) {
     stop("`code` must only contain: ", paste(code_allowed, collapse = ", "))
   }
@@ -230,14 +230,9 @@ plotValCheck <- function(x) {
     stop("NAs in `acquisition_id` are not allowed")
   }
 
-  # All censuses must have a census date
-  if (any(is.na(x$census_date))) { 
-    stop("NAs in `census_date` are not allowed")
-  }
-
-  # Census date must be either YYYY, YYYY-MM, YYYY-MM-DD
-  if (any(!grepl("^\\d{4}(-\\d{2}){0,2}$", x$census_date))) {
-    stop("`census_date` must be formatted either YYYY, YYYY-MM, or YYYY-MM-DD")
+  # All acquisition IDs must be either YYYY, YYYY-MM, YYYY-MM-DD
+  if (any(!grepl("^\\d{4}(-\\d{2}){0,2}$", x$acquisition_id))) {
+    stop("`acquisition_id` must be formatted either YYYY, YYYY-MM, or YYYY-MM-DD")
   }
 
   # Plot length must be positive
@@ -368,8 +363,8 @@ valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL,
   # Run tests to match plot and stem tables
   if (!is.null(plot) & !is.null(stem)) {
     # All plots and censuses in stem must be in plot
-    if (!all(paste(stem$plot_id, stem$census_date) %in% paste(plot$plot_id, plot$census_date))) {
-      stop("Some plot-census combinations in 'stem' are missing from 'plot'")
+    if (!all(paste(stem$plot_id, stem$acquisition_id) %in% paste(plot$plot_id, plot$acquisition_id))) {
+      stop("Some plot-acquisition combinations in 'stem' are missing from 'plot'")
     }
 
     # Acquisition IDs must match

@@ -6,5 +6,6 @@ s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/Misiones/L0"
 quad_dim: [50, 50]
 opt_s3: false
 product_version: "v1"
+polygon_method: "affine"
 height_method: "regional"
 wd_method: "regional"

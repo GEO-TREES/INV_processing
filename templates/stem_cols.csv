@@ -1,13 +1,13 @@
 ﻿column_name,class,description,units,min_val,max_val,derived
 record_id,integer,"ID of the stem measurement record, unique within the acquisition.",NA,1,NA,TRUE
 site_id,character,GEO-TREES site name.,NA,,,
-acquisition_id,character,"Acquisition ID. The mid-date of stem measurements within the site for this acquisition. YYYY-MM-DD, YYYY-MM, or YYYY, in order of preference.",NA,,,TRUE
+acquisition_id,character,"Acquisition ID. The tree inventory data collection event, to separate different GEO-TREES data collection campaigns. Commonly the mid-date of stem measurements within the site for this acquisition (census).",NA,,,TRUE
 plot_id,character,"Plot name, unique within the site.",NA,,,
 subplot_id,character,"If the plot is divided into multiple parcels, the parcel within which the stem is found. Unique within the plot.",NA,,,
 tree_id,character,"Unique identifier for individual trees within a plot, normally the stem_id of the first or largest stem within the tree.",NA,,,
 stem_id,character,Unique identifier for stems within a plot. Normally the tag ID.,NA,,,
-measurement_id,integer,Measurement ID. If a stem has multiple measurements within a single census.,NA,1,NA,TRUE
-measurement_date,character,The date of the measurement. This should ideally be YYYY-MM-DD. YYYY-MM and YYYY are also accepted.,NA,,,
+measurement_date,numeric,The date of the measurement in decimal years. To three decimal places (8.8 hours),year,,,
+measurement_date_res,character,"The resolution of the measurement date, e.g. YYYY, YYYY-MM, YYYY-MM-DD",NA,,,
 taxon_name,character,The taxonomic name of the tree.,NA,,,
 x_rel_m,numeric,The X coordinate of the stem within the plot. In metres to nearest 10 cm (one decimal place).,m,0,NA,
 y_rel_m,numeric,The Y coordinate of the stem within the plot. In metres to nearest 10 cm (one decimal place).,m,0,NA,

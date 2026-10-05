@@ -62,7 +62,7 @@ Synthetic data are provided for:
 
 * Locally-measured wood density estimates
 * Locally-measured tree height estimates
-* Local biomass allometries
+* Local biomass and height allometries
 
 ## Setup
 
@@ -146,7 +146,7 @@ There should be one `param.yaml` file for each version of the processed data.
 * `opt_s3` -- Boolean (`true`/`false`). If `true`, raw input data will be pulled from an AWS S3 bucket specified in `s3_dir`, otherwise a local directory specified in `raw_dir`
 * `product_version` -- String specifying the version of the data products, e.g. `"v1"`. Data products may be specified with different parameter sets, for example different size quadrats (`quad_dim`) or different methods of estimating stem height (`height_method`). 
 * `software_version` -- String specifying the version of the code used to generate the data products, normally a GitHub release version, e.g. `"v2.4"`
-* `height_method` -- Method used to estimate stem height, e.g. `"regional"`, `"local"`
+* `height_method` -- Method used to estimate stem height, e.g. `"regional"`, `"field"`, `"local"`
 * `wd_method` -- Method used to estimate wood density, e.g. `"regional"`, `"local"`
 
 Import the example `param.yaml`:
@@ -636,7 +636,7 @@ stem_height_all <- L0$stem %>%
   dplyr::select(record_id, height_m_pred, height_m_pred_rse)
 ```
 
-Using a regional height-diameter allometry where no height data are available:
+Alternatively using a regional height-diameter allometry where no height data are available:
 
 ```{r}
 # Extract plot centres
@@ -1079,11 +1079,7 @@ quad_agb_mc_list <- lapply(seq_along(stem_split), function(x) {
       Dpropag = "chave2004",
       n = nsim,
       Carbon = FALSE,
-      Dlim = NULL,
-      fitted_allom = "chave2014",
-      var_in_data = NULL,
-      volume_allom = FALSE,
-      return_volume = FALSE)
+      Dlim = NULL)
 
     # Extract individual simulations of AGBD 
     plot_divide_tmp <- list(
@@ -1134,7 +1130,7 @@ quad_agb <- bind_rows(lapply(names(quad_agb_mc_list), function(x) {
     agb_Mg_sum_mc_mean = quad_agb_mc_list[[x]][[1]]$meanAGB,
     agb_Mg_sum_mc_median = quad_agb_mc_list[[x]][[1]]$medAGB,
     agb_Mg_sum_mc_sd = quad_agb_mc_list[[x]][[1]]$sdAGB,
-    agb_Mg_sum_mc_se = quad_agb_mc_list[[x]][[1]]$sdAGB / nsim,
+    agb_Mg_sum_mc_se = quad_agb_mc_list[[x]][[1]]$sdAGB / sqrt(nsim),
     agb_Mg_sum_mc_ci2.5 = unname(quad_agb_mc_list[[x]][[1]]$credibilityAGB[1]),
     agb_Mg_sum_mc_ci97.5 = unname(quad_agb_mc_list[[x]][[1]]$credibilityAGB[2]))
 }))
@@ -1218,6 +1214,7 @@ than will be in the official GEO-TREES data products.
 
 ```{r}
 # Calculate area of each quadrat
+quad_poly$plot_id <- as.character(quad_poly$plot_id)
 quad_poly_area <- st_drop_geometry(quad_poly)
 quad_poly_area$quadrat_area_ha <- as.vector(st_area(quad_poly)) * 0.0001
 quad_poly_area$quadrat_dim_x_m <- param$quad_dim[1]
@@ -1227,9 +1224,16 @@ quad_poly_area$quadrat_dim_y_m <- param$quad_dim[2]
 quad_summ_pre <- stem_summ %>% 
   filter(in_quadrat_calc == TRUE) %>% 
   st_drop_geometry() %>% 
-  group_by(site_id, acquisition_id, plot_id, quadrat_id, census_date) %>% 
+  group_by(site_id, acquisition_id, plot_id, quadrat_id) %>% 
   summarise(
+    census_date = median(measurement_date),
+    census_date_res = case_when(
+      any(measurement_date_res == "YYYY") ~ "YYYY",
+      any(measurement_date_res == "YYYY-MM") ~ "YYYY-MM",
+      any(measurement_date_res == "YYYY-MM-DD") ~ "YYYY-MM-DD",
+      TRUE ~ NA_character_),
     n_stem = n(),
+    agb_Mg_sum = sum(agb_Mg, na.rm = TRUE),
     ba_m2_sum = sum(ba_m2, na.rm = TRUE),
     volume_m3_sum = sum(volume_m3, na.rm = TRUE),
     diam_cm_mean = mean(diam_cm, na.rm = TRUE),
@@ -1272,6 +1276,8 @@ quad_summ <- quad_poly %>%
       "ba_m2_sum_ha",
       "volume_m3_sum",
       "volume_m3_sum_ha",
+      "agb_Mg_sum",
+      "agb_Mg_sum_ha",
       "agb_Mg_sum_mc_mean", 
       "agb_Mg_sum_mc_median",
       "agb_Mg_sum_mc_mean_ha", 
@@ -1350,6 +1356,7 @@ L1_stem <- stem_summ %>%
     BRM_site = site_id,
     Acquisition = acquisition_id,
     Plot_name = plot_id,
+    Measurement_date = measurement_date,
     Tree_label = tree_id,
     Stem_label = stem_id,
     Botany_genus = genusAccepted,
@@ -1383,14 +1390,15 @@ L2_stem <- stem_summ %>%
     BRM_site = site_id,
     Acquisition = acquisition_id,
     Plot_name = plot_id,
+    Measurement_date = measurement_date,
     Tree_label = tree_id,
     Stem_label = stem_id,
     Longitude = X,
     Latitude = Y,
     WD_stem_estimate = meanWD,
     WD_stem_uncertainty = sdWD,
-    AGB_stem_estimate = agb_Mg_mean,
-    AGB_stem_uncertainty = agb_Mg_sd,
+    AGB_tree_estimate = agb_Mg_mean,
+    AGB_tree_uncertainty = agb_Mg_sd,
     Height_stem_estimate = height_m_pred,
     Height_stem_uncertainty = height_m_pred_rse)
 
@@ -1406,11 +1414,22 @@ stopifnot(all(!is.na(L2_stem$AGB_tree_estimate)))
 stopifnot(all(!is.na(L2_stem$AGB_tree_uncertainty)))
 
 # Prepare L3 quadrat dataset
+# Select parameters to copy as columns
+param_fil <- param
+param_fil$quadrat_dim_x_m <- param_fil$quad_dim[1]
+param_fil$quadrat_dim_y_m <- param_fil$quad_dim[2]
+param_fil[["quad_dim"]] <- NULL
+if (param_fil$opt_s3) { 
+  param_fil[["raw_dir"]] <- param_fil$s3_dir
+} 
+param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3")] <- NULL
+
 L3_quad <- quad_summ %>% 
   dplyr::select(
     BRM_site = site_id,
     Acquisition = acquisition_id,
     Plot_name = plot_id,
+    Census_date = census_date,
     Quadrat_name = quadrat_id,
     AGBD_stand_estimate = agb_Mg_sum_mc_mean_ha,
     AGBD_stand_uncertainty = agb_Mg_sum_mc_sd_ha,
@@ -1425,7 +1444,9 @@ L3_quad <- quad_summ %>%
 
 # Check all values filled
 stopifnot(all(!is.na(L3_quad$AGBD_stand_estimate)))
-stopifnot(all(!is.na(L3_quad$AGBD_stand_uncertainty)))
+
+# Check not all AGBD estimates should be zero
+stopifnot(!all(L3_quad$AGBD_stand_estimate == 0))
 ```
 
 Then we create the filenames and output directories for the data objects, which
@@ -1485,7 +1506,7 @@ write.csv(L1_pt, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_pt", ".csv"
 
 # Write L2 dataset to file
 write.csv(L2_stem, file.path(L_dir_list[["L2"]], paste0(L2_filename, "_stem", ".csv")), row.names = FALSE)
-st_write(L2_poly , file.path(L_dir_list[["L1"]], paste0(L1_filename, "_poly", ".gpkg")), delete_dsn = TRUE) 
+st_write(L2_poly , file.path(L_dir_list[["L2"]], paste0(L2_filename, "_poly", ".gpkg")), delete_dsn = TRUE) 
 
 # Write L3 dataset to file
 st_write(L3_quad, file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")), delete_dsn = TRUE)
@@ -1555,10 +1576,10 @@ L2_stem_outfile <- entity(
 )
 
 L2_poly_outfile <- entity(
-  x = file.path(L_dir_list[["L1"]], paste0(L1_filename, "_poly", ".gpkg")),
+  x = file.path(L_dir_list[["L2"]], paste0(L2_filename, "_poly", ".gpkg")),
   type = "File",
-  description = "L1 plot polygons.",
-  encodingFormat = "text/csv"
+  description = "L2 plot polygons.",
+  encodingFormat = "application/geopackage+sqlite3"
 )
 
 

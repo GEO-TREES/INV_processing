@@ -19,7 +19,7 @@ stem_sel <- stem %>%
 # Extract plot corners
 plot_check <- plotPolygonFit(
   point_data = plot_pt,
-  method = "procrustes",
+  method = param$polygon_method,
   rel_col = c("x_rel_m", "y_rel_m"),
   proj_col = c("rover_easting_utm_m", "rover_northing_utm_m"),
   lonlat_col = NULL,

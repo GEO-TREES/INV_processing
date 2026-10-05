@@ -1,4 +1,4 @@
-# Run the data processing for an individual site
+# Run the data processing for one acquisition at one site
 # John L. Godlee (johngodlee@gmail.com)
 # Last updated: 2026-03-03
 
@@ -8,6 +8,7 @@ library(tidyr)
 library(readxl)
 library(units)
 library(sf)
+library(terra)
 library(BIOMASS)
 library(brms)
 library(yaml)
@@ -17,7 +18,7 @@ library(rocrateR)
 source("./func.R")
 
 # Load YAML file with parameters for 
-# p_file <- "./sites/Amacayacu/2024-08-03/v1/param.yaml"
+# p_file <- "./sites/Bicuar/2024-02-12/v1/param.yaml"
 p <- yaml::read_yaml(p_file)
 
 # Load YAML file with software version
@@ -37,6 +38,7 @@ param_name_vec <- c(
   "raw_dir",
   "height_method",
   "wd_method",
+  "polygon_method",
   "software_version",
   "product_version"
 )
@@ -211,7 +213,7 @@ outdir <- file.path(param$out_dir, software_version_sanit, "04_height")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), colClasses = stem_col_class)
 if (param$height_method == "regional") { 
-  plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"), colClasses = pt_col_class)
+  plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"), colClasses = pt_col_class) 
 }
 if (param$height_method == "field") { 
   height <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "height.csv"))
@@ -237,7 +239,7 @@ runFn("./06_record_fil.R")
 outdir <- file.path(param$out_dir, software_version_sanit, "07_quad")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), colClasses = stem_col_class)
-plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"))
+plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"), colClasses = pt_col_class)
 runFn("./07_quad.R")
 
 # Run AGB Monte-Carlo error propagation
@@ -283,7 +285,7 @@ L_dir_list <- lapply(L_list, function(x) {
 names(L_dir_list) <- L_list
 lapply(L_dir_list, dir.create, recursive = TRUE, showWarnings = FALSE)
 plot <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot.csv"))  # L1_plot
-plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"))  # L1_pt
+plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"), colClasses = pt_col_class)  # L1_pt
 plot_poly <- st_read(file.path(param$out_dir, software_version_sanit, "07_quad", "plot_poly.gpkg"))  # L2_poly
 stem_summ <- st_read(file.path(param$out_dir, software_version_sanit, "09_stem_summ", "stem_summ.gpkg"))  # L1_stem, L2_stem
 quad_summ <- st_read(file.path(param$out_dir, software_version_sanit, "10_quad_summ", "quad_summ.gpkg"))  # L3_quad

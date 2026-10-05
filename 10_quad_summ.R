@@ -15,8 +15,14 @@ quad_poly_area$quadrat_dim_y_m <- param$quad_dim[2]
 quad_summ_pre <- stem_summ %>% 
   filter(in_quadrat_calc == TRUE) %>% 
   st_drop_geometry() %>% 
-  group_by(site_id, acquisition_id, plot_id, quadrat_id, census_date) %>% 
+  group_by(site_id, acquisition_id, plot_id, quadrat_id) %>% 
   summarise(
+    census_date = median(measurement_date),
+    census_date_res = case_when(
+      any(measurement_date_res == "YYYY") ~ "YYYY",
+      any(measurement_date_res == "YYYY-MM") ~ "YYYY-MM",
+      any(measurement_date_res == "YYYY-MM-DD") ~ "YYYY-MM-DD",
+      TRUE ~ NA_character_),
     n_stem = n(),
     agb_Mg_sum = sum(agb_Mg, na.rm = TRUE),
     ba_m2_sum = sum(ba_m2, na.rm = TRUE),
@@ -38,35 +44,39 @@ quad_summ_pre <- stem_summ %>%
     .groups = "drop_last") %>% 
   ungroup() %>% 
   left_join(., quad_agb, by = "quadrat_id") %>% 
-  left_join(., quad_poly_area, by = c("site_id", "acquisition_id", "plot_id", "quadrat_id")) %>% 
   mutate(
-    across(
-      starts_with(c("n_stem_", "ba_m2_", "volume_m3_", "agb_Mg")), 
-      ~.x / quadrat_area_ha, .names = "{.col}_ha"),
     across(
       .cols = where(~inherits(.x, "units")), 
       .fns = as.vector),
     across(
-      everything(), 
-      ~ifelse(.x == -Inf, NA_real_, .x))) 
-
-# Add quadrat polygons, fill in quadrats with no trees
+      .cols = everything(), 
+      .fns = ~ifelse(.x == -Inf, NA_real_, .x))) 
+  
+# add quadrat polygons, fill in quadrats with no trees
 quad_summ <- quad_poly %>% 
+  left_join(., quad_poly_area, 
+    by = c("site_id", "acquisition_id", "plot_id", "quadrat_id")) %>% 
   left_join(., quad_summ_pre, 
     by = c("site_id", "acquisition_id", "plot_id", "quadrat_id")) %>% 
   mutate(
-    across(all_of(c(
-      "n_stem", 
-      "ba_m2_sum",
-      "ba_m2_sum_ha",
-      "volume_m3_sum",
-      "volume_m3_sum_ha",
-      "agb_Mg_sum",
-      "agb_Mg_sum_ha",
-      "agb_Mg_sum_mc_mean", 
-      "agb_Mg_sum_mc_mean_ha", 
-      "agb_Mg_sum_mc_median",
-      "agb_Mg_sum_mc_median_ha")), ~ifelse(is.na(.x), 0, .x))) 
+    empty_quadrat = is.na(n_stem),
+    across(
+      any_of(c(
+        "n_stem", 
+        "ba_m2_sum",
+        "volume_m3_sum",
+        "agb_Mg_sum",
+        "agb_Mg_sum_mc_mean", 
+        "agb_Mg_sum_mc_median"
+        )), 
+      ~if_else(empty_quadrat, 0, .x)),
+    across(
+      c(
+        all_of("n_stem"),
+        starts_with(c("ba_m2_", "volume_m3_", "agb_Mg"))),
+      ~.x / quadrat_area_ha,
+      .names = "{.col}_ha")) %>% 
+  dplyr::select(-empty_quadrat)
 
 # Write to file
 st_write(quad_summ, file.path(outdir, "quad_summ.gpkg"), delete_dsn = TRUE)

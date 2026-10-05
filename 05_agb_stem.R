@@ -8,7 +8,6 @@ stem_agb <- stem %>%
   left_join(., stem_height, by = "record_id") %>% 
   mutate(
     agb_Mg = computeAGB(
-      allometry = chave2014,
       D = .$diam_cm,
       WD = .$meanWD,
       H = .$height_m_pred)[[1]],

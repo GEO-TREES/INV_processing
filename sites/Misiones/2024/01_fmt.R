@@ -100,8 +100,8 @@ s_clean <- s %>%
     missing = "",
     broken = ifelse(grepl("B|R", danio_24), "B", ""),
     code = pasteVals(alive, fallen, broken, missing),
-    census_id = "1",
-    measurement_date = as.character(measurement_date),
+    measurement_date = as.numeric(measurement_date),
+    measurement_date_res = "YYYY",
     x_rel_m = case_when(
       x_rel_m == "1,2" ~ 12,
       TRUE ~ as.numeric(x_rel_m)),
@@ -111,9 +111,6 @@ s_clean <- s %>%
     x_block_origin = (bloque - 1) * 20,
     x_transect = x_block_origin + 10,
     x_rel_m = ifelse(lado == "I", x_transect - x_rel_m, x_transect + x_rel_m)) %>% 
-  group_by(plot_id, census_id, stem_id) %>% 
-  mutate(measurement_id = row_number()) %>% 
-  ungroup() %>% 
   dplyr::select(any_of(stem_cols$column_name))
 
 # Clean recruits table
@@ -140,17 +137,14 @@ recs_clean <- recs %>%
     missing = "",
     broken = ifelse(grepl("B|R", danio_24), "B", ""),
     code = pasteVals(alive, fallen, broken, missing),
-    census_id = "1",
-    measurement_date = "2024",
+    measurement_date = as.numeric(2024),
+    measurement_date_res = "YYYY",
     height_m = as.numeric(height_m),
     x_rel_m = case_when(
       x_rel_m == "1,2" ~ 12,
       TRUE ~ as.numeric(x_rel_m)),
     y_rel_m = as.numeric(y_rel_m),
     agb_allometry = NA_character_) %>% 
-  group_by(plot_id, census_id, stem_id) %>% 
-  mutate(measurement_id = row_number()) %>% 
-  ungroup() %>% 
   dplyr::select(any_of(stem_cols$column_name))
 
 s_all <- bind_rows(s_clean, recs_clean) %>% 
@@ -158,7 +152,6 @@ s_all <- bind_rows(s_clean, recs_clean) %>%
   mutate(
     site_id = param$site_id,
     acquisition_id = param$acquisition_id,
-    census_date = measurement_date,
     taxon_name = case_when(
       taxon_name == "AN" ~ "AR",
       taxon_name == "Ca" ~ "CA",
@@ -189,11 +182,6 @@ s_all <- bind_rows(s_clean, recs_clean) %>%
 # Create census table
 plots <- polys %>% 
   st_drop_geometry() %>% 
-  mutate(
-    census_id = "1",
-    census_date = unique(s_all$measurement_date),
-    measurement_date_min = census_date,
-    measurement_date_max = census_date) %>% 
   mutate(
     acquisition_id = param$acquisition_id,
     plot_width_m = 100,

@@ -47,7 +47,7 @@ if (param$wd_method == "field") {
 }
 
 # Estimate wood density for each stem measurement
-wd_all <- BIOMASS::getWoodDensity(
+wd_all <- getWoodDensity(
   genus = stem_taxa_all$genusAccepted, 
   species = stem_taxa_all$speciesAccepted,
   stand = stem_taxa_all$plot_id,

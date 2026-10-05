@@ -11,6 +11,7 @@ L1_stem <- stem_summ %>%
     BRM_site = site_id,
     Acquisition = acquisition_id,
     Plot_name = plot_id,
+    Measurement_date = measurement_date,
     Tree_label = tree_id,
     Stem_label = stem_id,
     Botany_genus = genusAccepted,
@@ -44,14 +45,15 @@ L2_stem <- stem_summ %>%
     BRM_site = site_id,
     Acquisition = acquisition_id,
     Plot_name = plot_id,
+    Measurement_date = measurement_date,
     Tree_label = tree_id,
     Stem_label = stem_id,
     Longitude = X,
     Latitude = Y,
     WD_stem_estimate = meanWD,
     WD_stem_uncertainty = sdWD,
-    AGB_stem_estimate = agb_Mg_mean,
-    AGB_stem_uncertainty = agb_Mg_sd,
+    AGB_tree_estimate = agb_Mg_mean,
+    AGB_tree_uncertainty = agb_Mg_sd,
     Height_stem_estimate = height_m_pred,
     Height_stem_uncertainty = height_m_pred_rse)
 
@@ -67,11 +69,22 @@ stopifnot(all(!is.na(L2_stem$AGB_tree_estimate)))
 stopifnot(all(!is.na(L2_stem$AGB_tree_uncertainty)))
 
 # Prepare L3 quadrat dataset
+# Select parameters to copy as columns
+param_fil <- param
+param_fil$quadrat_dim_x_m <- param_fil$quad_dim[1]
+param_fil$quadrat_dim_y_m <- param_fil$quad_dim[2]
+param_fil[["quad_dim"]] <- NULL
+if (param_fil$opt_s3) { 
+  param_fil[["raw_dir"]] <- param_fil$s3_dir
+} 
+param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3")] <- NULL
+
 L3_quad <- quad_summ %>% 
   dplyr::select(
     BRM_site = site_id,
     Acquisition = acquisition_id,
     Plot_name = plot_id,
+    Census_date = census_date,
     Quadrat_name = quadrat_id,
     AGBD_stand_estimate = agb_Mg_sum_mc_mean_ha,
     AGBD_stand_uncertainty = agb_Mg_sum_mc_sd_ha,
@@ -80,13 +93,11 @@ L3_quad <- quad_summ %>%
     Basal_area = ba_m2_sum_ha,
     Lorey_height = lorey_height_m,
     Wood_density = meanWD_wm_ba,
-    Quadrat_area = quadrat_area_ha,
-    Quadrat_dim_x = quadrat_dim_x_m,
-    Quadrat_dim_y = quadrat_dim_y_m)
+    Quadrat_area = quadrat_area_ha) %>%
+  bind_cols(param_fil)
 
 # Check all values filled
 stopifnot(all(!is.na(L3_quad$AGBD_stand_estimate)))
-# stopifnot(all(!is.na(L3_quad$AGBD_stand_uncertainty)))  # Some plots have not trees
 
 # Check not all AGBD estimates should be zero
 stopifnot(!all(L3_quad$AGBD_stand_estimate == 0))
@@ -94,7 +105,7 @@ stopifnot(!all(L3_quad$AGBD_stand_estimate == 0))
 # Construct output filenames
 L1_filename <- paste(
     param$site_id, 
-    "PDA", 
+    "INV", 
     param$acquisition_id, 
     param$product_version,
     software_version_sanit, 
@@ -103,7 +114,7 @@ L1_filename <- paste(
 
 L2_filename <- paste(
     param$site_id, 
-    "PDA", 
+    "INV", 
     param$acquisition_id, 
     param$product_version,
     software_version_sanit, 
@@ -112,7 +123,7 @@ L2_filename <- paste(
 
 L3_filename <- paste(
     param$site_id, 
-    "PDA", 
+    "INV", 
     param$acquisition_id, 
     param$product_version,
     software_version_sanit, 
@@ -126,7 +137,7 @@ write.csv(L1_pt, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_pt", ".csv"
 
 # Write L2 dataset to file
 write.csv(L2_stem, file.path(L_dir_list[["L2"]], paste0(L2_filename, "_stem", ".csv")), row.names = FALSE)
-st_write(L2_poly , file.path(L_dir_list[["L1"]], paste0(L1_filename, "_poly", ".gpkg")), delete_dsn = TRUE) 
+st_write(L2_poly , file.path(L_dir_list[["L1"]], paste0(L2_filename, "_poly", ".gpkg")), delete_dsn = TRUE) 
 
 # Write L3 dataset to file
 st_write(L3_quad, file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")), delete_dsn = TRUE)
@@ -191,10 +202,10 @@ L2_stem_outfile <- entity(
 )
 
 L2_poly_outfile <- entity(
-  x = file.path(L_dir_list[["L1"]], paste0(L1_filename, "_poly", ".gpkg")),
+  x = file.path(L_dir_list[["L2"]], paste0(L2_filename, "_poly", ".gpkg")),
   type = "File",
-  description = "L1 plot polygons.",
-  encodingFormat = "text/csv"
+  description = "L2 plot polygons.",
+  encodingFormat = "application/geopackage+sqlite3"
 )
 
 
@@ -215,11 +226,11 @@ yaml <- entity(
 
 # Software 
 code <- entity(
-  x = paste0("#PDA_processing_", param$software_version),
+  x = paste0("#INV_processing_", param$software_version),
   type = c("SoftwareApplication", "SoftwareSourceCode"),
   name = "GEO-TREES AGBD processing pipeline",
   version = param$software_version,
-  url = paste0("https://github.com/GEO-TREES/PDA_processing/releases/tag/", param$software_version),
+  url = paste0("https://github.com/GEO-TREES/INV_processing/releases/tag/", param$software_version),
   programmingLanguage = "R"
 )
 
@@ -252,7 +263,7 @@ rocrate_list <- lapply(names(L_outfile_list), function(x) {
   rc <- rocrate(
     context = "https://w3id.org/ro/crate/1.2/context",
     datePublished = as.character(Sys.Date()),
-    name = paste("GEO-TREES Bicuar PDA", x)
+    name = paste("GEO-TREES Bicuar INV", x)
   ) %>% 
     add_entity(me) %>%
     add_entity(aff) %>%

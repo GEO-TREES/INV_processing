@@ -62,11 +62,7 @@ quad_agb_mc_list <- lapply(seq_along(stem_split), function(x) {
       Dpropag = "chave2004",
       n = nsim,
       Carbon = FALSE,
-      Dlim = NULL,
-      fitted_allom = "chave2014",
-      var_in_data = NULL,
-      volume_allom = FALSE,
-      return_volume = FALSE)
+      Dlim = NULL)
 
     # Extract individual simulations of AGBD 
     plot_divide_tmp <- list(
@@ -119,7 +115,7 @@ quad_agb_mc_summ <- bind_rows(lapply(names(quad_agb_mc_list), function(x) {
     agb_Mg_sum_mc_mean = quad_agb_mc_list[[x]][[1]]$meanAGB,
     agb_Mg_sum_mc_median = quad_agb_mc_list[[x]][[1]]$medAGB,
     agb_Mg_sum_mc_sd = quad_agb_mc_list[[x]][[1]]$sdAGB,
-    agb_Mg_sum_mc_se = quad_agb_mc_list[[x]][[1]]$sdAGB / nsim,
+    agb_Mg_sum_mc_se = quad_agb_mc_list[[x]][[1]]$sdAGB / sqrt(nsim),
     agb_Mg_sum_mc_ci2.5 = unname(quad_agb_mc_list[[x]][[1]]$credibilityAGB[1]),
     agb_Mg_sum_mc_ci97.5 = unname(quad_agb_mc_list[[x]][[1]]$credibilityAGB[2]))
 }))

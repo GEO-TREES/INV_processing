@@ -7,8 +7,8 @@ renv::dependencies()
 # Install packages
 renv::install()
 
-# Install dev branch
-renv::install("umr-amap/BIOMASS@dev_john")
+# Install GEO-TREES development branch of BIOMASS
+renv::install("umr-amap/BIOMASS@BIOMASS_for_GEOTREES")
 
 # Snapshot package versions
 renv::snapshot()

@@ -10,3 +10,9 @@ opt_s3: no
 product_version: v1
 height_method: regional
 wd_method: regional
+polygon_method: procrustes
+rocrate:
+  author_name: John L. Godlee
+  author_email: GodleeJ@si.edu
+  affiliation: Smithsonian Institution
+  license: TERMS.md

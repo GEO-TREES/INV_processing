@@ -1,4 +1,4 @@
-name: Release GEO-TREES PDA_processing code
+name: Release GEO-TREES INV_processing code
 
 on:
   push:

@@ -1,6 +1,6 @@
-# Prepare L2 and L3 data products 
+# Prepare L1, L2 and L3 data products
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-02-16
+# Last updated: 2026-10-14
 
 # Prepare L1 stems dataset
 L1_stem <- stem_summ %>% 
@@ -77,7 +77,7 @@ param_fil[["quad_dim"]] <- NULL
 if (param_fil$opt_s3) { 
   param_fil[["raw_dir"]] <- param_fil$s3_dir
 } 
-param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3")] <- NULL
+param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate")] <- NULL
 
 L3_quad <- quad_summ %>% 
   dplyr::select(
@@ -86,8 +86,8 @@ L3_quad <- quad_summ %>%
     Plot_name = plot_id,
     Census_date = census_date,
     Quadrat_name = quadrat_id,
-    AGBD_stand_estimate = agb_Mg_sum_mc_mean_ha,
-    AGBD_stand_uncertainty = agb_Mg_sum_mc_sd_ha,
+    AGBD_stand_estimate = agbd_Mg_ha_mc_mean,
+    AGBD_stand_uncertainty = agbd_Mg_ha_mc_sd,
     Height_stand_estimate = height_m_pred_max,
     Height_stand_uncertainty = height_m_pred_max_rse,
     Basal_area = ba_m2_sum_ha,
@@ -137,31 +137,41 @@ write.csv(L1_pt, file.path(L_dir_list[["L1"]], paste0(L1_filename, "_pt", ".csv"
 
 # Write L2 dataset to file
 write.csv(L2_stem, file.path(L_dir_list[["L2"]], paste0(L2_filename, "_stem", ".csv")), row.names = FALSE)
-st_write(L2_poly , file.path(L_dir_list[["L1"]], paste0(L2_filename, "_poly", ".gpkg")), delete_dsn = TRUE) 
+st_write(L2_poly, file.path(L_dir_list[["L2"]], paste0(L2_filename, "_poly", ".gpkg")), delete_dsn = TRUE)
 
 # Write L3 dataset to file
 st_write(L3_quad, file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")), delete_dsn = TRUE)
 
 # Construct RO-crates
+# Author, affiliation and license are defined in param.yaml
 
-# Author 
+# Create local RO-Crate identifier from a name
+rocrateId <- function(x) {
+  paste0("#", gsub("^-|-$", "", gsub("[^a-z0-9]+", "-", tolower(x))))
+}
+
+# Author, identified by ORCID if provided
 me <- entity(
-  x = "#john-godlee",
+  x = if (!is.null(param$rocrate$author_orcid)) {
+    param$rocrate$author_orcid 
+  } else { 
+    rocrateId(param$rocrate$author_name)
+  },
   type = "Person",
-  name = "John L. Godlee",
-  email = "GodleeJ@si.edu"
+  name = param$rocrate$author_name,
+  email = param$rocrate$author_email
 )
 
 # Affiliation
 aff <- entity(
-  x = "#si-org",
+  x = rocrateId(param$rocrate$affiliation),
   type = "Organization",
-  name = "Smithsonian Institution"
+  name = param$rocrate$affiliation
 )
 
 # License
 lic <- entity(
-  x = "TERMS.md",
+  x = param$rocrate$license,
   type = c("File", "CreativeWork") 
 )
 
@@ -263,7 +273,7 @@ rocrate_list <- lapply(names(L_outfile_list), function(x) {
   rc <- rocrate(
     context = "https://w3id.org/ro/crate/1.2/context",
     datePublished = as.character(Sys.Date()),
-    name = paste("GEO-TREES Bicuar INV", x)
+    name = paste("GEO-TREES", param$site_id, "INV", x)
   ) %>% 
     add_entity(me) %>%
     add_entity(aff) %>%

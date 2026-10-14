@@ -1,12 +1,14 @@
 # Estimate stem height
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2025-07-09
+# Last updated: 2026-10-14
 
 # Regional height estimation
 if (param$height_method == "regional") { 
 
   # Extract plot centres
-  plot_pt_split <- split(plot_pt, plot_pt$crs_epsg)
+  plot_pt_split <- plot_pt %>% 
+    filter(!is.na(rover_easting_utm_m), !is.na(rover_northing_utm_m)) %>% 
+    split(., .$crs_epsg)
   p_cent <- bind_rows(lapply(plot_pt_split, function(x) { 
     st_as_sf(x, coords = c("rover_easting_utm_m", "rover_northing_utm_m"), 
       crs = unique(x$crs_epsg)) %>% 
@@ -31,14 +33,19 @@ if (param$height_method == "regional") {
     D = s_cent$diam_cm, 
     coord = s_cent[,c("X", "Y")])
 
+  # RSE of Chave et al. (2014) Eq. 6a, on the log scale
+  # NOTE: not a standard deviation in metres, do not pass to AGBmonteCarlo(errH = )
   height_pred$RSE <- rep(0.243, length(height_pred$H))
 
   s_cent$height_m_pred <- height_pred$H
   s_cent$height_m_pred_rse <- height_pred$RSE
 
   # Create output dataframe
-  out <- s_cent %>% 
+  out <- s_cent %>%
     dplyr::select(record_id, height_m_pred, height_m_pred_rse)
+
+  # Write plot centres to file, used for AGB estimation
+  write.csv(p_cent, file.path(outdir, "plot_cent.csv"), row.names = FALSE)
 } else if (param$height_method == "field") { 
 
   # Compare height diameter models
@@ -50,9 +57,9 @@ if (param$height_method == "regional") {
     drawGraph = FALSE)
 
   # Choose best height diameter model
-  # Based on average bias
-  height_mod_best <- height_mod_comp[
-    height_mod_comp$Average_bias == min(height_mod_comp$Average_bias), "method"]
+  # Based on lowest residual standard error, calculated on the untransformed
+  # height scale for all models, so comparable across log and non-log models
+  height_mod_best <- height_mod_comp$method[which.min(height_mod_comp$RSE)]
 
   # Fit best height diameter model
   height_mod <- modelHD(

@@ -14,14 +14,14 @@
     {
       "@id": "./",
       "@type": "Dataset",
-      "name": "GEO-TREES Bicuar INV L3",
+      "name": "GEO-TREES Amacayacu INV L3",
       "description": "",
-      "datePublished": "2026-05-12",
+      "datePublished": "2026-10-14",
       "license": {
         "@id": "TERMS.md"
       },
       "author": {
-        "@id": "#john-godlee"
+        "@id": "#john-l-godlee"
       },
       "hasPart": [
         {
@@ -34,7 +34,7 @@
           "@id": "TERMS.md"
         },
         {
-          "@id": "./dat/sites/Amacayacu/INV/2024-08-03/v1/v0-1/L3/Amacayacu_INV_2024-08-03_v1_v0-1_L3_quad.gpkg"
+          "@id": "/private/tmp/claude-501/-Users-johngodlee-Library-CloudStorage-GoogleDrive-johngodlee-gmail-com-My-Drive-geo-trees-INV-processing/b9055e2d-a502-46d6-83ea-96c1a97a4b95/scratchpad/e2e/out/Amacayacu/v1/v0-1/L3/Amacayacu_INV_2024-08-03_v1_v0-1_L3_quad.gpkg"
         }
       ],
       "mentions": [
@@ -47,16 +47,16 @@
       ]
     },
     {
-      "@id": "#john-godlee",
+      "@id": "#john-l-godlee",
       "@type": "Person",
       "name": "John L. Godlee",
       "email": "GodleeJ@si.edu",
       "affiliation": {
-        "@id": "#si-org"
+        "@id": "#smithsonian-institution"
       }
     },
     {
-      "@id": "#si-org",
+      "@id": "#smithsonian-institution",
       "@type": "Organization",
       "name": "Smithsonian Institution"
     },
@@ -88,7 +88,7 @@
       "@type": "CreateAction",
       "name": "Tree inventory pipeline execution",
       "description": "Execute tree inventory pipeline to generate data products",
-      "endTime": "2026-05-12T21:15:35Z",
+      "endTime": "2026-10-14T13:13:11Z",
       "object": [
         {
           "@id": "param.yaml"
@@ -99,7 +99,7 @@
       ],
       "result": [
         {
-          "@id": "./dat/sites/Amacayacu/INV/2024-08-03/v1/v0-1/L3/Amacayacu_INV_2024-08-03_v1_v0-1_L3_quad.gpkg"
+          "@id": "/private/tmp/claude-501/-Users-johngodlee-Library-CloudStorage-GoogleDrive-johngodlee-gmail-com-My-Drive-geo-trees-INV-processing/b9055e2d-a502-46d6-83ea-96c1a97a4b95/scratchpad/e2e/out/Amacayacu/v1/v0-1/L3/Amacayacu_INV_2024-08-03_v1_v0-1_L3_quad.gpkg"
         }
       ],
       "instrument": {
@@ -107,7 +107,7 @@
       }
     },
     {
-      "@id": "./dat/sites/Amacayacu/INV/2024-08-03/v1/v0-1/L3/Amacayacu_INV_2024-08-03_v1_v0-1_L3_quad.gpkg",
+      "@id": "/private/tmp/claude-501/-Users-johngodlee-Library-CloudStorage-GoogleDrive-johngodlee-gmail-com-My-Drive-geo-trees-INV-processing/b9055e2d-a502-46d6-83ea-96c1a97a4b95/scratchpad/e2e/out/Amacayacu/v1/v0-1/L3/Amacayacu_INV_2024-08-03_v1_v0-1_L3_quad.gpkg",
       "@type": "File",
       "description": "L3 AGBD estimates within plot quadrats.",
       "encodingFormat": "application/geopackage+sqlite3"

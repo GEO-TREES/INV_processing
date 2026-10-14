@@ -1,10 +1,14 @@
 # Prepare example data for GEO-TREES Tree Inventory workflow example
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-04-23
+# Last updated: 2026-10-14
+
+# Run from ./vignettes/worked_example/data-raw/ 
+# Optionally provide the directory of processed Amacayacu data as an argument
 
 # Set input directory
-indir <- "~/gdrive/geo-trees/INV_processing/dat/sites/Amacayacu/INV/2024-08-03/v1/v0-1"
-paramfile <- "~/gdrive/geo-trees/INV_processing/sites/Amacayacu/2024-08-03/v1/param.yaml"
+args <- commandArgs(trailingOnly = TRUE)
+indir <- if (length(args) > 0) args[1] else "../../../dat/sites/Amacayacu/INV/2024-08-03/v1/v0-1"
+paramfile <- "../../../sites/Amacayacu/2024-08-03/v1/param.yaml"
 
 # Ensure reproducibility
 set.seed(42)
@@ -53,13 +57,13 @@ plot_anon <- plot %>%
     site_id = "Site1",
     plot_id = "Plot1")
 
-# Anonymise plot spatial points
+# Anonymise plot spatial points by shifting coordinates
 pt_anon <- pt %>% 
   mutate(
     site_id = "Site1",
     plot_id = "Plot1",
-    rover_easting_rms_m = rover_easting_rms_m + 5432,
-    rover_northing_rms_m = rover_northing_rms_m + 5432)
+    rover_easting_utm_m = rover_easting_utm_m + 5432,
+    rover_northing_utm_m = rover_northing_utm_m + 5432)
 
 # Anonymise param.yaml
 param_anon <- param 

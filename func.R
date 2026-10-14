@@ -44,7 +44,7 @@ colCheck <- function(x, cols) {
   }))
 
   if (any(!col_class_test)) { 
-    bad_cols <- colnames(x)[!col_class_test]
+    bad_cols <- cols$column_name[!col_class_test]
     bad_cols_good_class <- cols$class[match(bad_cols, cols$column_name)]
     bad_cols_bad_class <- unlist(lapply(bad_cols, function(y) { class(x[[y]]) }))
 
@@ -67,13 +67,52 @@ colCheck <- function(x, cols) {
   }
 }
 
+#' Check values against minimum and maximum values in a column spec table
+#'
+#' @param x dataframe
+#' @param cols column spec table with columns `column_name`, and optionally
+#'     `min_val` and `max_val`
+#' @param name name of the table, used in error messages
+#' @param warn_cols columns for which values outside the range give a warning
+#'     rather than an error
+#'
+rangeCheck <- function(x, cols, name = "x", warn_cols = NULL) {
+  if (is.null(cols) || !all(c("min_val", "max_val") %in% names(cols))) {
+    return(invisible(NULL))
+  }
+
+  for (i in seq_len(nrow(cols))) {
+    col <- cols$column_name[i]
+    v <- suppressWarnings(as.numeric(x[[col]]))
+    if (is.null(x[[col]]) || all(is.na(v))) {
+      next
+    }
+
+    lo <- suppressWarnings(as.numeric(cols$min_val[i]))
+    hi <- suppressWarnings(as.numeric(cols$max_val[i]))
+
+    fail <- if (col %in% warn_cols) warning else stop
+
+    if (!is.na(lo) && any(v < lo, na.rm = TRUE)) {
+      fail("`", name, "$", col, "` must be >= ", lo, 
+        " (", sum(v < lo, na.rm = TRUE), " values below)", call. = FALSE)
+    }
+    if (!is.na(hi) && any(v > hi, na.rm = TRUE)) {
+      fail("`", name, "$", col, "` must be <= ", hi, 
+        " (", sum(v > hi, na.rm = TRUE), " values above)", call. = FALSE)
+    }
+  }
+}
+
 #' Check stem table values
 #' 
 #' Runs various checks on the values in stem measurement table columns 
 #'
 #' @param x dataframe containing stem measurements
+#' @param cols optional column spec table, e.g. ./templates/stem_cols.csv, 
+#'     used to check minimum and maximum values
 #'
-stemValCheck <- function(x) {
+stemValCheck <- function(x, cols = NULL) {
   # Record IDs must be unique
   if (any(duplicated(x$record_id))) {
     stop("Values of `record_id` must be unique within a site")
@@ -109,8 +148,32 @@ stemValCheck <- function(x) {
     stop("`height_m` must be positive")
   }
 
+  # Values within ranges defined in spec table
+  # Stems may be mapped slightly outside the plot
+  rangeCheck(x, cols, "stem", warn_cols = c("x_rel_m", "y_rel_m"))
+
+  # Measurement dates must be decimal years, with a resolution
+  if (!is.numeric(x$measurement_date)) {
+    stop("`measurement_date` must be a decimal year, see `decDate()`")
+  }
+
+  if (any(x$measurement_date < 1900 | 
+    x$measurement_date > as.numeric(format(Sys.Date(), "%Y")) + 1, na.rm = TRUE)) {
+    stop("`measurement_date` must be a decimal year between 1900 and next year")
+  }
+
+  date_res <- c("YYYY", "YYYY-MM", "YYYY-MM-DD")
+  if (any(!is.na(x$measurement_date_res) & !x$measurement_date_res %in% date_res)) {
+    stop("`measurement_date_res` must be one of: ", paste(date_res, collapse = ", "))
+  }
+
+  if (any(!is.na(x$measurement_date) & is.na(x$measurement_date_res))) {
+    stop("`measurement_date_res` must be provided where `measurement_date` is provided")
+  }
+
   # Codes must only contain some values
-  code_allowed <- c("A", "D", "S", "F", "M", "B", "T", "U", "I") # Letters and spaces
+  # See ./templates/stem_codes.csv
+  code_allowed <- c("A", "D", "S", "F", "M", "B", "T", "U", "I", "H")
   if (any(grepl(paste0("[^", paste(code_allowed, collapse = ""), "]"), x$code))) {
     stop("`code` must only contain: ", paste(code_allowed, collapse = ", "))
   }
@@ -132,6 +195,23 @@ stemValCheck <- function(x) {
   if (any(grepl("M", x$code) & (!is.na(x$diam_cm) | !is.na(x$height_m) | !is.na(x$pom_m)))) {
     stop("If `code` is 'M' (missing), diameter, height, and POM must be empty")
   }
+
+  # Stems without a code are excluded from AGB estimates
+  if (any(is.na(x$code) | x$code == "")) {
+    warning(sum(is.na(x$code) | x$code == ""), " stems have no `code`, ", 
+      "these will be excluded from AGB estimates")
+  }
+
+  # Diameter should not be measured on stems broken below the POM
+  if (any(grepl("T", x$code) & !is.na(x$diam_cm))) {
+    warning(sum(grepl("T", x$code) & !is.na(x$diam_cm)), 
+      " stems with `code` 'T' (broken below POM) have a diameter measurement")
+  }
+
+  # Stems without a stem ID cannot be matched across measurements
+  if (any(is.na(x$stem_id) | x$stem_id == "")) {
+    warning(sum(is.na(x$stem_id) | x$stem_id == ""), " stems have no `stem_id`")
+  }
 }
 
 #' Check taxon table values
@@ -145,6 +225,11 @@ taxonValCheck <- function(x) {
   if (any(is.na(x$taxon_name))) { 
     stop("NAs in `taxon_name` are not allowed")
   }
+
+  # One row per taxonomic name
+  if (any(duplicated(x$taxon_name))) {
+    stop("`taxon_name` must be unique")
+  }
 }
 
 #' Check height table values
@@ -152,8 +237,10 @@ taxonValCheck <- function(x) {
 #' Runs various checks on the values in height table columns 
 #'
 #' @param x dataframe containing diameter and height data 
+#' @param cols optional column spec table, e.g. ./templates/height_cols.csv, 
+#'     used to check minimum and maximum values
 #' 
-heightValCheck <- function(x) { 
+heightValCheck <- function(x, cols = NULL) { 
   # Only one site ID per site
   if (length(unique(x$site_id)) > 1) { 
     stop("`site_id` must be the same for all plots within a site")
@@ -168,6 +255,9 @@ heightValCheck <- function(x) {
   if (any(x$diam_cm <= 0, na.rm = TRUE) | any(is.na(x$diam_cm))) { 
     stop("`diam_cm` must be positive and not NA")
   }
+
+  # Values within ranges defined in spec table
+  rangeCheck(x, cols, "height")
 }
 
 #' Check wood density table values
@@ -187,6 +277,13 @@ wdValCheck <- function(x) {
     stop("`wood_density_gcm3` must be positive and not NA")
   }
 
+  # Wood density should be within the range of the global wood density
+  # database, as used by BIOMASS::AGBmonteCarlo()
+  if (any(x$wood_density_gcm3 < 0.08 | x$wood_density_gcm3 > 1.39)) {
+    warning(sum(x$wood_density_gcm3 < 0.08 | x$wood_density_gcm3 > 1.39), 
+      " values of `wood_density_gcm3` are outside 0.08-1.39 g cm-3")
+  }
+
   # Wood density SD must be positive
   if (any(x$wood_density_sd_gcm3 <= 0, na.rm = TRUE)) { 
     stop("`wood_density_sd_gcm3` must be positive")
@@ -203,8 +300,11 @@ wdValCheck <- function(x) {
 #' Runs various checks on the values in plot meta-data table columns 
 #'
 #' @param x dataframe containing plot meta-data 
+#' @param cols optional column spec table, e.g. ./templates/plot_cols.csv, 
+#'     used to check minimum and maximum values, and that `vital` columns are 
+#'     filled
 #'
-plotValCheck <- function(x) {
+plotValCheck <- function(x, cols = NULL) {
   # Only one site ID per site
   if (length(unique(x$site_id)) > 1) { 
     stop("`site_id` must be the same for all plots within a site")
@@ -240,11 +340,6 @@ plotValCheck <- function(x) {
     stop("`plot_width_m` must be positive")
   }
 
-  # Plot planar must be provided
-  if (any(is.na(x$plot_planar))) { 
-    stop("`plot_planar` must be provided")
-  }
-
   # Minimum diameter threshold must be positive
   if (!all(!is.na(x$meas_diam_min_cm) & x$meas_diam_min_cm > 0)) {
     stop("`meas_diam_min_cm` must be positive")
@@ -255,23 +350,29 @@ plotValCheck <- function(x) {
     stop("`meas_pom_default_m` must be positive")
   }
 
-  # Methods logical columns must be provided
-  if (any(is.na(x$meas_tree_stem))) {
-    stop("`meas_tree_stem` must be provided")
+  # Vital columns must be provided
+  # Lianas, palms and bamboos may be NA if not present in the plot
+  # Missing descriptions of methods (character columns) give a warning
+  vital <- c("plot_planar", "meas_tree_stem", "meas_tree_group", "meas_dead", 
+    "meas_fallen")
+  vital_desc <- character(0)
+  if (!is.null(cols) && "vital" %in% names(cols)) {
+    vital_all <- cols$column_name[cols$vital %in% c(TRUE, "TRUE")]
+    vital_all <- setdiff(vital_all, c("meas_liana", "meas_palm", "meas_bamboo"))
+    vital_desc <- intersect(vital_all, cols$column_name[cols$class == "character"])
+    vital <- setdiff(vital_all, vital_desc)
+  }
+  vital_na <- vital[vapply(vital, function(y) any(is.na(x[[y]])), logical(1))]
+  if (length(vital_na) > 0) {
+    stop("NAs not allowed in: ", paste(paste0("`", vital_na, "`"), collapse = ", "))
+  }
+  desc_na <- vital_desc[vapply(vital_desc, function(y) any(is.na(x[[y]])), logical(1))]
+  if (length(desc_na) > 0) {
+    warning("Please describe methods in: ", paste(paste0("`", desc_na, "`"), collapse = ", "))
   }
 
-  if (any(is.na(x$meas_tree_group))) {
-    stop("`meas_tree_group` must be provided")
-  }
-
-  if (any(is.na(x$meas_dead))) {
-    stop("`meas_dead` must be provided")
-  }
-
-  if (any(is.na(x$meas_fallen))) {
-    stop("`meas_fallen` must be provided")
-  }
-
+  # Values within ranges defined in spec table
+  rangeCheck(x, cols, "plot")
 }
 
 #' Check plot geo-location sf object values
@@ -279,8 +380,10 @@ plotValCheck <- function(x) {
 #' Runs various checks on the values in plot geo-location sf object columns 
 #'
 #' @param x sf dataframe containing plot geo-location points
+#' @param cols optional column spec table, e.g. ./templates/pt_cols.csv, 
+#'     used to check minimum and maximum values
 #'
-ptValCheck <- function(x) {
+ptValCheck <- function(x, cols = NULL) {
   # Only one site ID per site
   if (length(unique(x$site_id)) > 1) { 
     stop("`site_id` must be the same for all plots within a site")
@@ -312,35 +415,72 @@ ptValCheck <- function(x) {
   if (any(is.na(x$y_rel_m))) { 
     stop("NAs in `y_rel_m` are not allowed")
   }
+
+  # Points must be identified as corners or not
+  if (any(is.na(x$corner))) {
+    stop("NAs in `corner` are not allowed")
+  }
+
+  # Coordinate reference system needed to locate points
+  if (any(is.na(x$crs_epsg))) {
+    stop("NAs in `crs_epsg` are not allowed")
+  }
+
+  # Easting and northing must both be provided, or both be missing
+  if (any(is.na(x$rover_easting_utm_m) != is.na(x$rover_northing_utm_m))) {
+    stop("`rover_easting_utm_m` and `rover_northing_utm_m` must both be provided or both be NA")
+  }
+
+  # At least three corners per plot to define a polygon
+  n_corner <- tapply(paste(x$x_rel_m, x$y_rel_m)[x$corner %in% TRUE], 
+    x$plot_id[x$corner %in% TRUE], function(y) length(unique(y)))
+  n_corner <- n_corner[as.character(unique(x$plot_id))]
+  n_corner[is.na(n_corner)] <- 0
+  if (any(n_corner < 3)) {
+    stop("At least three corners needed in each plot: ", 
+      paste(names(n_corner)[n_corner < 3], collapse = ", "))
+  }
+
+  # Values within ranges defined in spec table
+  rangeCheck(x, cols, "pt")
 }
-
-
 
 #' Check values across data objects
 #' 
 #' Runs various checks on values across plot, stem, pt and taxon objects
 #'
-#' @param plot 
-#' @param stem 
-#' @param pt 
-#' @param taxon 
-#' @param height 
-#' @param wd 
+#' @param plot plot meta-data table
+#' @param stem stem measurement table
+#' @param pt plot geo-location points table
+#' @param taxon taxon table
+#' @param height height-diameter measurements table
+#' @param wd wood density table
+#' @param cols optional named list of column spec tables, with names
+#'     `plot`, `stem`, `pt`, `height`. If NULL, objects named `plot_cols`,
+#'     `stem_cols`, `pt_cols`, `height_cols` are used if they exist where
+#'     `valCheck()` is called from
 #'
 valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL, 
-  height = NULL, wd = NULL) { 
+  height = NULL, wd = NULL, cols = NULL) { 
+
+  # Find column spec tables
+  if (is.null(cols)) {
+    env <- parent.frame()
+    cols <- lapply(c(plot = "plot", stem = "stem", pt = "pt", height = "height"), 
+      function(y) get0(paste0(y, "_cols"), envir = env))
+  }
 
   # Run single table checks
   if (!is.null(plot)) {
-    plotValCheck(plot)
+    plotValCheck(plot, cols$plot)
   }
 
   if (!is.null(stem)) {
-    stemValCheck(stem)
+    stemValCheck(stem, cols$stem)
   }
 
   if (!is.null(pt)) {
-    ptValCheck(pt)
+    ptValCheck(pt, cols$pt)
   }
 
   if (!is.null(taxon)) {
@@ -348,76 +488,205 @@ valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL,
   }
 
   if (!is.null(height)) {
-    heightValCheck(height)
+    heightValCheck(height, cols$height)
   }
 
   if (!is.null(wd)) {
     wdValCheck(wd)
   }
 
+  # All tables must have the same site ID
+  site_ids <- unique(unlist(lapply(list(plot, stem, pt, taxon, height, wd), 
+    function(y) y$site_id)))
+  if (length(site_ids) > 1) {
+    stop("`site_id` differs among tables: ", paste(site_ids, collapse = ", "))
+  }
+
   # Run tests to match plot and stem tables
-  if (!is.null(plot) & !is.null(stem)) {
+  if (!is.null(plot) && !is.null(stem)) {
     # All plots and censuses in stem must be in plot
     if (!all(paste(stem$plot_id, stem$acquisition_id) %in% paste(plot$plot_id, plot$acquisition_id))) {
       stop("Some plot-acquisition combinations in 'stem' are missing from 'plot'")
     }
 
     # Acquisition IDs must match
-    if (any(unique(plot$acquisition_id) != unique(stem$acquisition_id))) {
+    if (!setequal(plot$acquisition_id, stem$acquisition_id)) {
       stop("Acquisition IDs do not match between 'plot' and 'stem'")
+    }
+
+    # Stems with diameter below the minimum diameter threshold
+    diam_min <- plot$meas_diam_min_cm[match(stem$plot_id, plot$plot_id)]
+    if (any(stem$diam_cm < diam_min, na.rm = TRUE)) {
+      warning(sum(stem$diam_cm < diam_min, na.rm = TRUE), 
+        " stems have `diam_cm` below `meas_diam_min_cm`, ",
+        "these will be excluded from AGB estimates")
     }
   }
 
   # Run tests to match plot and pt tables
-  if (!is.null(plot) & !is.null(pt)) {
+  if (!is.null(plot) && !is.null(pt)) {
     # All plots must match between plot and pt
-    if (any(sort(unique(pt$plot_id)) != sort(unique(plot$plot_id)))) {
+    if (!setequal(pt$plot_id, plot$plot_id)) {
       stop("'plot_id' does not match between 'plot' and 'pt'")
     }
   }
 
+  # Run tests to match stem and pt tables
+  if (!is.null(stem) && !is.null(pt)) {
+    # Stems should be within the extent of the plot corners, with 10% tolerance
+    ext <- do.call(rbind, lapply(split(pt, pt$plot_id), function(y) {
+      data.frame(
+        plot_id = y$plot_id[1],
+        x_min = min(y$x_rel_m), x_max = max(y$x_rel_m),
+        y_min = min(y$y_rel_m), y_max = max(y$y_rel_m))
+    }))
+    e <- ext[match(stem$plot_id, ext$plot_id), ]
+    tol_x <- (e$x_max - e$x_min) * 0.1
+    tol_y <- (e$y_max - e$y_min) * 0.1
+    out <- stem$x_rel_m < e$x_min - tol_x | stem$x_rel_m > e$x_max + tol_x | 
+      stem$y_rel_m < e$y_min - tol_y | stem$y_rel_m > e$y_max + tol_y
+    if (any(out, na.rm = TRUE)) {
+      warning(sum(out, na.rm = TRUE), 
+        " stems are more than 10% outside the extent of their plot corners")
+    }
+  }
+
   # Run tests to match stem and taxon tables
-  if (!is.null(stem) & !is.null(taxon)) {
-    # TODO:
+  if (!is.null(stem) && !is.null(taxon)) {
+    # All taxonomic names in stem must be in taxon
+    stem_taxa <- stem$taxon_name[!is.na(stem$taxon_name) & stem$taxon_name != ""]
+    taxon_missing <- setdiff(stem_taxa, taxon$taxon_name)
+    if (length(taxon_missing) > 0) {
+      stop(length(taxon_missing), " values of `taxon_name` in 'stem' are missing from 'taxon'")
+    }
   }
 }
 
-#' Import saved WFO cache file
+#' Download all files under a prefix in an AWS S3 bucket to a local directory
 #'
-#' Loads the cache into namespace BIOMASS:::the$wfo_cache
+#' Files are listed in pages of up to 1000, so all files are found. The
+#' directory structure below `prefix` is recreated in `dest`. 
 #'
-#' @param filepath to previously created WFO cache file
+#' @param client S3 client created by `paws::s3()`
+#' @param bucket name of the S3 bucket
+#' @param prefix S3 key prefix of the files to download, e.g. 
+#'     `"johngodlee/GEO-TREES_INV/dat/sites/Bicuar/L0"`
+#' @param dest local directory to download files to
 #'
-loadWFOCache <- function(x) {
-  wfo_cache <- readRDS(x)
+#' @return invisibly, a character vector of the local file paths
+#'
+s3Download <- function(client, bucket, prefix, dest) {
+  # Treat the prefix as a directory
+  prefix <- paste0(sub("/+$", "", prefix), "/")
 
-  # Get internal namespace environment of the package
-  pkg_env <- asNamespace("BIOMASS")
+  # List all objects, one page at a time
+  keys <- character(0)
+  token <- NULL
+  repeat {
+    resp <- if (is.null(token)) {
+      client$list_objects_v2(Bucket = bucket, Prefix = prefix)
+    } else {
+      client$list_objects_v2(Bucket = bucket, Prefix = prefix, 
+        ContinuationToken = token)
+    }
+    keys <- c(keys, vapply(resp$Contents, function(x) x$Key, character(1)))
+    if (!isTRUE(resp$IsTruncated)) {
+      break
+    }
+    token <- resp$NextContinuationToken
+  }
 
-  # Overwrite object 'the' within namespace env
-  the_modified <- BIOMASS:::the
-  the_modified$wfo_cache <- wfo_cache
+  # Ignore directory placeholder objects
+  keys <- keys[!grepl("/$", keys)]
 
-  # Force it back into the namespace env
-  unlockBinding("the", pkg_env) 
-  assign("the", the_modified, envir = pkg_env)
-  lockBinding("the", pkg_env) 
+  if (length(keys) == 0) { 
+    stop("No files found in S3 bucket '", bucket, "' under: ", prefix)
+  }
+
+  # Local paths, keeping the structure below the prefix
+  files <- file.path(dest, substring(keys, nchar(prefix) + 1))
+
+  for (i in seq_along(keys)) {
+    dir.create(dirname(files[i]), recursive = TRUE, showWarnings = FALSE)
+    client$download_file(Bucket = bucket, Key = keys[i], Filename = files[i])
+  }
+
+  message("Downloaded ", length(keys), " files from S3 to: ", dest)
+  invisible(files)
 }
 
-#' Check if object is `sf` type
+#' Select stem measurements used to estimate AGB density
 #'
-#' @param x object subject to test
-#' @param type optional character vector of acceptable sf geometry types
+#' Selects stems which are alive, standing, have a diameter measurement at or
+#' above the minimum diameter threshold of the plot, and are not broken below
+#' the POM or missing. Where a stem was measured more than once, e.g. at
+#' different POMs, the measurement with the highest POM, latest date, and
+#' largest diameter is used. Stems without coordinates are included.
 #'
-#' @return logical
+#' @param stem stem measurement table, see ./templates/stem_cols.csv
+#' @param plot plot meta-data table, see ./templates/plot_cols.csv
 #'
-#' @importFrom sf st_geometry_type
-#' 
-#' @export
-#' 
-isSFType <- function(x, type = NULL) {
-  inherits(x, c("sf", "sfc")) && (is.null(type) |
-    all(sf::st_geometry_type(x, by_geometry = FALSE) %in% type))
+#' @return character vector of `record_id` values
+#'
+recordFilter <- function(stem, plot) {
+  stem %>%
+    left_join(., plot[, c("plot_id", "meas_diam_min_cm")], by = "plot_id") %>%
+    filter(
+      !is.na(diam_cm),
+      diam_cm >= meas_diam_min_cm,
+      grepl("A", code),
+      grepl("S", code),
+      !grepl("T", code),
+      !grepl("M", code)) %>%
+    # Keep one measurement per stem. Stems without a `stem_id` cannot be
+    # matched, so treat each of their records as a separate stem
+    mutate(stem_key = ifelse(is.na(stem_id) | stem_id == "",
+      paste0("record_", record_id), stem_id)) %>%
+    group_by(site_id, plot_id, tree_id, stem_key) %>%
+    slice_max(
+      order_by = tibble(pom_m, measurement_date, diam_cm),
+      n = 1,
+      with_ties = FALSE) %>%
+    ungroup() %>%
+    pull(record_id) %>%
+    as.character()
+}
+
+#' Calculate the equivalent diameter of multi-stemmed trees
+#'
+#' The equivalent diameter is the diameter of a single stem with the same 
+#' basal area as all stems of the tree: \eqn{\sqrt{\sum D_i^2}}. AGB is 
+#' estimated for the tree from the equivalent diameter, then shared among its
+#' stems in proportion to their basal area.
+#'
+#' @param stem stem measurement table, with columns `record_id`, `plot_id`,
+#'     `tree_id`, `diam_cm`
+#' @param include `record_id` values of stems which form trees, e.g. from
+#'     `recordFilter()`. Other stems, and stems without a `tree_id`, are 
+#'     treated as single-stemmed trees
+#'
+#' @return dataframe with one row per row of `stem`, with columns:
+#'     `record_id`, `tree_key` (identifies the tree within the site), 
+#'     `diam_eq_cm` (equivalent diameter of the tree), `ba_share` (proportion
+#'     of the basal area of the tree in this stem), and `n_stem_tree` (number
+#'     of stems in the tree)
+#'
+treeEquiv <- function(stem, include) {
+  inc <- as.character(stem$record_id) %in% as.character(include) &
+    !is.na(stem$tree_id) & stem$tree_id != "" & !is.na(stem$diam_cm)
+  tree_key <- ifelse(inc, paste(stem$plot_id, stem$tree_id, sep = "::"),
+    paste0("record::", stem$record_id))
+
+  ba <- stem$diam_cm^2
+  ba_tree <- ave(ifelse(is.na(ba), 0, ba), tree_key, FUN = sum)
+
+  out <- data.frame(
+    record_id = stem$record_id,
+    tree_key = tree_key,
+    diam_eq_cm = ifelse(inc, sqrt(ba_tree), stem$diam_cm),
+    ba_share = ifelse(inc, ba / ba_tree, 1),
+    n_stem_tree = ave(rep(1L, nrow(stem)), tree_key, FUN = length))
+  out
 }
 
 #' Paste values together, replace NAs with blank, optional separator
@@ -434,27 +703,41 @@ isSFType <- function(x, type = NULL) {
 #' 
 pasteVals <- function(..., sep = "", collapse = NULL, 
   remna = TRUE, unique = FALSE, sort = FALSE) {
-  ret <-
-    apply(
-      X = cbind(...),
-      MARGIN = 1,
-      FUN = function(x) {
-        if (all(is.na(x))) {
-          NA_character_
-        } else {
-          if (remna) {
-            x <- x[!is.na(x)]
+  x <- as.matrix(cbind(...))
+
+  if (remna && !unique && !sort) {
+    # Join columns one at a time, skipping NAs. Much faster than apply() 
+    # over rows for large tables
+    ret <- x[, 1]
+    for (i in seq_len(ncol(x))[-1]) {
+      ret <- ifelse(is.na(ret), x[, i], 
+        ifelse(is.na(x[, i]), ret, paste0(ret, sep, x[, i])))
+    }
+    ret <- unname(as.character(ret))
+  } else {
+    ret <-
+      apply(
+        X = x,
+        MARGIN = 1,
+        FUN = function(x) {
+          if (all(is.na(x))) {
+            NA_character_
+          } else {
+            if (remna) {
+              x <- x[!is.na(x)]
+            }
+            if (unique) {
+              x <- x[!duplicated(x)]
+            }
+            if (sort) {
+              x <- sort(x, na.last = TRUE)
+            }
+            paste(x, collapse = sep)
           }
-          if (unique) {
-            x <- x[!duplicated(x)]
-          }
-          if (sort) {
-            x <- sort(x, na.last = TRUE)
-          }
-          paste(x, collapse = sep)
         }
-      }
-    )
+      )
+  }
+
   if (!is.null(collapse)) {
     paste(ret, collapse = collapse)
   } else {
@@ -472,7 +755,7 @@ pasteVals <- function(..., sep = "", collapse = NULL,
 #' 
 #' @export
 #'
-getUTM <- function(lon, lat, epsg = TRUE) {
+utmZone <- function(lon, lat, epsg = TRUE) {
   # Calculate the zone number for all coordinates at once
   zone <- (floor((lon + 180) / 6) %% 60) + 1
   
@@ -592,703 +875,176 @@ extractRoxygen <- function(file_path) {
 }
 
 
-#' Fit polygons to plot geo-location points and check locations of trees
+#' Get the resolution of dates formatted as YYYY-MM-DD, YYYY-MM or YYYY
 #'
-#' @description
-#' Quality check, geometric fitting, and spatial projection of plot corners and tree coordinates.
+#' @param x character vector of dates
 #'
-#' @details
-#' The function maps relative (local/field) coordinates of plot corners to a projected coordinate 
-#' system. Outlier GPS measurements are identified based on the `max_dist` argument and, if 
-#' `rm_outliers` is TRUE, the final geometry is recalculated without them.
-#' 
-#' Three transformation methods are available to fit the plot corners and project the trees:
-#' * `"exact"`: Corner coordinates are calculated by simply averaging the projected coordinates of 
-#'   multiple GPS measurements for each corner. The projected coordinates of the trees are then 
-#'   calculated from the local coordinates using a bilinear interpolation. This projection strictly 
-#'   requires the local plot to be roughly rectangular (exactly 4 corners).
-#' * `"affine"`: An affine transformation is fitted using ordinary least squares (independent scale, 
-#'   rotation, and shear). Trees are projected using the fitted linear models.
-#' * `"procrustes"`: A Procrustes analysis is used to preserve the exact shape and dimensions of the 
-#'   plot in the local coordinate system, finding the optimal rotation and translation. Trees are 
-#'   projected applying the resulting rotation matrix and translation vector.
-#' 
-#' If `lonlat_col` is provided instead of `proj_col`, the function will first convert the long/lat 
-#' coordinates into UTM coordinates. Where plots within a site straddle multiple UTM zones the UTM zone 
-#' covered by the majority of plot corners will be used, assuming that the extent of the site is small 
-#' enough to ensure that warping is minimal.
-#' 
-#' If both `lonlat_col` and `proj_col` are provided, only UTM coordinates will be used.
-#' 
-#' When `raster` or `shapefile` are provided, they are cropped/intersected for every plot contained 
-#' in `point_data` and displayed on in generated plots. 
+#' @return character vector, one of "YYYY-MM-DD", "YYYY-MM", "YYYY", or NA
+#'     if the date is missing or not in one of these formats
 #'
-#' @param point_data data frame containing the plot corner coordinates.
-#' @param method character string indicating the spatial transformation method to use: `"exact"`, `"affine"`, or `"procrustes"`.
-#' @param rel_col character vector of length 2 specifying the column names (resp. x, y) of the corner relative coordinates (that of the field, ie, the local ones).
-#' @param proj_col (optional, if `lonlat_col` is not provided) character vector of length 2, specifying the column names (resp. x, y) of the corner projected coordinates.
-#' @param lonlat_col (optional, if `proj_col` is not provided) character vector of length 2 specifying the column names of the corner geographic coordinates (long,lat).
-#' @param corner_col (optional) character indicating the column name in `point_data` that defines points as corners (`TRUE`) or not corners (`FALSE`). Useful if the dataset contains non-corner reference points.
-#' @param plot_col if dealing with multiple plots: a character indicating the variable name for plot IDs in `point_data`.
-#' @param tree_data data frame containing the relative coordinates (field/local coordinates) of the trees and optional other tree metrics.
-#' @param tree_rel_col character vector specifying the column names of the tree relative coordinates.
-#' @param tree_plot_col if dealing with multiple plots: a character indicating the variable name for tree plot IDs in `tree_data`.
-#' @param max_dist maximum distance (in meters) above which GPS measurements should be considered outliers (default 10 m).
-#' @param rm_outliers if TRUE, outliers are removed from the coordinate calculation of the referenced corners and the geometry is refitted.
-#' @param raster filename (character) of the raster to be displayed (typically a CHM raster created from LiDAR data), or a SpatRaster object from terra package. 
-#' @param shapefile filename (character) of the shapefile to be displayed, or an object of class 'sf' (sf package). 
-#' @param prop_tree column name variable of `tree_data` for which the tree visualization will be proportional.
-#' @param threshold_tree numeric of length 1: the threshold of the `prop_tree` variable at which trees will be displayed on the plot.
-#' @param draw_plot logical indicating if the plot design should be displayed and returned.
-#' @param ask if TRUE and dealing with multiple plots, prompt user before displaying each plot. 
+dateRes <- function(x) {
+  x <- trimws(as.character(x))
+  ifelse(grepl("^\\d{4}-\\d{2}-\\d{2}$", x), "YYYY-MM-DD",
+    ifelse(grepl("^\\d{4}-\\d{2}$", x), "YYYY-MM",
+      ifelse(grepl("^\\d{4}$", x), "YYYY", NA_character_)))
+}
+
+#' Translate flags from a plot network into GEO-TREES stem codes
 #'
-#' @return Returns a list including :
-#'     - `corner_coord`: a data frame containing the projected coordinates (x_proj and y_proj) and the relative coordinates (x_rel and y_rel) of the corners of the plot 
-#'     - `polygon`: a sf object containing plot's polygon(s)
-#'     - `plot_design`: if `draw_plot` is TRUE, a ggplot object corresponding to the design of the plot
-#'     - `outliers`: a data frame containing the projected coordinates and relative coordinates of GPS measurements considered outliers 
-#'     - `UTM_code`: if `lonlat_col` is provided, a character string containing the UTM code of the corner GPS coordinates
-#'     - `tree_data`: if `tree_data` is provided, a data frame corresponding to tree_data for which the projected coordinates of the trees (x_proj and y_proj) are added, and also a variable telling if the trees are inside the plot (is_in_plot).
-#'     - `sd_coord`: a data frame containing (for each plot) the average standard deviation of the GPS measurements for each corner.
+#' @param x character vector of flags, one element per stem
+#' @param map named character vector, names are flags in `x`, values are 
+#'     GEO-TREES stem codes, see ./templates/stem_codes.csv. Values can 
+#'     contain multiple codes, e.g. `c(DC = "DF")`, or be empty, `""`, 
+#'     to ignore a flag
+#' @param split regular expression used to split `x` into individual flags,
+#'     e.g. `"[;, ]+"` for "Q;L", `""` for single character flags, e.g.
+#'     "bfj", or NA to use each value of `x` as a single flag, e.g. "dead"
 #'
-#' @export
+#' @return character vector of GEO-TREES stem codes, NA if no flags map to 
+#'     a code
 #'
-#' @importFrom stats aggregate ave lm predict sd
-#' @importFrom sf st_multipoint st_polygon st_sfc st_as_sf st_read st_crs st_transform st_intersection
-#' @importFrom ggplot2 ggplot aes geom_point geom_segment geom_polygon geom_path geom_text geom_raster scale_shape_manual scale_color_manual ggtitle theme_minimal theme coord_equal arrow unit element_blank guides guide_legend scale_alpha scale_alpha_manual scale_size scale_fill_gradientn
-#' @importFrom terra vect crop as.data.frame rast
+#' @details Flags which are not in `map` give a warning, so that they can be 
+#'     added to `map`, either with a GEO-TREES code or `""` to ignore them
 #'
-#' @author Arthur BAILLY, Arthur PERE, Maxime REJOU-MECHAIN, John L. GODLEE
+codeMap <- function(x, map, split = "") {
+  x <- ifelse(is.na(x), "", as.character(x))
+  flags <- if (is.na(split)) as.list(x) else strsplit(x, split)
+  flags <- lapply(flags, function(y) y[y != ""])
+
+  unknown <- setdiff(unique(unlist(flags)), names(map))
+  if (length(unknown) > 0) {
+    warning("Flags not in `map`, ignored: ", paste(unknown, collapse = ", "))
+  }
+
+  out <- vapply(flags, function(y) {
+    paste(map[y[y %in% names(map)]], collapse = "")
+  }, character(1))
+  out[out == ""] <- NA_character_
+  out
+}
+
+#' Combine GEO-TREES stem codes into a valid `code` value
 #'
-#' @examples
-#' # One plot with repeated measurements of each corner
-#' data("NouraguesPlot201")
-#' fit_plot201 <- plotPolyFit(
-#'    point_data = NouraguesPlot201,
-#'    method = "exact",
-#'    proj_col = c("Xutm","Yutm"), rel_col = c("Xfield","Yfield"),
-#'    draw_plot = FALSE)
-#' fit_plot201$corner_coord
-#' \donttest{
-#'    fit_plot201$plot_design
-#' }
-#' 
-#' # 4 plots with one measurement of each corner
-#' data("NouraguesCoords")
-#' fit_plots <- plotPolyFit(
-#'    point_data = NouraguesCoords,
-#'    method = "affine",
-#'    proj_col = c("Xutm","Yutm"), rel_col = c("Xfield","Yfield"),
-#'    plot_col = "Plot", draw_plot = FALSE)
-#' fit_plots$corner_coord
-#' \donttest{
-#'    fit_plots$plot_design
-#' }
-#' 
-#' # Displaying the associated CHM raster and representing trees proportionally to their diameter
-#' plot_204_coords <- NouraguesCoords[NouraguesCoords$Plot==204,]
-#' data("NouraguesTrees")
-#' plot_204_trees <- NouraguesTrees[NouraguesTrees$Plot == 204, ]
-#' nouragues_raster <- terra::rast(
-#'    system.file("extdata", "NouraguesRaster.tif",
-#'                package = "BIOMASS", mustWork = TRUE)
-#'    )
-#' fit_plot_204 <- plotPolyFit(
-#'  point_data = plot_204_coords,
-#'  method = "procrustes",
-#'  proj_col = c("Xutm","Yutm"), rel_col = c("Xfield","Yfield"),
-#'  draw_plot = FALSE,
-#'  tree_data = plot_204_trees, tree_rel_col = c("Xfield","Yfield"),
-#'  raster = nouragues_raster, prop_tree = "D", threshold_tree = 25
-#' )
-#' \donttest{
-#'    fit_plot_204$plot_design
-#' }
-#' 
-plotPolygonFit <- function(point_data, 
-  method = c("exact", "affine", "procrustes"), 
-  rel_col, proj_col = NULL, lonlat_col = NULL, corner_col = NULL, plot_col = NULL, 
-  tree_data = NULL, tree_rel_col = NULL, tree_plot_col = NULL, 
-  max_dist = 10, rm_outliers = TRUE, 
-  raster = NULL, shapefile = NULL, prop_tree = NULL, threshold_tree = NULL, 
-  draw_plot = TRUE, ask = TRUE) {
+#' @param ... character vectors of stem codes, e.g. "A", "BF", combined 
+#'     element-wise
+#' @param standing logical, recycled to the length of the codes. If TRUE, 
+#'     add "S" (standing) to stems which are not "F" (fallen) or "M" (missing)
+#'
+#' @return character vector of stem codes, with each code once, in the order 
+#'     of ./templates/stem_codes.csv. Conflicting codes are resolved: "F" 
+#'     (fallen) replaces "S" (standing), "T" (broken below POM) replaces "B" 
+#'     (broken above POM), and "M" (missing) removes all codes except "A" 
+#'     and "D"
+#'
+codeCombine <- function(..., standing = FALSE) {
+  code_order <- c("A", "D", "S", "F", "M", "B", "T", "U", "I", "H")
+  x <- pasteVals(..., sep = "")
+  standing <- rep_len(standing, length(x))
 
-  # Rename objects
-  pdt <- point_data
+  out <- vapply(seq_along(x), function(i) {
+    y <- unique(strsplit(ifelse(is.na(x[i]), "", x[i]), "")[[1]])
+    if ("F" %in% y) y <- setdiff(y, "S")
+    if ("T" %in% y) y <- setdiff(y, "B")
+    if ("M" %in% y) y <- intersect(y, c("A", "D", "M"))
+    if (standing[i] && !any(c("F", "M") %in% y)) y <- c(y, "S")
+    paste(code_order[code_order %in% y], collapse = "")
+  }, character(1))
+  out[out == ""] <- NA_character_
+  out
+}
 
-  # Match arguments
-  method <- match.arg(method, choices = c("exact", "affine", "procrustes"))
-  
-  # Check arguments ------------------------------------------------------------
-  
-  if (missing(pdt)) {
-    stop("This function has changed since version 2.2.1. You must provide 'point_data', a dataframe containing point coordinate data")
+#' Format plot corner coordinates as a GEO-TREES plot geo-location table
+#'
+#' @param x dataframe with one row per point and columns: `site_id`, 
+#'     `plot_id`, `point_id`, `x_rel_m`, `y_rel_m`, and either `longitude`
+#'     and `latitude` in WGS84 decimal degrees, or `rover_easting_utm_m`, 
+#'     `rover_northing_utm_m` and `crs_epsg`. Other columns in `cols` are kept
+#' @param cols column spec table, ./templates/pt_cols.csv
+#'
+#' @return dataframe with the columns in `cols`. Longitude and latitude are
+#'     transformed to the UTM zone containing most points. `corner` is TRUE 
+#'     if not provided
+#'
+ptFormat <- function(x, cols) {
+  x <- as.data.frame(x)
+
+  if (all(c("longitude", "latitude") %in% names(x))) {
+    ok <- !is.na(x$longitude) & !is.na(x$latitude)
+    epsg <- utmZone(x$longitude[ok], x$latitude[ok], epsg = TRUE)
+    zone <- utmZone(x$longitude[ok], x$latitude[ok], epsg = FALSE)
+    crs <- as.integer(names(which.max(table(epsg))))
+    xy <- sf::st_coordinates(sf::st_transform(
+      sf::st_as_sf(x[ok, c("longitude", "latitude")], 
+        coords = c("longitude", "latitude"), crs = 4326), crs))
+    x$rover_easting_utm_m <- NA_real_
+    x$rover_northing_utm_m <- NA_real_
+    x$rover_easting_utm_m[ok] <- xy[, 1]
+    x$rover_northing_utm_m[ok] <- xy[, 2]
+    x$crs_epsg <- crs
+    x$crs_name <- paste("UTM", zone[match(crs, epsg)])
+  } else if (!all(c("rover_easting_utm_m", "rover_northing_utm_m", "crs_epsg") %in% names(x))) {
+    stop("`x` must contain either `longitude` and `latitude`, or ",
+      "`rover_easting_utm_m`, `rover_northing_utm_m` and `crs_epsg`")
   }
 
-  if (!is.data.frame(pdt)) {
-    stop("'point_data' must be a dataframe or dataframe extension")
+  if (!"corner" %in% names(x)) {
+    x$corner <- TRUE
   }
-  
-  if (is.null(lonlat_col) & is.null(proj_col)) {
-    stop("You must provide the column names of at least one set of coordinates: 'lonlat_col' or 'proj_col'")
-  }
+  x$crs_epsg <- as.integer(x$crs_epsg)
 
-  if (!is.null(lonlat_col) & !is.null(proj_col)) { 
-    message("Both 'lonlat_col' and 'proj_col' are specified. 'proj_col' will be used")
-    lonlat_col <- NULL
-  }
+  x <- suppressMessages(colGen(x, cols$column_name, cols$class))
 
-  if (!is.null(proj_col) && !any(proj_col %in% names(pdt))) {
-    stop("Column names provided by 'proj_col' not found in 'point_data'")
-  }
-
-  if (!is.null(lonlat_col) && !any(lonlat_col %in% names(pdt))) {
-    stop("Column names provided by 'lonlat_col' not found in 'point_data'")
-  }
-
-  if (!any(rel_col %in% names(pdt))) {
-    stop("Column names provided by 'rel_col' not found in 'point_data'")
-  }
-  
-  if (!is.null(tree_data) && !is.data.frame(tree_data)){
-    stop("'tree_data' must a dataframe or dataframe extension")
-  }
-
-  if (!is.null(tree_data) && is.null(tree_rel_col)) {
-    stop("You must provide the column names of the relative coordinates in 'tree_data' using the argument 'tree_rel_col'")
-  }
-
-  if (!is.null(tree_data) && !any(tree_rel_col %in% names(tree_data))) {
-    stop("Column names provided by 'tree_rel_col' not found in 'tree_data'")
-  }
-
-  if (!is.null(prop_tree) && !any(prop_tree == names(tree_data))) {
-    stop("Column name provided by 'prop_tree' not found in 'tree_data'")
-  }
-
-  if (!is.null(threshold_tree) && is.null(prop_tree)) {
-    stop("If 'threshold_tree' is provided, 'prop_tree' must also be provided.")
-  }
-
-  if (!is.null(threshold_tree) && (!is.numeric(threshold_tree) || length(threshold_tree) != 1) ) {
-    stop("'threshold_tree' must be a numeric of length 1.")
-  }
-
-  if (length(max_dist) != 1) {
-    stop("'max_dist' must be a numeric of length 1")
-  }
-
-  if (sum(is.na(pdt[, rel_col])) != 0) {
-    stop("Missing values detected in point relative coordinates.")
-  }
-
-  if (!is.null(proj_col) && method == "exact" && sum(is.na(pdt[, proj_col])) != 0) {
-    message("Missing values detected in point projected coordinates, these rows will be discarded.")
-  }
-
-  if (!is.null(lonlat_col) && method == "exact" && sum(is.na(pdt[, lonlat_col])) != 0) {
-    stop("Missing values detected in point longitude/latitude coordinates, these rows will be discarded.")
-  }
-
-  if (!is.null(corner_col)) {
-    cdt_test <- pdt[pdt[[corner_col]] == TRUE, ] 
-  } else { 
-    cdt_test <- pdt
-  }
-
-  rel_pos <- apply(cdt_test[, rel_col], 1, paste, collapse = ":")
-
-  if (method == "exact" && length(unique(rel_pos)) > 4) {
-    stop("Method 'exact' can only handle exactly four corner points")
-  }
-
-  if (method == "affine" && 
-    length(unique(rel_pos[!grepl("NA", apply(pdt[, proj_col], 1, paste, collapse = ":"))])) < 3) {
-    stop("Fewer than three non-missing projected point coordinates, needed for 'affine' method")
-  }
-
-  if (method == "affine" && 
-    length(unique(rel_pos[!grepl("NA", apply(pdt[, lonlat_col], 1, paste, collapse = ":"))])) < 3) {
-    stop("Fewer than three non-missing longitude/latitude coordinates, needed for 'affine' method")
-  }
-
-  if (method == "procrustes" && 
-    length(unique(rel_pos[!grepl("NA", apply(pdt[, proj_col], 1, paste, collapse = ":"))])) < 2) {
-    stop("Fewer than two non-missing projected point coordinates, needed for 'procrustes' method")
-  }
-
-  if (method == "procrustes" && 
-    length(unique(rel_pos[!grepl("NA", apply(pdt[, lonlat_col], 1, paste, collapse = ":"))])) < 2) {
-    stop("Fewer than two non-missing projected point coordinates, needed for 'procrustes' method")
-  }
-
-  if (!is.null(tree_data) && !is.null(plot_col) && is.null(tree_plot_col)) {
-    stop("Argument 'tree_plot_col' is required if 'plot_col' is provided.")
-  }
-
-  if (!is.null(tree_data) && is.null(plot_col) && !is.null(tree_plot_col)) {
-    stop("Argument 'plot_col' is required if 'tree_plot_col' is provided.")
-  }
-
-  if (!is.null(plot_col) && !any(plot_col %in% names(pdt))) {
-    stop("Column name provided by 'plot_col' not found in 'point_data'.")
-  }
-
-  if (!is.null(tree_data) && !is.null(tree_plot_col) && any(!unique(tree_data[[tree_plot_col]]) %in% unique(pdt[[plot_col]])) ) {
-    message(paste("IDs not matched in 'tree_plot_col' and 'plot_col':" , 
-      paste(unique(tree_data[[tree_plot_col]])[
-        !unique(tree_data[[tree_plot_col]]) %in% unique(pdt[[plot_col]])], 
-        collapse = " "), "\n"))
-  }
-  
-  if (is.null(corner_col)) { 
-    un_pts <- unique(pdt[, c(plot_col, rel_col)])
-    if (is.null(plot_col)) { 
-      points_un_plot <- data.frame(n = nrow(un_pts))
-    } else {
-      points_un_plot <- aggregate(un_pts[[rel_col[1]]] ~ un_pts[[plot_col]], FUN = length)
-      names(points_un_plot) <- c(plot_col, "n")
-    }
-    if (any(points_un_plot$n < 3)) { 
-      stop("At least three corners per plot required to define a polygon")
-    }
-  }
-  
-  # Data processing ------------------------------------------------------------
-  
-  # Rename columns
-  names(pdt)[names(pdt) == rel_col[1]] <- "x_rel"
-  names(pdt)[names(pdt) == rel_col[2]] <- "y_rel"
-  
-  if (!is.null(proj_col)) {
-    names(pdt)[names(pdt) == proj_col[1]] <- "x_proj"
-    names(pdt)[names(pdt) == proj_col[2]] <- "y_proj"
-  }
-
-  if (!is.null(lonlat_col)) {
-    names(pdt)[names(pdt) == lonlat_col[1]] <- "lon"
-    names(pdt)[names(pdt) == lonlat_col[2]] <- "lat"
-  }
-
-  if (!is.null(corner_col)) {
-    names(pdt)[names(pdt) == corner_col] <- "type"
-  }
-  
-  if (!is.null(plot_col)) {
-    names(pdt)[names(pdt) == plot_col] <- "plot_ID"
-  } else {
-    pdt$plot_ID <- ""
-  }
-  
-  # Format tree data
-  tdt <- NULL
-  if (!is.null(tree_data)) {
-    tdt <- tree_data
-    names(tdt)[names(tdt) == tree_rel_col[1]] <- "x_rel"
-    names(tdt)[names(tdt) == tree_rel_col[2]] <- "y_rel"
-    
-    if (!is.null(tree_plot_col)) {
-      names(tdt)[names(tdt) == tree_plot_col] <- "plot_ID"
-    } else {
-      tdt$plot_ID <- ""
-    }
-  }
-  
-  # Transform lat-lon coordinates to UTM if provided
-  if (!is.null(lonlat_col)) { 
-    UTM_code <- getUTM(pdt[,c("lon", "lat")])
-    if (length(unique(UTM_code)) > 1) {
-      message("More than one UTM zone detected. Latitude-longitude coordinates will be transformed to the most frequent UTM zone across plots.")
-    }
-    utm_unique <- names(sort(table(UTM_code), decreasing = TRUE))[1]
-    proj_xy <- proj4::project(pdt[, c("lon", "lat")], proj = utm_unique)
-    pdt$x_proj <- proj_xy$x
-    pdt$y_proj <- proj_xy$y
-  }
-
-  # Calculate sd_coord
-  sd_x <- aggregate(x_proj ~ plot_ID + x_rel + y_rel, data = pdt, FUN = sd, na.action = na.pass)
-  sd_y <- aggregate(y_proj ~ plot_ID + x_rel + y_rel, data = pdt, FUN = sd, na.action = na.pass)
-  sd_merged <- merge(sd_x, sd_y, by = c("plot_ID", "x_rel", "y_rel"), all = TRUE)
-  sd_merged$sd_coord <- rowMeans(sd_merged[, c("x_proj", "y_proj")], na.rm = TRUE)
-  sd_coord <- aggregate(
-    x = list(sd_coord = sd_merged$sd_coord), 
-    by = list(plot_ID = sd_merged$plot_ID), 
-    FUN = function(x) mean(x, na.rm = TRUE)
-  )
-
-  # Check corner coordinates and calculate tree projected coordinates --------
-  
-  # Fit models, calculate predictions, and identify outliers (Vectorized & split approach)
-  apply_fit <- function(df, meth) {
-    res_list <- lapply(split(df, df$plot_ID), function(sub_dt) {
-      if (meth == "exact") {
-        sub_dt$x_proj_pred <- ave(sub_dt$x_proj, sub_dt$x_rel, sub_dt$y_rel, FUN = function(x) mean(x, na.rm = TRUE))
-        sub_dt$y_proj_pred <- ave(sub_dt$y_proj, sub_dt$x_rel, sub_dt$y_rel, FUN = function(x) mean(x, na.rm = TRUE))
-      } else if (meth == "affine") {
-        m_x <- lm(x_proj ~ x_rel + y_rel, data = sub_dt)
-        m_y <- lm(y_proj ~ x_rel + y_rel, data = sub_dt)
-        sub_dt$x_proj_pred <- predict(m_x, sub_dt)
-        sub_dt$y_proj_pred <- predict(m_y, sub_dt)
-      } else if (meth == "procrustes") {
-        proc <- BIOMASS:::procrust(
-          sub_dt[!is.na(sub_dt$x_proj) & !is.na(sub_dt$y_proj), c("x_proj", "y_proj")], 
-          sub_dt[!is.na(sub_dt$x_proj) & !is.na(sub_dt$y_proj), c("x_rel", "y_rel")])
-        rot <- as.matrix(sub_dt[, c("x_rel", "y_rel")]) %*% proc$rotation
-        sub_dt$x_proj_pred <- rot[, 1] + proc$translation[1]
-        sub_dt$y_proj_pred <- rot[, 2] + proc$translation[2]
-      }
-      return(sub_dt)
-    })
-    do.call(rbind, unname(res_list))
-  }
-
-  pdt <- apply_fit(pdt, method)
-
-  # Identify and extract outliers
-  pdt$outlier <- sqrt((pdt$x_proj - pdt$x_proj_pred)^2 + (pdt$y_proj - pdt$y_proj_pred)^2) > max_dist
-  
-  pdt$n_meas <- ave(rep(1, nrow(pdt)), pdt$plot_ID, pdt$x_rel, pdt$y_rel, FUN = length)
-  pdt$n_outliers <- ave(as.integer(pdt$outlier), pdt$plot_ID, pdt$x_rel, pdt$y_rel, FUN = sum)
-  
-  outliers_df <- pdt[pdt$outlier == TRUE & !is.na(pdt$outlier), c("plot_ID", "x_proj", "y_proj", "x_rel", "y_rel")]
-
-  if (rm_outliers) {
-    pdt <- pdt[!(pdt$outlier == TRUE & !is.na(pdt$outlier) & pdt$n_meas > pdt$n_outliers), ]
-    pdt <- apply_fit(pdt, method)
-  }
-
-  # Extract corners and aggregate to 1 row per unique corner
-  if (!is.null(corner_col)) {
-    cdt <- pdt[pdt$type == TRUE, ] 
-  } else { 
-    cdt <- pdt
-  }
-
-  if (method == "exact" & any(is.na(cdt[,c("x_proj_pred", "y_proj_pred")]))) {
-    stop("No valid location for one or more corners")
-  }
-  
-  corner_checked <- aggregate(cbind(x_proj_pred, y_proj_pred) ~ plot_ID + x_rel + y_rel, 
-    data = cdt, FUN = mean, na.rm = TRUE)
-  names(corner_checked)[
-    names(corner_checked) %in% c("x_proj_pred", "y_proj_pred")] <- c("x_proj", "y_proj")
-
-  # Sort corners counter-clockwise radially or by order in dataframe
-  if (nrow(cdt) <= 4) { 
-    corner_checked <- do.call(rbind, lapply(split(corner_checked, corner_checked$plot_ID), function(sub_c) {
-      centroid_x <- mean(sub_c$x_rel)
-      centroid_y <- mean(sub_c$y_rel)
-      angles <- atan2(sub_c$y_rel - centroid_y, sub_c$x_rel - centroid_x)
-      sub_c[order(angles), ]
-    }))
-  } else { 
-    cdt$pos <- seq_len(nrow(cdt))
-    orig_ord <- aggregate(pos ~ plot_ID + x_rel + y_rel, data = cdt, FUN = min)
-    corner_checked <- merge(corner_checked, orig_ord, by = c("plot_ID", "x_rel", "y_rel"))
-    corner_checked <- corner_checked[order(corner_checked$plot_ID, corner_checked$pos), ]
-    corner_checked$pos <- NULL # Clean up
-  }
-  rownames(corner_checked) <- NULL
-
-  # Prep original order from cdt 
-  cdt$pos <- seq_len(nrow(cdt))
-  orig_ord <- aggregate(pos ~ plot_ID + x_rel + y_rel, data = cdt, FUN = min)
-
-  # For each plot
-  corner_checked_split <- split(corner_checked, corner_checked$plot_ID)
-  corner_checked <- do.call(rbind, lapply(corner_checked_split, function(i) {
-    
-    # For rectangular plots
-    if (nrow(i) <= 4) {
-      i[chull(i$x_proj, i$y_proj), ]
-    } else {
-      # For other irregular plots
-      # Merge with original cdt order, sort sequentially, and clean up
-      merged_sub <- merge(i, orig_ord, by = c("plot_ID", "x_rel", "y_rel"), all.x = TRUE)
-      merged_sub <- merged_sub[order(merged_sub$pos), ]
-      merged_sub$pos <- NULL 
-      merged_sub
-    }
-  }))
-  rownames(corner_checked) <- NULL
-  cdt$pos <- NULL 
-
-
-  # Tree projection ------------------------------------------------------------
-
-  if (!is.null(tree_data)) {
-    tdt_list <- lapply(split(tdt, tdt$plot_ID), function(sub_tdt) {
-      pid <- sub_tdt$plot_ID[1]
-      sub_corners <- corner_checked[corner_checked$plot_ID == pid, ]
-      
-      if (method == "exact") {
-        x_A <- sub_corners$x_rel[1]; y_A <- sub_corners$y_rel[1]
-        x_B <- sub_corners$x_rel[2]; y_B <- sub_corners$y_rel[2]
-        x_C <- sub_corners$x_rel[3]; y_C <- sub_corners$y_rel[3]
-        x_D <- sub_corners$x_rel[4]; y_D <- sub_corners$y_rel[4]
-        
-        u_A <- sub_corners$x_proj[1]; v_A <- sub_corners$y_proj[1]
-        u_B <- sub_corners$x_proj[2]; v_B <- sub_corners$y_proj[2]
-        u_C <- sub_corners$x_proj[3]; v_C <- sub_corners$y_proj[3]
-        u_D <- sub_corners$x_proj[4]; v_D <- sub_corners$y_proj[4]
-        
-        x <- sub_tdt$x_rel
-        y <- sub_tdt$y_rel
-        
-        rate_A <- (1 - (x - x_A) / (x_C - x_A)) * (1 - (y - y_A) / (y_C - y_A))
-        rate_B <- (1 - (x - x_B) / (x_D - x_B)) * (1 - (y - y_B) / (y_D - y_B))
-        rate_C <- (1 - (x - x_C) / (x_A - x_C)) * (1 - (y - y_C) / (y_A - y_C))
-        rate_D <- (1 - (x - x_D) / (x_B - x_D)) * (1 - (y - y_D) / (y_B - y_D))
-        
-        sub_tdt$x_proj <- rate_A * u_A + rate_B * u_B + rate_C * u_C + rate_D * u_D
-        sub_tdt$y_proj <- rate_A * v_A + rate_B * v_B + rate_C * v_C + rate_D * v_D
-
-      } else if (method == "affine") {
-
-        m_x <- lm(x_proj ~ x_rel + y_rel, data = sub_corners)
-        m_y <- lm(y_proj ~ x_rel + y_rel, data = sub_corners)
-        sub_tdt$x_proj <- predict(m_x, sub_tdt)
-        sub_tdt$y_proj <- predict(m_y, sub_tdt)
-
-      } else {
-
-        proc <- BIOMASS:::procrust(sub_corners[, c("x_proj", "y_proj")], sub_corners[, c("x_rel", "y_rel")])
-        rot <- as.matrix(sub_tdt[, c("x_rel", "y_rel")]) %*% proc$rotation
-        sub_tdt$x_proj <- rot[, 1] + proc$translation[1]
-        sub_tdt$y_proj <- rot[, 2] + proc$translation[2]
-
-      }
-      
-      # Build a temporary local polygon and check if tree points fall within it
-      poly_mat_rel <- as.matrix(rbind(sub_corners[, c("x_rel", "y_rel")], sub_corners[1, c("x_rel", "y_rel")]))
-      poly_sf_rel <- sf::st_sfc(sf::st_polygon(list(poly_mat_rel)))
-      tree_sf_rel <- sf::st_as_sf(sub_tdt, coords = c("x_rel", "y_rel"))
-
-      sub_tdt$is_in_plot <- as.logical(sf::st_intersects(tree_sf_rel, poly_sf_rel, sparse = FALSE))
-      
-      return(sub_tdt)
-    })
-    tdt <- do.call(rbind, unname(tdt_list))
-  }
-
-  # Create SF polygons ------------------------------------------------------
-  poly_list <- list()
-  for (pid in unique(corner_checked$plot_ID)) {
-    sub_corners <- corner_checked[corner_checked$plot_ID == pid, ]
-    poly_mat <- as.matrix(rbind(sub_corners[, c("x_proj", "y_proj")], sub_corners[1, c("x_proj", "y_proj")]))
-    poly_geom <- sf::st_polygon(list(poly_mat))
-    
-    # Conditionally create the geometry column to avoid NA type errors in sf
-    if (!is.null(lonlat_col)) {
-      geom_sfc <- sf::st_sfc(poly_geom, crs = utm_unique)
-    } else {
-      geom_sfc <- sf::st_sfc(poly_geom)
-    }
-
-    poly_list[[pid]] <- sf::st_sf(plot_ID = pid, geometry = geom_sfc)
-  }
-
-  if (length(poly_list) > 0) {
-    corner_polygon <- do.call(rbind, poly_list) 
-  } else {
-    corner_polygon <- NULL
-  }
-
-  # Plotting ------------------------------------------------------
-
-  plot_list <- list()
-  if (draw_plot) {
-    if (!is.null(raster) && is.character(raster)) raster <- terra::rast(raster)
-    if (!is.null(shapefile) && is.character(shapefile)) shapefile <- st_read(shapefile, quiet=TRUE)
-
-    for (pid in unique(corner_checked$plot_ID)) {
-      sub_corners <- corner_checked[corner_checked$plot_ID == pid, ]
-      poly_sf <- corner_polygon[corner_polygon$plot_ID == pid, ]
-      
-      p <- ggplot()
-      
-      if (!is.null(raster) && inherits(raster, "SpatRaster")) {
-        r_crop <- as.data.frame(crop(raster, vect(poly_sf), mask = TRUE), xy = TRUE)
-        if (nrow(r_crop) > 0) {
-          p <- p + 
-            geom_raster(data = r_crop, aes(x = x, y = y, fill = .data[[names(r_crop)[3]]])) +
-            scale_fill_gradientn(colours = rev(terrain.colors(10)))
-        }
-      }
-      
-      if (!is.null(shapefile)) {
-        # Perform the intersection using the matching CRS
-        if (st_crs(shapefile) != st_crs(poly_sf)) {
-          shp_tmp <- st_transform(shapefile, st_crs(poly_sf))
-        } else {
-          shp_tmp <- shapefile
-        }
-        
-        shp_crop <- st_intersection(shp_tmp, poly_sf)
-
-        if (nrow(shp_crop) > 0) {
-          p <- p + geom_sf(data = shp_crop, fill = NA, color = "darkgreen")
-        }
-      }
-
-      poly_df <- rbind(sub_corners, sub_corners[1, ])
-
-      # Add fitted polygon
-      p <- p + 
-        geom_path(data = poly_df, aes(x = x_proj, y = y_proj), linewidth = 1.2, color = "black")
-
-      # Extract the original (pre-fitted) corner measurements for this plot
-      corner_orig <- cdt[cdt$plot_ID == pid, ]
-
-      if (!is.null(corner_col)) { 
-        other_orig <- pdt[pdt$plot_ID == pid & pdt$type == FALSE, ]
-        p <- p + 
-          # Layer 1: Original other GPS measurements (Open circles)
-          geom_point(data = other_orig, aes(x = x_proj, y = y_proj), shape = 1, size = 2, color = "black") +
-          # Layer 2: Original corner GPS measurements (Open triangles)
-          geom_point(data = corner_orig, aes(x = x_proj, y = y_proj), shape = 2, size = 3, color = "black")
-      } else { 
-        p <- p + 
-          # Layer 1: Original corner GPS measurements (Open circles)
-          geom_point(data = corner_orig, aes(x = x_proj, y = y_proj), shape = 2, size = 3, color = "black")
-      }
-
-      # Add final fitted corners
-      p <- p + 
-        geom_point(data = sub_corners, aes(x = x_proj, y = y_proj), shape = 15, size = 3, color = "black")
-
-      # Add blue orientation arrows for the local grid (x_rel, y_rel)
-      if (nrow(sub_corners) >= 3) {
-        arrow_df <- data.frame(
-          x = sub_corners$x_proj[1], 
-          y = sub_corners$y_proj[1],
-          xend = c(
-            sub_corners$x_proj[1] + (sub_corners$x_proj[2] - sub_corners$x_proj[1]) / 4,
-            sub_corners$x_proj[1] + (sub_corners$x_proj[nrow(sub_corners)] - sub_corners$x_proj[1]) / 4
-          ),
-          yend = c(
-            sub_corners$y_proj[1] + (sub_corners$y_proj[2] - sub_corners$y_proj[1]) / 4,
-            sub_corners$y_proj[1] + (sub_corners$y_proj[nrow(sub_corners)] - sub_corners$y_proj[1]) / 4
-          ),
-          label = c("x_rel", "y_rel")
-        )
-        
-        p <- p + 
-          geom_segment(data = arrow_df, aes(x = x, y = y, xend = xend, yend = yend), 
-            arrow = arrow(length = unit(0.3, "cm")), color = "blue", linewidth = 1) +
-          geom_text(data = arrow_df, aes(x = xend, y = yend, label = label), 
-            color = "blue", vjust = -1, hjust = -0.1)
-      }
-      
-      sub_outliers <- outliers_df[outliers_df$plot_ID == pid, ]
-      if (nrow(sub_outliers) > 0) {
-        p <- p + geom_point(data = sub_outliers, aes(x = x_proj, y = y_proj), shape = 4, size = 3, color = "red")
-      }
-      
-      if (!is.null(tdt)) {
-        sub_trees <- tdt[tdt$plot_ID == pid, ]
-        
-        # Only attempt to plot trees and build scales if this plot actually contains trees
-        if (nrow(sub_trees) > 0) {
-          
-          # Clean character column for the legend
-          sub_trees$Location <- ifelse(sub_trees$is_in_plot, "Inside Plot", "Outside Plot")
-          
-          if (!is.null(prop_tree)) {
-            
-            if (!is.null(threshold_tree)) {
-              filt <- sub_trees[[prop_tree]] >= threshold_tree 
-            } else {
-              filt <- rep(TRUE, nrow(sub_trees))
-            }
-            
-            p <- p + 
-              geom_point(data = sub_trees[sub_trees$is_in_plot == TRUE & filt, ], 
-                aes(x = x_proj, y = y_proj, size = .data[[prop_tree]], alpha = .data[[prop_tree]]), shape = 1) +
-              geom_point(data = sub_trees[sub_trees$is_in_plot == FALSE, ], aes(x = x_proj, y = y_proj), shape = 13, size = 2) +
-              scale_alpha(range = c(0.2, 1)) + 
-              scale_size(range = c(0.1, 6))
-          } else {
-            p <- p + 
-              geom_point(data = sub_trees, aes(x = x_proj, y = y_proj, shape = Location), alpha = 0.6) +
-              scale_shape_manual(values = c("Inside Plot" = 1, "Outside Plot" = 13), name = "Tree Location")
-          }
-        }
-      } 
-      
-      p <- p + 
-        coord_equal() + 
-        theme_minimal() + 
-        ggtitle(paste("Plot:", pid))
-      plot_list[[pid]] <- p
-      
-      if (ask) {
-        print(p)
-        if (pid != unique(corner_checked$plot_ID)[length(unique(corner_checked$plot_ID))]) {
-          readline(prompt = "Press [enter] to see the next plot")
-        }
-      } else {
-        print(p)
-      }
+  # Convert columns to the classes in `cols`
+  for (i in seq_len(nrow(cols))) {
+    if (!inherits(x[[cols$column_name[i]]], cols$class[i])) {
+      x[[cols$column_name[i]]] <- match.fun(paste0("as.", cols$class[i]))(x[[cols$column_name[i]]])
     }
   }
 
-  # Back-transform UTM to longlat -------------------------------
-  if (!is.null(lonlat_col) && exists("utm_unique")) {
-    ll_corners <- proj4::project(xy = corner_checked[, c("x_proj", "y_proj")], proj = utm_unique, inverse = TRUE)
-    corner_checked$long <- ll_corners$x
-    corner_checked$lat <- ll_corners$y
-    
-    if (!is.null(tdt)) {
-      ll_trees <- proj4::project(xy = tdt[, c("x_proj", "y_proj")], proj = utm_unique, inverse = TRUE)
-      tdt$long <- ll_trees$x
-      tdt$lat <- ll_trees$y
-    }
+  x[, cols$column_name]
+}
+
+#' Convert YYYY-MM-DD, YYYY-MM or YYYY dates to decimal years
+#'
+#' Partial dates are placed at the midpoint of their month or year
+#'
+#' @param x character vector of dates
+#' @param digits number of decimal places to round to. If NULL, no rounding
+#'
+#' @return numeric vector of decimal years
+#'
+decDate <- function(x, digits = 3) {
+  x <- trimws(as.character(x))
+
+  res <- ifelse(grepl("^\\d{4}-\\d{2}-\\d{2}$", x), "YYYY-MM-DD",
+    ifelse(grepl("^\\d{4}-\\d{2}$", x), "YYYY-MM",
+      ifelse(grepl("^\\d{4}$", x), "YYYY", NA_character_)))
+
+  y <- as.integer(substr(x, 1, 4))
+  m <- as.integer(substr(x, 6, 7))
+
+  # Start and (exclusive) end of the interval covered by each date
+  start <- as.Date(ifelse(res == "YYYY-MM-DD", x,
+    ifelse(res == "YYYY-MM", paste0(x, "-01"),
+      ifelse(res == "YYYY", paste0(x, "-01-01"), NA_character_))))
+  end <- as.Date(ifelse(res == "YYYY-MM-DD", x,
+    ifelse(res == "YYYY-MM", sprintf("%04d-%02d-01", y + m %/% 12, m %% 12 + 1),
+      ifelse(res == "YYYY", sprintf("%04d-01-01", y + 1), NA_character_))))
+
+  # Midpoint of interval
+  mid <- start + (end - start) / 2
+
+  # Fraction of year elapsed at midpoint
+  y_mid <- as.integer(format(mid, "%Y"))
+  y_start <- as.Date(paste0(y_mid, "-01-01"))
+  y_len <- as.numeric(as.Date(paste0(y_mid + 1, "-01-01")) - y_start)
+  dec <- y_mid + as.numeric(mid - y_start) / y_len
+
+  # Optionally round
+  if (!is.null(digits)) {
+    dec <- round(dec, digits)
   }
 
-  # Clean returns -----------------------------------------------------------
-
-  if (all(unique(corner_checked$plot_ID) == "")) {
-    corner_checked$plot_ID <- NULL 
-  }
-  
-  output <- list(
-    corner_coord = corner_checked,
-    polygon = corner_polygon
-  )
-  
-  if (draw_plot) {
-    if (length(plot_list) == 1) {
-      output$plot_design <- plot_list[[1]]
-    } else {
-      output$plot_design <- plot_list
-    }
-  }
-  
-  if (nrow(outliers_df) > 0) {
-    output$outliers <- outliers_df
-  }
-  
-  if (!is.null(lonlat_col)) {
-    output$UTM_code <- utm_unique
-  }
-  
-  if (!is.null(tree_data)) {
-    if (all(unique(tdt$plot_ID) == "")) {
-      tdt$plot_ID <- NULL
-    }
-    output$tree_data <- tdt
-  }
-  
-  # Clean up sd_coord formatting based on plot counts
-  if (nrow(sd_coord) == 1 ) {
-    output$sd_coord <- sd_coord$sd_coord
-  } else {
-    output$sd_coord <- sd_coord
-  }
-  
-  # Return
-  return(output)
+  return(dec)
 }
 

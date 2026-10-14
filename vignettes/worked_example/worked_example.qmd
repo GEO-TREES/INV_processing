@@ -11,6 +11,7 @@ format:
     df-print: "paged"
     page-layout: full
     html-math-method: katex
+    embed-resources: true
 bibliography: worked_example.bib
 vignette: >
   %\VignetteIndexEntry{GEO-TREES Tree Inventory Data Processing Workflow}
@@ -146,8 +147,15 @@ There should be one `param.yaml` file for each version of the processed data.
 * `opt_s3` -- Boolean (`true`/`false`). If `true`, raw input data will be pulled from an AWS S3 bucket specified in `s3_dir`, otherwise a local directory specified in `raw_dir`
 * `product_version` -- String specifying the version of the data products, e.g. `"v1"`. Data products may be specified with different parameter sets, for example different size quadrats (`quad_dim`) or different methods of estimating stem height (`height_method`). 
 * `software_version` -- String specifying the version of the code used to generate the data products, normally a GitHub release version, e.g. `"v2.4"`
-* `height_method` -- Method used to estimate stem height, e.g. `"regional"`, `"field"`, `"local"`
-* `wd_method` -- Method used to estimate wood density, e.g. `"regional"`, `"local"`
+* `height_method` -- Method used to estimate stem height, either `"regional"` or `"field"`
+* `wd_method` -- Method used to estimate wood density, either `"regional"` or `"field"`
+* `polygon_method` -- Method used to fit plot polygons, one of `"exact"`, `"affine"` or `"procrustes"`, see [Fit plot spatial polygons]
+* `rocrate` -- Information on who ran the workflow, used in the RO-Crate meta-data files which accompany each data product:
+  * `author_name` -- e.g. `"John L. Godlee"`
+  * `author_email` -- e.g. `"GodleeJ@si.edu"`
+  * `author_orcid` -- Optional, ORCID URL of the author, e.g. `"https://orcid.org/0000-0000-0000-0000"`
+  * `affiliation` -- e.g. `"Smithsonian Institution"`
+  * `license` -- License file for the data products, e.g. `"TERMS.md"`
 
 Import the example `param.yaml`:
 
@@ -173,14 +181,45 @@ param_name_vec <- c(
   "raw_dir",
   "height_method",
   "wd_method",
+  "polygon_method",
   "software_version",
-  "product_version"
+  "product_version",
+  "rocrate"
+)
+
+# Define RO-Crate parameter names, `author_orcid` is optional
+rocrate_name_vec <- c(
+  "author_name",
+  "author_email",
+  "affiliation",
+  "license"
 )
 
 # Check all parameters present
-if (all(sort(names(param)) != sort(param_name_vec))) {
-    stop("The following parameters must be named in ./param.yaml: ", 
-      paste(param_name_vec, collapse = ", "))
+# `s3_dir` is only needed if `opt_s3` is TRUE
+param_missing <- setdiff(param_name_vec, names(param))
+if (isFALSE(param$opt_s3)) {
+  param_missing <- setdiff(param_missing, "s3_dir")
+}
+if (length(param_missing) > 0) {
+  stop("Missing parameters: ", paste(param_missing, collapse = ", "))
+}
+
+rocrate_missing <- setdiff(rocrate_name_vec, names(param$rocrate))
+if (length(rocrate_missing) > 0) {
+  stop("Missing `rocrate` parameters: ", paste(rocrate_missing, collapse = ", "))
+}
+
+# Check parameter values
+param_choices <- list(
+  height_method = c("regional", "field"),
+  wd_method = c("regional", "field"),
+  polygon_method = c("exact", "affine", "procrustes")
+)
+for (i in names(param_choices)) {
+  if (!param[[i]] %in% param_choices[[i]]) {
+    stop("`", i, "` must be one of: ", paste(param_choices[[i]], collapse = ", "))
+  }
 }
 
 # Print parameters
@@ -319,6 +358,13 @@ along the length of the stem.
 The `record_id` column is a unique identifier for the stem measurement record
 within the site, essentially the row number of the stem measurement table. 
 
+The `measurement_date` column records the date of each measurement as a decimal
+year, e.g. `2024.585` for 2nd August 2024, and `measurement_date_res` records
+the resolution of the original date: `"YYYY-MM-DD"`, `"YYYY-MM"`, or `"YYYY"`.
+The `decDate()` function converts dates to decimal years. Dates recorded only
+to the month or year are placed at the middle of that month or year, e.g.
+`decDate("2024")` returns `2024.5`.
+
 ```{r}
 #| tbl-cap: "Example of L0 stem measurement table."
 kable(head(L0$stem, 10))
@@ -387,6 +433,31 @@ Local biomass allometry
 Local height-diameter allometry
 :::
 
+Before processing, `valCheck()` runs a series of checks on the L0 data objects.
+It returns an error for values which would cause the processing to fail, or
+which are impossible, e.g. negative stem diameters, plot IDs which don't match
+between tables, or values outside the ranges given in the template files in
+`./templates/`. It returns a warning for values which are probably wrong, but
+which may be legitimate, e.g. stems mapped far outside the plot, or stems
+without a `stem_id`.
+
+```{r}
+# Import column templates
+stem_cols <- read.csv("../../templates/stem_cols.csv")
+plot_cols <- read.csv("../../templates/plot_cols.csv")
+pt_cols <- read.csv("../../templates/pt_cols.csv")
+height_cols <- read.csv("../../templates/height_cols.csv")
+
+# Check values in L0 data
+valCheck(
+  plot = L0$plot,
+  stem = L0$stem,
+  pt = L0$pt,
+  taxon = L0$taxa,
+  height = L0$height,
+  wd = L0$wd)
+```
+
 ## Correct taxonomy 
 
 `02_taxa.R`
@@ -398,7 +469,11 @@ matching taxonomic names in their database.
 
 The argument `interactive = TRUE` means that when a name matches multiple
 taxonomic names in the WFO database, users will be prompted to pick the correct
-taxonomic name from a list in the R console. 
+taxonomic name from a list in the R console. In the automated workflow,
+prompts are only shown in an interactive R session. When processing many sites
+with `zz_site_all.R`, which sets `options(inv.batch = TRUE)`, ambiguous names
+are left unmatched so that processing isn't interrupted. These names can be
+matched in a later interactive run.
 
 Example of the interactive dialogue returned by `correctTaxo()` for the name `"Julbernardia pan"`:
 
@@ -432,8 +507,14 @@ higher-order taxonomic rank such as just the genus or family. Some examples of v
 (species epithet) columns if your data is formatted that way.
 
 If `useCache = TRUE`, `correctTaxo()` creates a cache object containing
-previously queried taxonomic names. You can export this cache to a file to use
-later to avoid having to do the slow interactive name matching multiple times. 
+previously queried taxonomic names, including the choices made during
+interactive matching. In the automated workflow this cache is saved to
+`./sites/<SITE>/<ACQUISITION>/wfo_cache.rds`, which is shared by all product
+versions of an acquisition and is tracked in the git repository, as a record
+of the choices made. Names are matched in chunks, and the cache is saved after
+each chunk, so choices are kept if interactive matching is interrupted. Names
+which could not be matched in a batch run are not saved, so they are offered
+again in the next interactive run.
 
 ```{r}
 # Combine taxa across tables
@@ -443,27 +524,34 @@ taxon_vec <- sort(unique(c(
   L0$height$taxon_name)))
 
 # Load WFO cache from previous processing
-wfo_path <- file.path(indir, "wfo_cache.rds")
-if (file.exists(wfo_path)) { 
-  loadWFOCache(wfo_path) 
+loadWFOCache(file.path(indir, "wfo_cache.rds"))
+
+# Prompt the user only in interactive sessions
+taxa_interactive <- interactive() && !isTRUE(getOption("inv.batch"))
+
+# Match names in chunks, saving the cache after each chunk
+# In the vignette the cache is saved to a temporary file
+wfo_path <- file.path(tempdir(), "wfo_cache.rds")
+chunk_size <- 25
+taxon_chunks <- split(taxon_vec, ceiling(seq_along(taxon_vec) / chunk_size))
+taxa_list <- list()
+for (i in seq_along(taxon_chunks)) {
+  taxa_list[[i]] <- BIOMASS::correctTaxo(
+    genus = taxon_chunks[[i]], 
+    species = NULL,
+    interactive = taxa_interactive, 
+    preferAccepted = TRUE,
+    preferFuzzy = FALSE,
+    sub_pattern = subPattern(),
+    useCache = TRUE,
+    useAPI = TRUE,
+    capacity = 60,
+    fill_time_s = 1, 
+    timeout = 60)
+
+  saveWFOCache(wfo_path, rm_empty = !taxa_interactive)
 }
-
-# Check names
-stem_taxa_all <- BIOMASS::correctTaxo(
-  genus = taxon_vec, 
-  species = NULL,
-  interactive = TRUE, 
-  preferAccepted = TRUE,
-  preferFuzzy = FALSE,
-  sub_pattern = subPattern(),
-  useCache = TRUE,
-  useAPI = FALSE,
-  capacity = 60,
-  fill_time_s = 1, 
-  timeout = 60)
-
-# Optionally write WFO cache to file for future processing
-# saveRDS(BIOMASS:::the$wfo_cache, file.path(outdir, "wfo_cache.rds"))
+stem_taxa_all <- bind_rows(taxa_list)
 ```
 
 ```{r}
@@ -472,15 +560,49 @@ stem_taxa_all <- BIOMASS::correctTaxo(
 kable(head(stem_taxa_all))
 ```
 
+To make it easier to check the results, we create a table of names which were
+changed (e.g. synonyms, spelling corrections) or which could not be matched,
+with the method used to match each name and the number of stems affected. In
+the automated workflow this table is written to `taxa_review.csv`. Methods
+include `"AUTO"` (a single exact match), `"AUTO ACC"` (the only accepted name
+among several candidates), `"MANUAL"` (picked by the user), `"SKIP"` (skipped
+by the user), and `"EMPTY"` (no match found).
+
+```{r}
+#| tab-cap: "Names changed or not matched during taxonomic name matching."
+# Create table of names which were changed or not matched, for review
+taxa_method <- vapply(stem_taxa_all$nameSubmitted, function(x) { 
+  m <- BIOMASS::getWFOCache()[[x]]$method
+  if (is.null(m) || is.na(x)) NA_character_ else m
+}, character(1), USE.NAMES = FALSE)
+
+# Names are compared ignoring case and repeated whitespace
+nameStd <- function(x) tolower(trimws(gsub("\\s+", " ", x)))
+
+taxa_review <- stem_taxa_all %>%
+  mutate(
+    method = taxa_method,
+    n_stem = as.vector(table(L0$stem$taxon_name)[nameOriginal]),
+    n_stem = ifelse(is.na(n_stem), 0L, n_stem)) %>%
+  filter(
+    !is.na(nameOriginal), nameOriginal != "",
+    is.na(nameAccepted) | nameStd(nameOriginal) != nameStd(nameAccepted)) %>%
+  dplyr::select(nameOriginal, nameAccepted, familyAccepted, method, n_stem) %>%
+  arrange(is.na(nameAccepted), desc(n_stem))
+
+kable(head(taxa_review, 10))
+```
+
 ## Estimate stem wood density
 
 `03_wd.R`
 
 Here we estimate the wood density of each stem measurement using the
 `BIOMASS::getWoodDensity()` function, which uses taxonomic names to extract
-wood density estimates from the Global Wood Density Database [@Zanne2009],
-which we have also aligned with the World Flora Online in the `zz_wd_prep.R`
-script.
+wood density estimates at species, genus, or family level. These estimates
+are provided by BIOMASS, from models fitted to version 2 of the Global Wood
+Density Database [@Zanne2009]. Stems of taxa which are not in the database
+are given the mean wood density of their plot.
 
 ```{r}
 # Join taxonomy data to stem data
@@ -489,30 +611,32 @@ taxa_all <- left_join(L0$stem, stem_taxa_all, by = c("taxon_name" = "nameOrigina
 
 In the example dataset there are local field-measured wood density estimates
 that we can use. For `getWoodDensity()` to use them we need to summarise
-individual measurements to the species-level mean and standard deviation.
+individual measurements to the mean and standard deviation of each taxon. We
+summarise by the accepted taxonomic name, so that different original names
+which refer to the same taxon are pooled. Measurements without a wood density
+value are excluded.
 
 ```{r}
 # Optionally process local wood density data
 wd_summ <- L0$wd %>%
+  left_join(., stem_taxa_all, by = c("taxon_name" = "nameOriginal")) %>% 
+  filter(!is.na(genusAccepted), !is.na(wood_density_gcm3)) %>% 
   mutate(wood_density_n = ifelse(is.na(wood_density_n), 1, wood_density_n)) %>% 
-  group_by(site_id, taxon_name) %>%
+  group_by(
+    family = familyAccepted, 
+    genus = genusAccepted, 
+    species = speciesAccepted) %>%
   summarise(
-    wood_density_n_total = sum(wood_density_n, na.rm = TRUE),
-    meanWD = sum(wood_density_gcm3 * wood_density_n, na.rm = TRUE) / 
-      sum(wood_density_n[!is.na(wood_density_gcm3)], na.rm = TRUE),
+    wood_density_n_total = sum(wood_density_n),
+    meanWD = sum(wood_density_gcm3 * wood_density_n) / wood_density_n_total,
     sdWD = {
-      # Filter to rows that have both mean and n 
-      valid_rows = !is.na(wood_density_gcm3) & !is.na(wood_density_n)
-      
-      # if SD is NA, treat as 0 (no variance) 
+      # If SD is NA, treat as 0 (no variance) 
       # but still account distance from grand mean
       clean_sd = ifelse(is.na(wood_density_sd_gcm3), 0, wood_density_sd_gcm3)
       
       # Components for grand variance
-      ss_within  = sum((wood_density_n[valid_rows] - 1) * 
-        clean_sd[valid_rows]^2, na.rm = TRUE)
-      ss_between = sum(wood_density_n[valid_rows] * 
-        (wood_density_gcm3[valid_rows] - meanWD)^2, na.rm = TRUE)
+      ss_within  = sum((wood_density_n - 1) * clean_sd^2)
+      ss_between = sum(wood_density_n * (wood_density_gcm3 - meanWD)^2)
       
       # If wood_density_n_total <= 1, return NA; otherwise calculate SD
       if (wood_density_n_total > 1) {
@@ -523,14 +647,15 @@ wd_summ <- L0$wd %>%
     },
     .groups = "drop"
   ) %>% 
-  left_join(., stem_taxa_all, by = c("taxon_name" = "nameOriginal")) %>% 
-  dplyr::select(
-    family = familyAccepted,
-    genus = genusAccepted,
-    species = speciesAccepted,
-    meanWD,
-    sdWD)
+  dplyr::select(family, genus, species, meanWD, sdWD)
 ```
+
+Then we estimate the wood density of each stem. Where a taxon has a local wood
+density estimate with no standard deviation, e.g. from a single sample, and is
+not in the Global Wood Density Database, we fill the missing standard
+deviation with the mean standard deviation of other taxa estimated at the same
+taxonomic level. Without a standard deviation, these stems would be dropped
+from the AGB error propagation.
 
 ```{r}
 # Estimate wood density for each stem measurement
@@ -539,8 +664,28 @@ wd_all <- BIOMASS::getWoodDensity(
   species = taxa_all$speciesAccepted,
   stand = taxa_all$plot_id,
   family = taxa_all$familyAccepted,
-  addWoodDensity = if (param$wd_method == "field") { wd_summ },
+  addWoodDensityData = if (param$wd_method == "field") { wd_summ },
   verbose = TRUE)
+
+# Check rows of output match stems
+stopifnot(
+  nrow(wd_all) == nrow(taxa_all),
+  identical(as.character(wd_all$genus), as.character(taxa_all$genusAccepted)),
+  identical(as.character(wd_all$species), as.character(taxa_all$speciesAccepted)))
+
+# Fill missing wood density SD with the mean SD of other taxa estimated at the
+# same level
+sd_na <- is.na(wd_all$sdWD)
+if (any(sd_na)) {
+  sd_level <- wd_all %>% 
+    filter(!is.na(sdWD)) %>% 
+    distinct(genus, species, levelWD, sdWD) %>% 
+    group_by(levelWD) %>% 
+    summarise(sdWD_fill = mean(sdWD), .groups = "drop")
+  sd_fill <- sd_level$sdWD_fill[match(wd_all$levelWD[sd_na], sd_level$levelWD)]
+  sd_fill[is.na(sd_fill)] <- mean(sd_level$sdWD_fill)
+  wd_all$sdWD[sd_na] <- sd_fill
+}
 
 # Create output dataframe
 stem_wd_all <- cbind(record_id = taxa_all$record_id, wd_all)
@@ -610,9 +755,9 @@ kable(height_mod_comp)
 
 ```{r}
 # Choose best height diameter model
-# Based on average bias
-height_mod_best <- height_mod_comp[
-  height_mod_comp$Average_bias == min(height_mod_comp$Average_bias), "method"]
+# Based on lowest residual standard error, calculated on the untransformed
+# height scale for all models, so comparable across log and non-log models
+height_mod_best <- height_mod_comp$method[which.min(height_mod_comp$RSE)]
 
 # Fit best height diameter model
 height_mod <- modelHD(
@@ -636,11 +781,21 @@ stem_height_all <- L0$stem %>%
   dplyr::select(record_id, height_m_pred, height_m_pred_rse)
 ```
 
-Alternatively using a regional height-diameter allometry where no height data are available:
+We choose the model with the lowest residual standard error (RSE). Note that
+`Average_bias` is signed, so choosing the model with the lowest
+`Average_bias` would choose the model which most underestimates stem height.
+
+Alternatively using a regional height-diameter allometry where no height data
+are available. `retrieveH()` estimates height from Equation 6a of
+@Chave2014, using an index of environmental stress (E) at the centre of each
+plot. The residual standard error of this model (0.243) is on the log scale,
+so it is not a standard deviation of height in metres.
 
 ```{r}
 # Extract plot centres
-plot_pt_split <- split(L0$pt, L0$pt$crs_epsg)
+plot_pt_split <- L0$pt %>% 
+  filter(!is.na(rover_easting_utm_m), !is.na(rover_northing_utm_m)) %>% 
+  split(., .$crs_epsg)
 p_cent <- bind_rows(lapply(plot_pt_split, function(x) { 
   st_as_sf(x, coords = c("rover_easting_utm_m", "rover_northing_utm_m"), 
     crs = unique(x$crs_epsg)) %>% 
@@ -665,6 +820,8 @@ height_pred <- retrieveH(
   D = s_cent$diam_cm, 
   coord = s_cent[,c("X", "Y")])
 
+# RSE of Chave et al. (2014) Eq. 6a, on the log scale
+# NOTE: not a standard deviation in metres, do not pass to AGBmonteCarlo(errH = )
 height_pred$RSE <- rep(0.243, length(height_pred$H))
 
 s_cent$height_m_pred <- height_pred$H
@@ -676,7 +833,7 @@ stem_height_all <- s_cent %>%
 ```
 
 ```{r}
-#| fig-cap: "Predicted relationship between stem diameter and stem height using a regional diameter-height allometry from @Feldpausch2012."
+#| fig-cap: "Predicted relationship between stem diameter and stem height using a regional diameter-height allometry, Equation 6a from @Chave2014."
 # Inspect predictions 
 ggplot(s_cent, aes(x = diam_cm, y = height_m_pred)) + 
   geom_line() + 
@@ -691,9 +848,16 @@ ggplot(s_cent, aes(x = diam_cm, y = height_m_pred)) +
 `05_agb_stem.R`
 
 Here we estimate the above-ground woody biomass (AGB, `agb_Mg`) of each stem
-measurement using the `BIOMASS::computeAGB()` function. Generally, Equation 4
-from @Chave2014 is used to estimate AGB with measurements of stem diameter
-(`D`), stem height (`H`), and wood density (`WD`). Because the @Chave2014 model
+measurement using the `BIOMASS::computeAGB()` function. `computeAGB()` returns
+a list with one element per allometry. Where heights come from a local
+height-diameter model (`height_method: "field"`), Equation 4 from @Chave2014
+is used to estimate AGB with stem diameter (`D`), stem height (`H`), and wood
+density (`WD`). Where no local height data are available (`height_method:
+"regional"`), Equation 7 from @Chave2014 is used, which replaces stem height
+with an index of environmental stress at the plot centre. This matches the
+allometry used in the AGB error propagation in [Estimate quadrat AGBD and
+propagate error], so that stem-level and quadrat-level estimates are
+consistent. Because the @Chave2014 model
 was fitted using mostly data from tropical wet forests, it may fail to
 accurately capture the relationship between stem diameter, height, and volume
 in other vegetation types. For these sites, a local AGB allometry may be more
@@ -704,24 +868,72 @@ groups in the tree inventory data. For example, if there are large baobab trees
 (_Adansonia_ sp.), bamboos, or lianas which have drastically different
 physiognomy to other trees in the dataset.
 
+Where trees have multiple stems, AGB is estimated for the tree from its
+equivalent diameter, $D_{eq} = \sqrt{\sum D_i^2}$, the diameter of a single
+stem with the same basal area as all its stems. Estimating AGB for each stem
+separately would underestimate the AGB of multi-stemmed trees, because AGB
+increases more than proportionally with stem diameter. Tree AGB is then shared
+among its stems in proportion to their basal area. Trees are formed from the
+stems used to estimate AGB density (see [Filter stem data]), grouped by
+`tree_id` within each plot, using `recordFilter()` and `treeEquiv()` from
+`func.R`. Other stems, e.g. dead stems, are treated as single-stemmed trees.
+Wood density depends on taxonomic identity, which is the same for all stems of
+a tree, so the wood density of the largest stem is used.
+
 We also create some additional variables like stem basal area (`ba_m2`) and
 stem volume (`volume_m3`).
 
 ```{r}
-# Estimate stem-level AGB
-stem_agb_all <- L0$stem %>% 
-  left_join(., stem_wd_all, by = "record_id") %>% 
-  left_join(., stem_height_all, by = "record_id") %>% 
+# Stems which form multi-stemmed trees
+record_fil <- recordFilter(L0$stem, L0$plot)
+
+# Join wood density, height, and equivalent diameter to stem data
+stem_all <- L0$stem %>%
+  left_join(., stem_wd_all, by = "record_id") %>%
+  left_join(., stem_height_all, by = "record_id") %>%
+  left_join(., treeEquiv(L0$stem, record_fil), by = "record_id")
+
+# One row per tree. Wood density depends on taxonomic identity, which is the
+# same for all stems of a tree, so the wood density of the largest stem is used
+tree <- stem_all %>%
+  arrange(desc(ba_share)) %>%
+  group_by(tree_key) %>%
+  summarise(
+    plot_id = first(plot_id),
+    diam_eq_cm = first(diam_eq_cm),
+    meanWD = first(meanWD),
+    n_taxa = n_distinct(taxon_name),
+    .groups = "drop")
+
+if (any(tree$n_taxa > 1)) {
+  warning(sum(tree$n_taxa > 1), " multi-stemmed trees have stems with ",
+    "different taxonomic names. The wood density of the largest stem is used",
+    call. = FALSE)
+}
+
+# Estimate tree-level AGB
+if (param$height_method == "regional") {
+  tree <- left_join(tree, p_cent, by = "plot_id")
+  stopifnot(all(!is.na(tree$X)))
+  tree$agb_Mg <- BIOMASS::computeAGB(
+    D = tree$diam_eq_cm,
+    WD = tree$meanWD,
+    coord = as.matrix(tree[, c("X", "Y")]))[[1]]
+} else if (param$height_method == "field") {
+  tree$agb_Mg <- BIOMASS::computeAGB(
+    D = tree$diam_eq_cm,
+    WD = tree$meanWD,
+    H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H)[[1]]
+}
+
+# Share tree AGB among stems
+stem_agb_all <- stem_all %>%
   mutate(
-    agb_Mg = BIOMASS::computeAGB(
-      allometry = chave2014,
-      D = .$diam_cm,
-      WD = .$meanWD,
-      H = .$height_m_pred)[[1]],
-    ba_m2 = base::pi * (.$diam_cm / 2)^2 / 10000,
-    volume_m3 = agb_Mg / meanWD) %>% 
+    agb_Mg = tree$agb_Mg[match(tree_key, tree$tree_key)] * ba_share,
+    ba_m2 = base::pi * (diam_cm / 2)^2 / 10000,
+    volume_m3 = agb_Mg / meanWD) %>%
   dplyr::select(
-    record_id, 
+    record_id,
     agb_Mg,
     ba_m2,
     volume_m3)
@@ -773,38 +985,18 @@ density in each 50x50 m quadrat.
 We apply the following filters:
 
 * Remove stems with no diameter measurement. 
-* Remove stems that are not found within any 50x50 m quadrat.
 * Remove stems with diameter less than the stated minimum diameter threshold.
 * Include only living stems.
 * Include only standing stems.
-* Remove stems that are broken below the diameter Point of Measurement (POM).
+* Remove stems that are broken below the diameter Point of Measurement (POM). Stems broken above the POM are included.
 * Remove "missing" stems. I.e. stems which were not measured during the census.
-* Where stems were measured multiple times at multiple POMs, choose the highest POM, latest measurement date, and largest diameter measurement.
+* Where stems were measured multiple times at multiple POMs, choose the highest POM, latest measurement date, and largest diameter measurement. Stems without a `stem_id` cannot be matched across measurements, so each of their records is treated as a separate stem.
 
 ```{r}
-# Filter stem data
-record_fil <- L0$stem %>% 
-  left_join(., L0$plot[,c("plot_id", "meas_diam_min_cm")], 
-    by = "plot_id") %>% 
-  filter(
-    !is.na(diam_cm),
-    !is.na(x_rel_m),
-    !is.na(y_rel_m),
-    diam_cm >= meas_diam_min_cm,
-    grepl("A", code),
-    grepl("S", code),
-    !grepl("B", code),
-    !grepl("T", code),
-    !grepl("M", code)
-  ) %>% 
-  group_by(site_id, plot_id, tree_id, stem_id) %>% 
-  slice_max(
-    order_by = tibble(pom_m, measurement_date, diam_cm), 
-    n = 1, 
-    with_ties = FALSE) %>%
-  ungroup() %>% 
-  pull(record_id) %>% 
-  as.character()
+# Filter stem data, see `recordFilter()` in func.R
+# Stems without coordinates are kept, and are assigned to quadrats at random
+# during AGB error propagation
+record_fil <- recordFilter(L0$stem, L0$plot)
 
 head(record_fil)
 ```
@@ -827,8 +1019,9 @@ do this.
 reference system.
 
 In this example we use the `method = "procrustes"` algorithm to fit the plot
-polygon, but you could also use the "affine" or "exact" methods depending on
-the availability and quality of the GNSS data, and the shape of the plot.
+polygon, as specified by `polygon_method` in `param.yaml`, but you could also
+use the "affine" or "exact" methods depending on the availability and quality
+of the GNSS data, and the shape of the plot.
 
 The "procrustes" method applies a rigid spatial transformation to align local
 field coordinates with geographic projected coordinates. The algorithm
@@ -864,23 +1057,60 @@ plot's corners to strictly match the averaged GPS coordinates, the internal
 geometry of the plot may be warped, meaning the geographic distances between
 projected trees may not perfectly match the distances measured in the field.
 
+All points must share one projected coordinate reference system. If plots
+span more than one UTM zone, all points are transformed to the most common
+zone. `plotPolygonFit()` warns if the fitted transformation is a reflection,
+which usually means that the relative coordinates are mirrored, e.g. if X and
+Y are swapped.
+
+```{r}
+# Points must share one projected CRS. If plots span more than one UTM zone,
+# transform all points to the most common zone
+crs_site <- as.integer(names(which.max(table(L0$pt$crs_epsg))))
+pt_fit <- L0$pt
+if (length(unique(pt_fit$crs_epsg)) > 1) {
+  for (i in setdiff(unique(pt_fit$crs_epsg), crs_site)) {
+    sel <- pt_fit$crs_epsg == i & 
+      !is.na(pt_fit$rover_easting_utm_m) & !is.na(pt_fit$rover_northing_utm_m)
+    xy <- st_coordinates(st_transform(
+      st_as_sf(pt_fit[sel, ], 
+        coords = c("rover_easting_utm_m", "rover_northing_utm_m"), crs = i), 
+      crs_site))
+    pt_fit$rover_easting_utm_m[sel] <- xy[, 1]
+    pt_fit$rover_northing_utm_m[sel] <- xy[, 2]
+  }
+  pt_fit$crs_epsg <- crs_site
+}
+```
+
 ```{r}
 # Select only relevant columns from stems dataframe
 # Filter to only plots with spatial coordinates
-stem_sel <- L0$stem %>% 
-  dplyr::select(record_id, plot_id, x_rel_m, y_rel_m) %>% 
+# Multi-stemmed trees are assigned to the quadrat containing the centroid of
+# their stems, so `x_quad` and `y_quad` are used to assign quadrats, while
+# stem locations are kept
+stem_sel <- L0$stem %>%
+  left_join(., treeEquiv(L0$stem, record_fil)[, c("record_id", "tree_key")],
+    by = "record_id") %>%
+  dplyr::select(record_id, plot_id, tree_key, x_rel_m, y_rel_m) %>%
   filter(
     plot_id %in% L0$pt$plot_id,
     !is.na(x_rel_m),
-    !is.na(y_rel_m))
+    !is.na(y_rel_m)) %>%
+  group_by(tree_key) %>%
+  mutate(
+    x_quad = mean(x_rel_m),
+    y_quad = mean(y_rel_m)) %>%
+  ungroup() %>%
+  dplyr::select(-tree_key)
 ```
 
 ```{r}
 #| fig-cap: "Fitted plot polygon and stem coordinates transformed to local UTM coordinate reference system."
 # Extract plot corners
 plot_check <- BIOMASS::plotPolygonFit(
-  point_data = L0$pt,
-  method = "procrustes",
+  point_data = pt_fit,
+  method = param$polygon_method,
   rel_col = c("x_rel_m", "y_rel_m"),
   proj_col = c("rover_easting_utm_m", "rover_northing_utm_m"),
   lonlat_col = NULL,
@@ -888,9 +1118,9 @@ plot_check <- BIOMASS::plotPolygonFit(
   plot_col = "plot_id",
   max_dist = 10,
   rm_outliers = TRUE,
-  tree_data = stem_sel[stem_sel$plot_id %in% L0$pt$plot_id,],
+  tree_data = if (nrow(stem_sel) > 0) stem_sel else NULL,
   tree_rel_col = c("x_rel_m", "y_rel_m"),
-  tree_plot_col = "plot_id",
+  tree_plot_col = if (nrow(stem_sel) > 0) "plot_id" else NULL,
   raster = NULL,
   shapefile = NULL,
   prop_tree = NULL,
@@ -901,22 +1131,34 @@ plot_check <- BIOMASS::plotPolygonFit(
 
 Next we divide the plot into 50x50 m (0.25 ha) quadrats using the
 `BIOMASS::divide_plot()` function. This function also assigns stem measurements
-to individual quadrats.
+to individual quadrats. Where a multi-stemmed tree has stems in more than one
+quadrat, all its stems are assigned to the quadrat containing the centroid of
+its stems. `grid_tol = 0.1` means that an error is returned if
+more than 10% of the plot area is not covered by the grid of quadrats, e.g. if
+the plot dimensions are not a multiple of the quadrat dimensions.
 
 ```{r}
-# Divide plot into 50x50 m quadrats
+# Divide plot into 50x50 m quadrats, assigning stems to quadrats using the
+# centroid of their tree. divide_plot() renames `tree_coords` to `x_rel` and
+# `y_rel`, so the stem coordinates are removed
+tree_quad <- if (nrow(stem_sel) > 0) {
+  dplyr::select(plot_check$tree_data, -x_rel, -y_rel)
+} else {
+  NULL
+}
+
 plot_divide <- BIOMASS::divide_plot(
   corner_data = plot_check$corner_coord,
   rel_coord = c("x_rel", "y_rel"),
   proj_coord = c("x_proj", "y_proj"),
   longlat = NULL,
   grid_size = param$quad_dim,
-  grid_tol = 1,
+  grid_tol = 0.1,  # Max. proportion of plot area excluded from the grid
   origin = NULL,
-  tree_data = plot_check$tree_data,
-  tree_coords = c("x_rel", "y_rel"),
+  tree_data = tree_quad,
+  tree_coords = if (nrow(stem_sel) > 0) c("x_quad", "y_quad") else NULL,
   corner_plot_ID = "plot_ID",
-  tree_plot_ID = "plot_ID",
+  tree_plot_ID = if (nrow(stem_sel) > 0) "plot_ID" else NULL,
   sd_coord = NULL, 
   n = 100)
 ```
@@ -940,7 +1182,7 @@ create `sf` spatial objects. We now have the following objects:
 # Create plot polygons 
 plot_poly <- plot_check$polygon %>% 
   rename(plot_id = plot_ID) %>% 
-  st_set_crs(unique(L0$pt$crs_epsg)) %>% 
+  st_set_crs(crs_site) %>% 
   mutate(    
     site_id = param$site_id,
     acquisition_id = param$acquisition_id, 
@@ -951,7 +1193,7 @@ quad_pt <- plot_divide$sub_corner_coord %>%
   mutate(
     x_utm = x_proj,
     y_utm = y_proj) %>% 
-  st_as_sf(., coords = c("x_proj", "y_proj"), crs = unique(L0$pt$crs_epsg)) %>% 
+  st_as_sf(., coords = c("x_proj", "y_proj"), crs = crs_site) %>% 
   mutate(    
     site_id = param$site_id,
     acquisition_id = param$acquisition_id, 
@@ -970,16 +1212,26 @@ quad_poly <- quad_pt %>%
   ungroup()
 
 # Create stem spatial points
-stem_pt <- plot_divide$tree_data %>% 
-  mutate(
-    x_utm = x_proj,
-    y_utm = y_proj) %>% 
-  filter(!is.na(x_proj), !is.na(y_proj)) %>% 
-  st_as_sf(., coords = c("x_proj", "y_proj"), crs = unique(L0$pt$crs_epsg)) %>% 
-  dplyr::select(
-    record_id,
-    quadrat_id = subplot_ID,
-    x_utm, y_utm)
+# Stems without coordinates are not included
+if (nrow(stem_sel) > 0) {
+  stem_pt <- plot_divide$tree_data %>%
+    mutate(
+      x_utm = x_proj,
+      y_utm = y_proj) %>%
+    filter(!is.na(x_proj), !is.na(y_proj)) %>%
+    st_as_sf(., coords = c("x_proj", "y_proj"), crs = crs_site) %>%
+    dplyr::select(
+      record_id,
+      quadrat_id = subplot_ID,
+      x_utm, y_utm)
+} else {
+  stem_pt <- st_sf(
+    record_id = integer(0),
+    quadrat_id = character(0),
+    x_utm = numeric(0),
+    y_utm = numeric(0),
+    geometry = st_sfc(crs = crs_site))
+}
 ```
 
 ```{r}
@@ -1003,32 +1255,169 @@ ggplot() +
 `08_agb_mc.R`
 
 Here we estimate the above-ground woody biomass density (AGBD) in each 50x50 m
-quadrat using the `BIOMASS::AGBmonteCarlo()` function, which implements a
-Monte-Carlo error propagation routine to provide an error-bounded estimate with
-a 95% confidence interval. We also use the `BIOMASS::subplot_summary()`
-function to extract the distribution of simulation AGBD estimates from the
-Monte-Carlo error propagation.
+quadrat, with its uncertainty. The `BIOMASS::AGBmonteCarlo()` function
+propagates errors in stem diameter, wood density, height, and the AGB
+allometry to each stem, using Monte-Carlo simulation. The
+`BIOMASS::subplot_summary()` function then sums the simulated AGB of the stems
+in each quadrat and divides by the quadrat area, giving a distribution of 1000
+simulated AGBD values for each quadrat.
+
+The errors propagated depend on `height_method`:
+
+* `"regional"` - Equation 7 from @Chave2014 is used, with the uncertainty in
+  the environmental stress index (E) and the model parameters. Stem height is
+  not used.
+* `"field"` - Equation 4 from @Chave2014 is used, with stem height predicted
+  from the local height-diameter model, including its uncertainty.
+
+As in [Estimate stem AGB], AGB is simulated for each multi-stemmed tree from
+its equivalent diameter, then shared among its stems in proportion to their
+basal area.
+
+`AGBmonteCarlo()` is run on groups of whole plots, or groups of whole quadrats
+for very large plots, rather than on each quadrat separately. This means that
+quadrats containing a single tree get an uncertainty estimate, that the large
+diameter errors of @Chave2004, applied to 5% of stems, are applied to a
+meaningful number of stems, and that stems outside the quadrat grid still get
+a stem-level uncertainty estimate.
+
+`subplot_summary()` is run separately for each plot, because when plots have
+different numbers of quadrats and a quadrat contains no stems,
+`subplot_summary()` can assign AGBD = 0 to quadrats which contain stems.
+
+Ideally all stems would have coordinates. Stems without coordinates in a
+tree where other stems have coordinates are assigned to the quadrat of the
+tree. Trees where no stems have coordinates are assigned to a random quadrat
+in their plot in each simulation, with probability proportional to quadrat
+area. This keeps their AGB in the plot,
+and adds the uncertainty in their location to the quadrat AGBD estimates. A
+plot where no stems have coordinates gives a similar AGBD in every quadrat,
+with a wider confidence interval.
+
+A random seed is set so that the results are reproducible.
 
 First we prepare the input dataset:
 
 ```{r}
-# Filter stems data
-stem_fil <- stem_pt %>% 
+# Define number of simulations
+nsim <- 1000
+
+# Set random seed, so results are reproducible
+set.seed(42)
+
+# Define maximum number of trees per AGBmonteCarlo() call, to limit memory use
+mc_stems_max <- 10000
+
+# Filter stem data and add quadrat IDs
+stem_fil <- L0$stem %>% 
   filter(record_id %in% record_fil) %>% 
-  left_join(., L0$stem, by = "record_id") %>% 
   left_join(., stem_wd_all, by = "record_id") %>% 
   left_join(., stem_height_all, by = "record_id") %>% 
-  left_join(., stem_agb_all, by = "record_id") %>% 
-  bind_cols(., st_coordinates(.)) %>% 
-  mutate(
-    plot_ID = plot_id,
-    subplot_ID = quadrat_id,
-    x_rel = x_rel_m,
-    y_rel = y_rel_m,
-    x_proj = x_utm,
-    y_proj = y_utm) %>% 
-  st_drop_geometry()
+  left_join(., st_drop_geometry(stem_pt)[, c("record_id", "quadrat_id")], 
+    by = "record_id")
 
+if (param$height_method == "regional") {
+  stem_fil <- left_join(stem_fil, p_cent, by = "plot_id")
+  stopifnot(all(!is.na(stem_fil$X)))
+}
+
+# Missing wood density uncertainty would cause stems to be silently dropped
+# from simulated AGB sums
+stopifnot(all(!is.na(stem_fil$meanWD) & !is.na(stem_fil$sdWD)))
+
+# Equivalent diameter of multi-stemmed trees
+stem_fil <- left_join(stem_fil, treeEquiv(stem_fil, stem_fil$record_id),
+  by = "record_id")
+
+# Stems of a tree share the quadrat of the tree. Stems without coordinates in
+# trees with other stems that have coordinates are assigned to the quadrat of
+# the tree. Trees where no stems have coordinates are assigned to quadrats at
+# random below
+stem_fil <- stem_fil %>%
+  group_by(tree_key) %>%
+  mutate(
+    tree_mapped = any(!is.na(x_rel_m) & !is.na(y_rel_m)),
+    quadrat_id = first(na.omit(quadrat_id))) %>%
+  ungroup()
+
+# One row per tree. Wood density depends on taxonomic identity, which is the
+# same for all stems of a tree, so the wood density of the largest stem is used
+tree <- stem_fil %>%
+  arrange(desc(ba_share)) %>%
+  group_by(tree_key) %>%
+  summarise(
+    plot_id = first(plot_id),
+    quadrat_id = first(quadrat_id),
+    diam_eq_cm = first(diam_eq_cm),
+    meanWD = first(meanWD),
+    sdWD = first(sdWD),
+    across(any_of(c("X", "Y")), first),
+    .groups = "drop")
+
+# Group trees into Monte Carlo chunks
+# Whole plots, split into groups of whole quadrats for very large plots
+quad_chunk <- tree %>%
+  count(plot_id, quadrat_id) %>%
+  group_by(plot_id) %>%
+  mutate(mc_chunk = (cumsum(n) - 1) %/% mc_stems_max) %>%
+  ungroup() %>%
+  dplyr::select(plot_id, quadrat_id, mc_chunk)
+
+tree <- left_join(tree, quad_chunk, by = c("plot_id", "quadrat_id"))
+
+tree_split <- split(tree, list(tree$plot_id, tree$mc_chunk), drop = TRUE)
+```
+
+Then we run the Monte-Carlo error propagation on each group of trees, and
+share the simulated AGB of each tree among its stems:
+
+```{r}
+# Run AGB Monte Carlo error propagation on each chunk
+tree_simu_list <- lapply(seq_along(tree_split), function(i) {
+  x <- tree_split[[i]]
+
+  # AGBmonteCarlo() fails with a single tree, so duplicate the row and keep
+  # the first. Each row of `AGB_simu` is simulated independently
+  n_tree <- nrow(x)
+  if (n_tree == 1) {
+    x <- x[c(1, 1), ]
+  }
+
+  out <- AGBmonteCarlo(
+    D = x$diam_eq_cm,
+    WD = x$meanWD,
+    errWD = x$sdWD,
+    H = NULL,
+    errH = NULL,
+    HDmodel = if (param$height_method == "field") height_mod else NULL,
+    coord = if (param$height_method == "regional") as.matrix(x[, c("X", "Y")]) else NULL,
+    Dpropag = "chave2004",
+    n = nsim,
+    Carbon = FALSE,
+    Dlim = NULL)
+
+  out$AGB_simu[seq_len(n_tree), , drop = FALSE]
+})
+
+# Combine simulations, then share tree AGB among stems. Rows match `stem_fil`
+tree <- bind_rows(tree_split)
+tree_simu <- do.call(rbind, tree_simu_list)
+stopifnot(nrow(tree_simu) == nrow(tree))
+agb_simu <- tree_simu[match(stem_fil$tree_key, tree$tree_key), , drop = FALSE] *
+  stem_fil$ba_share
+
+# Calculate mean and standard deviation of stem AGB
+agb_Mg_mean <- rowMeans(agb_simu, na.rm = TRUE)
+stem_agb_mc <- data.frame(
+  record_id = stem_fil$record_id,
+  agb_Mg_mean = agb_Mg_mean,
+  agb_Mg_sd = sqrt(rowSums((agb_simu - agb_Mg_mean)^2, na.rm = TRUE) / 
+    (rowSums(!is.na(agb_simu)) - 1)))
+```
+
+Then we aggregate the simulations to quadrats:
+
+```{r}
 # Format quadrat corner points
 quad_pt_clean <- quad_pt %>% 
   st_drop_geometry() %>% 
@@ -1040,109 +1429,97 @@ quad_pt_clean <- quad_pt %>%
     x_proj = x_utm,
     y_proj = y_utm)
 
-# Split by quadrat
-stem_split <- split(stem_fil, stem_fil$quadrat_id)
-```
+# Area of each quadrat, from its corners in the order given by divide_plot(),
+# as calculated by subplot_summary()
+quad_area <- quad_pt_clean %>%
+  group_by(plot_ID, subplot_ID) %>%
+  summarise(
+    area_ha = as.numeric(sf::st_area(sf::st_polygon(list(
+      rbind(cbind(x_proj, y_proj), cbind(x_proj, y_proj)[1, ]))))) / 10000,
+    .groups = "drop")
 
-Then for each quadrat we run the function. The reason this looks complicated is
-that firstly we have to loop through each quadrat using `lapply()`, and then
-add a special case where if there are 2 or fewer stems in the quadrat the
-function doesn't fail.
+# Trees where no stems have coordinates
+unmapped <- !stem_fil$tree_mapped
 
-```{r}
-# Define number of simulations
-nsim <- 1000
+# Aggregate simulations to quadrats, separately for each plot
+plot_vec <- intersect(unique(quad_pt_clean$plot_ID), unique(stem_fil$plot_id))
 
-# Run AGB MC error propagation
-quad_length <- length(stem_split)
-quad_agb_mc_list <- lapply(seq_along(stem_split), function(x) { 
-  # message(paste0(x, " / ", quad_length, " - ", names(stem_split)[x]))
-  if (nrow(stem_split[[x]]) < 2) {
-    out <- list(
-      "meanAGB" = stem_split[[x]]$agb_Mg,
-      "medAGB" = stem_split[[x]]$agb_Mg,
-      "sdAGB" = NA_real_,
-      "credibilityAGB" = c("2.5%" = NA_real_, "97.5%" = NA_real_),
-      "AGB_simu" = NA_real_)
+quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
+  quads <- quad_area[quad_area$plot_ID == x, ]
 
-    simu_all <- data.frame()
-  } else {
-    # Run AGB MC error propagation
-    out <- AGBmonteCarlo(
-      D = stem_split[[x]]$diam_cm,
-      WD = stem_split[[x]]$meanWD,
-      errWD = stem_split[[x]]$sdWD,
-      H = if (param$height_method == "regional") stem_split[[x]]$height_m_pred else NULL,
-      errH = if (param$height_method == "regional") stem_split[[x]]$height_m_pred_rse else NULL,
-      HDmodel = if (param$height_method == "field") height_mod else NULL,
-      coord = NULL,
-      Dpropag = "chave2004",
-      n = nsim,
-      Carbon = FALSE,
-      Dlim = NULL)
+  # Stems with coordinates
+  sel <- stem_fil$plot_id == x & !unmapped
+  if (any(sel)) {
+    subplots <- list(
+      sub_corner_coord = quad_pt_clean[quad_pt_clean$plot_ID == x, ],
+      tree_data = data.frame(
+        plot_ID = x,
+        subplot_ID = stem_fil$quadrat_id[sel]))
 
-    # Extract individual simulations of AGBD 
-    plot_divide_tmp <- list(
-      sub_corner_coord = quad_pt_clean[
-        quad_pt_clean$subplot_ID == unique(stem_split[[x]]$quadrat_id),],
-      tree_data = stem_split[[x]])
+    ss <- suppressMessages(BIOMASS::subplot_summary(
+      subplots = subplots,
+      AGB_simu = agb_simu[sel, , drop = FALSE],
+      draw_plot = FALSE))
 
-    simu_all <- suppressMessages(as.data.frame(BIOMASS::subplot_summary(
-      subplots = plot_divide_tmp, 
-      value = "agb_Mg",
-      AGB_simu = out$AGB_simu,
-      draw_plot = FALSE,
-      per_ha = FALSE,
-      fun = sum)$long_AGB_simu) %>% 
+    out <- as.data.frame(ss$long_AGB_simu) %>%
       dplyr::select(
         quadrat_id = subplot_ID,
         sim = N_simu,
-        sumAGB = AGBD))
-  }
-  return(list(out, simu_all))
-})
-names(quad_agb_mc_list) <- names(stem_split)
-
-# Create dataframe of all simulations
-quad_agb_simu <- bind_rows(lapply(quad_agb_mc_list, "[[", 2))
-
-# Calculate mean and standard deviation of stem AGB
-stem_agb_mc <- bind_rows(lapply(seq_along(quad_agb_mc_list), function(x) {
-  simu <- quad_agb_mc_list[[x]][[1]]$AGB_simu
-  if (is.matrix(simu)) {
-    agb_Mg_mean <- apply(simu, 1, mean)
-    agb_Mg_sd <- apply(simu, 1, sd)
+        agbd_Mg_ha = AGBD)
   } else {
-    agb_Mg_mean <- NA_real_
-    agb_Mg_sd <- NA_real_
+    out <- expand.grid(quadrat_id = quads$subplot_ID, sim = seq_len(nsim),
+      stringsAsFactors = FALSE)
+    out$agbd_Mg_ha <- 0
   }
-  data.frame(record_id = stem_split[[x]]$record_id, agb_Mg_mean, agb_Mg_sd)
+
+  # Trees where no stems have coordinates, assigned to a random quadrat in
+  # each simulation
+  sel_un <- stem_fil$plot_id == x & unmapped
+  if (any(sel_un)) {
+    agb_un <- agb_simu[sel_un, , drop = FALSE]
+    # Stems of the same tree are assigned to the same quadrat
+    tree_un <- stem_fil$tree_key[sel_un]
+    tree_un_id <- unique(tree_un)
+    quad_idx <- matrix(
+      sample(nrow(quads), length(tree_un_id) * ncol(agb_un), replace = TRUE,
+        prob = quads$area_ha),
+      nrow = length(tree_un_id))[match(tree_un, tree_un_id), , drop = FALSE]
+    agb_quad <- vapply(seq_len(ncol(agb_un)), function(j) {
+      tapply(agb_un[, j], factor(quad_idx[, j], levels = seq_len(nrow(quads))), sum, default = 0)
+    }, numeric(nrow(quads)))
+    agbd_quad <- agb_quad / quads$area_ha
+
+    i <- cbind(match(out$quadrat_id, quads$subplot_ID), out$sim)
+    out$agbd_Mg_ha <- out$agbd_Mg_ha + agbd_quad[i]
+  }
+
+  out$plot_id <- x
+  out
 }))
 ```
 
 Finally extract relevant summary statistics from the AGBD error propagation:
 
 ```{r}
-# Extract summary statistics from AGB MC error propagation simulations
-quad_agb <- bind_rows(lapply(names(quad_agb_mc_list), function(x) { 
-  data.frame(
-    quadrat_id = x,
-    agb_Mg_sum_mc_mean = quad_agb_mc_list[[x]][[1]]$meanAGB,
-    agb_Mg_sum_mc_median = quad_agb_mc_list[[x]][[1]]$medAGB,
-    agb_Mg_sum_mc_sd = quad_agb_mc_list[[x]][[1]]$sdAGB,
-    agb_Mg_sum_mc_se = quad_agb_mc_list[[x]][[1]]$sdAGB / sqrt(nsim),
-    agb_Mg_sum_mc_ci2.5 = unname(quad_agb_mc_list[[x]][[1]]$credibilityAGB[1]),
-    agb_Mg_sum_mc_ci97.5 = unname(quad_agb_mc_list[[x]][[1]]$credibilityAGB[2]))
-}))
+# Extract summary statistics from AGBD simulations
+quad_agb <- quad_agb_simu %>%
+  group_by(plot_id, quadrat_id) %>% 
+  summarise(
+    agbd_Mg_ha_mc_mean = mean(agbd_Mg_ha),
+    agbd_Mg_ha_mc_median = median(agbd_Mg_ha),
+    agbd_Mg_ha_mc_sd = sd(agbd_Mg_ha),
+    agbd_Mg_ha_mc_ci2.5 = quantile(agbd_Mg_ha, 0.025),
+    agbd_Mg_ha_mc_ci97.5 = quantile(agbd_Mg_ha, 0.975),
+    .groups = "drop")
 ```
 
 ```{r}
 #| fig-cap: "Interval plot showing the mean above-ground woody biomass density (AGBD) estimate for each quadrat, with 95% confidence interval."
 # Visualise the distribution of AGBD estimates among quadrats, with their 95% CI
-ggplot(quad_agb, aes(x = agb_Mg_sum_mc_mean, y = reorder(quadrat_id, agb_Mg_sum_mc_mean))) +
+ggplot(quad_agb, aes(x = agbd_Mg_ha_mc_mean, y = reorder(quadrat_id, agbd_Mg_ha_mc_mean))) +
   geom_vline(xintercept = 0, linetype = 2) + 
   geom_point() + 
-  geom_errorbar(aes(xmin = agb_Mg_sum_mc_ci2.5, xmax = agb_Mg_sum_mc_ci97.5), orientation = "y") + 
+  geom_errorbar(aes(xmin = agbd_Mg_ha_mc_ci2.5, xmax = agbd_Mg_ha_mc_ci97.5), orientation = "y") + 
   theme_bw() + 
   theme(
     axis.text.y = element_blank(),
@@ -1150,7 +1527,7 @@ ggplot(quad_agb, aes(x = agb_Mg_sum_mc_mean, y = reorder(quadrat_id, agb_Mg_sum_
     panel.grid.major.y = element_blank(),
     panel.grid.minor.y = element_blank()) + 
   labs(
-    x = expression("Above-ground woody biomass"~(Mg~ha^-1)),
+    x = expression("Above-ground woody biomass density"~(Mg~ha^-1)),
     y = "Quadrat")
 ```
 
@@ -1158,18 +1535,18 @@ ggplot(quad_agb, aes(x = agb_Mg_sum_mc_mean, y = reorder(quadrat_id, agb_Mg_sum_
 #| fig-cap: "Distribution of Monte-Carlo simulations of above-ground woody biomass density (AGBD) for the top 10 quadrats with the highest AGBD."
 # Select top 10 highest biomass quadrats for clarity
 quadrat_agb_top <- quad_agb %>% 
-  slice_max(agb_Mg_sum_mc_mean, n = 10) %>% 
+  slice_max(agbd_Mg_ha_mc_mean, n = 10) %>% 
   pull(quadrat_id)
 
 # Visualise Monte-Carlo AGBD simulations for each of the top 10 quadrats with the highest AGBD 
 quad_agb_simu %>% 
   filter(quadrat_id %in% quadrat_agb_top) %>% 
-  ggplot(., aes(x = sumAGB)) +
+  ggplot(., aes(x = agbd_Mg_ha)) +
     geom_line(aes(group = quadrat_id), stat = "density", alpha = 0.8) + 
     theme_bw() + 
     labs(
       x = expression("AGBD Monte-Carlo simulations"~(Mg~ha^-1)), 
-      y = "N simulations")
+      y = "Density")
 ```
 
 ## Compile GEO-TREES L1, L2, and L3 data products 
@@ -1186,21 +1563,18 @@ official GEO-TREES data products.
 
 ```{r}
 # Combine stem dataframes
+# Stems without coordinates have empty point geometries
 stem_summ <- L0$stem %>%
-  left_join(., stem_taxa_all, by = c("taxon_name" = "nameOriginal")) %>% 
-  left_join(., stem_wd_all, by = "record_id") %>% 
-  left_join(., stem_height_all, by = "record_id") %>% 
-  left_join(., stem_agb_all, by = "record_id") %>% 
-  left_join(., stem_agb_mc, by = "record_id") %>% 
-  left_join(., stem_pt, by = "record_id") %>% 
+  left_join(., stem_taxa_all, by = c("taxon_name" = "nameOriginal")) %>%
+  left_join(., stem_wd_all, by = "record_id") %>%
+  left_join(., stem_height_all, by = "record_id") %>%
+  left_join(., stem_agb_all, by = "record_id") %>%
+  left_join(., stem_agb_mc, by = "record_id") %>%
+  left_join(., st_drop_geometry(stem_pt), by = "record_id") %>%
   mutate(
-    in_quadrat_calc = ifelse(record_id %in% record_fil, TRUE, FALSE)) %>% 
-  # {
-  #   if (exists("taxon")) {
-  #     left_join(., taxon, by = "taxon_name")
-  #   } else { . }
-  # } %>% 
-  st_sf()
+    in_quadrat_calc = ifelse(record_id %in% record_fil, TRUE, FALSE)) %>%
+  st_as_sf(., coords = c("x_utm", "y_utm"), crs = st_crs(stem_pt),
+    na.fail = FALSE, remove = FALSE)
 ```
 
 ```{r}
@@ -1226,7 +1600,7 @@ quad_summ_pre <- stem_summ %>%
   st_drop_geometry() %>% 
   group_by(site_id, acquisition_id, plot_id, quadrat_id) %>% 
   summarise(
-    census_date = median(measurement_date),
+    census_date = median(measurement_date, na.rm = TRUE),
     census_date_res = case_when(
       any(measurement_date_res == "YYYY") ~ "YYYY",
       any(measurement_date_res == "YYYY-MM") ~ "YYYY-MM",
@@ -1247,41 +1621,47 @@ quad_summ_pre <- stem_summ %>%
     height_m_pred_q80 = quantile(height_m_pred, 0.8, na.rm = TRUE),
     height_m_pred_q90 = quantile(height_m_pred, 0.9, na.rm = TRUE),
     height_m_pred_q95 = quantile(height_m_pred, 0.95, na.rm = TRUE),
-    lorey_height_m = sum(ba_m2 * height_m_pred, na.rm = TRUE) / sum(ba_m2, na.rm = TRUE),
+    lorey_height_m = sum(ba_m2 * height_m_pred, na.rm = TRUE) / 
+      sum(ba_m2[!is.na(height_m_pred)], na.rm = TRUE),
     meanWD_mean = mean(meanWD, na.rm = TRUE),
-    meanWD_wm_ba = weighted.mean(meanWD, ba_m2),
+    meanWD_wm_ba = weighted.mean(meanWD, ba_m2, na.rm = TRUE),
     .groups = "drop_last") %>% 
-  ungroup() %>% 
-  left_join(., quad_agb, by = "quadrat_id") %>% 
-  left_join(., quad_poly_area, by = c("site_id", "acquisition_id", "plot_id", "quadrat_id")) %>% 
+  ungroup() %>%
   mutate(
-    across(
-      starts_with(c("n_stem_", "ba_m2_", "volume_m3_", "agb_Mg")), 
-      ~.x / quadrat_area_ha, .names = "{.col}_ha"),
     across(
       .cols = where(~inherits(.x, "units")), 
       .fns = as.vector),
+    # max() of only NAs returns -Inf
     across(
-      everything(), 
-      ~ifelse(.x == -Inf, NA_real_, .x))) 
-
+      .cols = where(is.numeric), 
+      .fns = ~replace(.x, is.infinite(.x), NA_real_))) 
+  
 # Add quadrat polygons, fill in quadrats with no trees
 quad_summ <- quad_poly %>% 
+  left_join(., quad_poly_area, 
+    by = c("site_id", "acquisition_id", "plot_id", "quadrat_id")) %>% 
   left_join(., quad_summ_pre, 
     by = c("site_id", "acquisition_id", "plot_id", "quadrat_id")) %>% 
+  # Quadrat AGBD from error propagation, including stems without coordinates
+  left_join(., quad_agb, by = c("plot_id", "quadrat_id")) %>%
   mutate(
-    across(all_of(c(
-      "n_stem", 
-      "ba_m2_sum",
-      "ba_m2_sum_ha",
-      "volume_m3_sum",
-      "volume_m3_sum_ha",
-      "agb_Mg_sum",
-      "agb_Mg_sum_ha",
-      "agb_Mg_sum_mc_mean", 
-      "agb_Mg_sum_mc_median",
-      "agb_Mg_sum_mc_mean_ha", 
-      "agb_Mg_sum_mc_median_ha")), ~ifelse(is.na(.x), 0, .x))) 
+    empty_quadrat = is.na(n_stem),
+    across(
+      c(
+        any_of(c(
+          "n_stem", 
+          "ba_m2_sum",
+          "volume_m3_sum",
+          "agb_Mg_sum")),
+        starts_with("agbd_Mg_ha_mc_")), 
+      ~if_else(empty_quadrat & is.na(.x), 0, .x)),
+    across(
+      c(
+        all_of("n_stem"),
+        starts_with(c("ba_m2_", "volume_m3_", "agb_Mg"))),
+      ~.x / quadrat_area_ha,
+      .names = "{.col}_ha")) %>% 
+  dplyr::select(-empty_quadrat)
 ```
 
 ```{r}
@@ -1294,7 +1674,7 @@ kable(head(quad_summ, 10))
 #| fig-cap: "Map of quadrats shaded by their above-ground woody biomass density (AGBD)."
 # Map quadrat AGBD
 ggplot() + 
-  geom_sf(data = quad_summ, aes(fill = agb_Mg_sum_mc_mean_ha)) + 
+  geom_sf(data = quad_summ, aes(fill = agbd_Mg_ha_mc_mean)) + 
   scale_fill_gradient(name = expression("Above-ground woody biomass"~(Mg~ha^-1)), low = "white", high = "red") + 
   theme_bw() + 
   theme(legend.position = "bottom")
@@ -1303,7 +1683,7 @@ ggplot() +
 ```{r}
 #| fig-cap: "Relationship between the 95th percentile of stem diameter and above-ground woody biomass density (AGBD) of each quadrat."
 # Plot the relationship between maximum tree size and AGBD
-ggplot(quad_summ, aes(x = diam_cm_q95, y = agb_Mg_sum_mc_mean_ha)) + 
+ggplot(quad_summ, aes(x = diam_cm_q95, y = agbd_Mg_ha_mc_mean)) + 
   geom_point() +
   theme_bw() + 
   labs(
@@ -1422,7 +1802,7 @@ param_fil[["quad_dim"]] <- NULL
 if (param_fil$opt_s3) { 
   param_fil[["raw_dir"]] <- param_fil$s3_dir
 } 
-param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3")] <- NULL
+param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate")] <- NULL
 
 L3_quad <- quad_summ %>% 
   dplyr::select(
@@ -1431,16 +1811,15 @@ L3_quad <- quad_summ %>%
     Plot_name = plot_id,
     Census_date = census_date,
     Quadrat_name = quadrat_id,
-    AGBD_stand_estimate = agb_Mg_sum_mc_mean_ha,
-    AGBD_stand_uncertainty = agb_Mg_sum_mc_sd_ha,
+    AGBD_stand_estimate = agbd_Mg_ha_mc_mean,
+    AGBD_stand_uncertainty = agbd_Mg_ha_mc_sd,
     Height_stand_estimate = height_m_pred_max,
     Height_stand_uncertainty = height_m_pred_max_rse,
     Basal_area = ba_m2_sum_ha,
     Lorey_height = lorey_height_m,
     Wood_density = meanWD_wm_ba,
-    Quadrat_area = quadrat_area_ha,
-    Quadrat_dim_x = quadrat_dim_x_m,
-    Quadrat_dim_y = quadrat_dim_y_m)
+    Quadrat_area = quadrat_area_ha) %>%
+  bind_cols(param_fil)
 
 # Check all values filled
 stopifnot(all(!is.na(L3_quad$AGBD_stand_estimate)))
@@ -1512,30 +1891,42 @@ st_write(L2_poly , file.path(L_dir_list[["L2"]], paste0(L2_filename, "_poly", ".
 st_write(L3_quad, file.path(L_dir_list[["L3"]], paste0(L3_filename, "_quad", ".gpkg")), delete_dsn = TRUE)
 ```
 
-Finally, we can can construct the RO-Crate files which sit alongside each data
-product:
+Finally, we can construct the RO-Crate files which sit alongside each data
+product. The author, affiliation, and license are taken from the `rocrate`
+section of `param.yaml`. If `author_orcid` is provided, it is used as the
+identifier of the author.
 
 ```{r}
 # Construct RO-crates
+# Author, affiliation and license are defined in param.yaml
 
-# Author 
+# Create local RO-Crate identifier from a name
+rocrateId <- function(x) {
+  paste0("#", gsub("^-|-$", "", gsub("[^a-z0-9]+", "-", tolower(x))))
+}
+
+# Author, identified by ORCID if provided
 me <- entity(
-  x = "#john-godlee",
+  x = if (!is.null(param$rocrate$author_orcid)) {
+    param$rocrate$author_orcid 
+  } else { 
+    rocrateId(param$rocrate$author_name)
+  },
   type = "Person",
-  name = "John L. Godlee",
-  email = "GodleeJ@si.edu"
+  name = param$rocrate$author_name,
+  email = param$rocrate$author_email
 )
 
 # Affiliation
 aff <- entity(
-  x = "#si-org",
+  x = rocrateId(param$rocrate$affiliation),
   type = "Organization",
-  name = "Smithsonian Institution"
+  name = param$rocrate$affiliation
 )
 
 # License
 lic <- entity(
-  x = "TERMS.md",
+  x = param$rocrate$license,
   type = c("File", "CreativeWork") 
 )
 
@@ -1637,7 +2028,7 @@ rocrate_list <- lapply(names(L_outfile_list), function(x) {
   rc <- rocrate(
     context = "https://w3id.org/ro/crate/1.2/context",
     datePublished = as.character(Sys.Date()),
-    name = paste("GEO-TREES Bicuar INV", x)
+    name = paste("GEO-TREES", param$site_id, "INV", x)
   ) %>%
     add_entity(me) %>%
     add_entity(aff) %>%

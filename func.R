@@ -445,6 +445,79 @@ ptValCheck <- function(x, cols = NULL) {
   rangeCheck(x, cols, "pt")
 }
 
+#' Check repeat diameter measurement table values
+#'
+#' Runs various checks on the values in repeat diameter measurement table
+#' columns, and against the stem measurement table if provided
+#'
+#' @param x dataframe containing repeat diameter measurements, see
+#'     ./templates/stem_dup_cols.csv
+#' @param stem optional stem measurement table
+#' @param cols column spec table for repeat diameter measurements
+#'
+dupValCheck <- function(x, stem = NULL, cols = NULL) {
+  # Only one site ID per site
+  if (length(unique(x$site_id)) > 1) {
+    stop("`site_id` must be the same for all plots within a site")
+  }
+
+  # Record ID must not be NA
+  if (any(is.na(x$record_id))) {
+    stop("`record_id` must not be NA in repeat diameter measurements")
+  }
+
+  # Diameter must be positive and not NA
+  if (any(x$diam_cm <= 0, na.rm = TRUE) | any(is.na(x$diam_cm))) {
+    stop("`diam_cm` must be positive and not NA in repeat diameter measurements")
+  }
+
+  # Reference must be the same for all repeat measurements
+  if (length(unique(x$reference)) != 1 || any(is.na(x$reference))) {
+    stop("`reference` must be TRUE or FALSE, and the same for all repeat ",
+      "diameter measurements")
+  }
+
+  # Values within ranges defined in spec table
+  rangeCheck(x, cols, "stem_dup")
+
+  if (!is.null(stem)) {
+    # Repeat measurements must refer to records in the stem table
+    i <- match(x$record_id, stem$record_id)
+    if (any(is.na(i))) {
+      stop(sum(is.na(i)), " repeat diameter measurements have a `record_id` ",
+        "which is not in 'stem'")
+    }
+
+    if (any(x$plot_id != stem$plot_id[i])) {
+      stop(sum(x$plot_id != stem$plot_id[i]), " repeat diameter measurements ",
+        "have a different `plot_id` to the record they refer to in 'stem'")
+    }
+
+    # Original measurements without a diameter can't be compared
+    if (any(is.na(stem$diam_cm[i]))) {
+      warning(sum(is.na(stem$diam_cm[i])), " repeat diameter measurements ",
+        "refer to records in 'stem' without `diam_cm`, these will be ignored",
+        call. = FALSE)
+    }
+
+    # Repeat measurements should be at the same POM
+    pom_diff <- abs(x$pom_m - stem$pom_m[i]) > 0.05
+    if (any(pom_diff, na.rm = TRUE)) {
+      warning(sum(pom_diff, na.rm = TRUE), " repeat diameter measurements ",
+        "have a different `pom_m` to the original measurement, these will be ",
+        "ignored", call. = FALSE)
+    }
+
+    # Repeat measurements should be soon after the original measurement
+    date_diff <- abs(x$measurement_date - stem$measurement_date[i]) > 1
+    if (any(date_diff, na.rm = TRUE)) {
+      warning(sum(date_diff, na.rm = TRUE), " repeat diameter measurements ",
+        "are more than one year from the original measurement, these will be ",
+        "ignored", call. = FALSE)
+    }
+  }
+}
+
 #' Check values across data objects
 #' 
 #' Runs various checks on values across plot, stem, pt and taxon objects
@@ -455,18 +528,20 @@ ptValCheck <- function(x, cols = NULL) {
 #' @param taxon taxon table
 #' @param height height-diameter measurements table
 #' @param wd wood density table
+#' @param dup repeat diameter measurements table
 #' @param cols optional named list of column spec tables, with names
-#'     `plot`, `stem`, `pt`, `height`. If NULL, objects named `plot_cols`,
-#'     `stem_cols`, `pt_cols`, `height_cols` are used if they exist where
-#'     `valCheck()` is called from
+#'     `plot`, `stem`, `pt`, `height`, `dup`. If NULL, objects named
+#'     `plot_cols`, `stem_cols`, `pt_cols`, `height_cols`, `stem_dup_cols` are
+#'     used if they exist where `valCheck()` is called from
 #'
 valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL, 
-  height = NULL, wd = NULL, cols = NULL) { 
+  height = NULL, wd = NULL, dup = NULL, cols = NULL) { 
 
   # Find column spec tables
   if (is.null(cols)) {
     env <- parent.frame()
-    cols <- lapply(c(plot = "plot", stem = "stem", pt = "pt", height = "height"), 
+    cols <- lapply(c(plot = "plot", stem = "stem", pt = "pt", height = "height",
+      dup = "stem_dup"), 
       function(y) get0(paste0(y, "_cols"), envir = env))
   }
 
@@ -495,8 +570,12 @@ valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL,
     wdValCheck(wd)
   }
 
+  if (!is.null(dup)) {
+    dupValCheck(dup, stem, cols$dup)
+  }
+
   # All tables must have the same site ID
-  site_ids <- unique(unlist(lapply(list(plot, stem, pt, taxon, height, wd), 
+  site_ids <- unique(unlist(lapply(list(plot, stem, pt, taxon, height, wd, dup), 
     function(y) y$site_id)))
   if (length(site_ids) > 1) {
     stop("`site_id` differs among tables: ", paste(site_ids, collapse = ", "))
@@ -519,7 +598,7 @@ valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL,
     if (any(stem$diam_cm < diam_min, na.rm = TRUE)) {
       warning(sum(stem$diam_cm < diam_min, na.rm = TRUE), 
         " stems have `diam_cm` below `meas_diam_min_cm`, ",
-        "these will be excluded from AGB estimates")
+        "these will be excluded from AGB density estimates")
     }
   }
 
@@ -615,13 +694,15 @@ s3Download <- function(client, bucket, prefix, dest) {
   invisible(files)
 }
 
-#' Select stem measurements used to estimate AGB density
+#' Select stem measurements used to estimate AGB
 #'
-#' Selects stems which are alive, standing, have a diameter measurement at or
-#' above the minimum diameter threshold of the plot, and are not broken below
-#' the POM or missing. Where a stem was measured more than once, e.g. at
-#' different POMs, the measurement with the highest POM, latest date, and
-#' largest diameter is used. Stems without coordinates are included.
+#' Selects stems which are alive, standing, have a diameter measurement, and
+#' are not broken below the POM or missing. Where a stem was measured more
+#' than once, e.g. at different POMs, the measurement with the highest POM,
+#' latest date, and largest diameter is used. Stems without coordinates, and
+#' stems below the minimum diameter threshold of the plot, are included. See
+#' `agbdFilter()` for stems used to estimate AGB density, and to form
+#' multi-stemmed trees.
 #'
 #' @param stem stem measurement table, see ./templates/stem_cols.csv
 #' @param plot plot meta-data table, see ./templates/plot_cols.csv
@@ -630,10 +711,8 @@ s3Download <- function(client, bucket, prefix, dest) {
 #'
 recordFilter <- function(stem, plot) {
   stem %>%
-    left_join(., plot[, c("plot_id", "meas_diam_min_cm")], by = "plot_id") %>%
     filter(
       !is.na(diam_cm),
-      diam_cm >= meas_diam_min_cm,
       grepl("A", code),
       grepl("S", code),
       !grepl("T", code),
@@ -650,6 +729,36 @@ recordFilter <- function(stem, plot) {
     ungroup() %>%
     pull(record_id) %>%
     as.character()
+}
+
+#' Select stem measurements used to estimate AGB density
+#'
+#' Selects stems from `recordFilter()` with a diameter at or above the minimum
+#' diameter threshold, and optionally excludes stems broken above the POM.
+#' Other stems have their own AGB estimates, but are not part of multi-stemmed
+#' trees, and are not included in AGB density, so that AGB density matches the
+#' sampling of the plot.
+#'
+#' @param stem stem measurement table, see ./templates/stem_cols.csv
+#' @param plot plot meta-data table, see ./templates/plot_cols.csv
+#' @param record_fil `record_id` values from `recordFilter()`
+#' @param diam_min_cm minimum diameter threshold for AGB density. The larger
+#'     of this and the minimum diameter threshold of the plot is used
+#' @param include_broken logical, if FALSE stems broken above the POM ("B" in
+#'     `code`) are excluded
+#'
+#' @return character vector of `record_id` values
+#'
+agbdFilter <- function(stem, plot, record_fil, diam_min_cm = 0, 
+  include_broken = TRUE) {
+  diam_min <- plot$meas_diam_min_cm[match(stem$plot_id, plot$plot_id)]
+  diam_min <- pmax(diam_min, diam_min_cm)
+  keep <- as.character(stem$record_id) %in% as.character(record_fil) &
+    !is.na(stem$diam_cm) & !is.na(diam_min) & stem$diam_cm >= diam_min
+  if (!include_broken) {
+    keep <- keep & !grepl("B", stem$code)
+  }
+  as.character(stem$record_id[keep])
 }
 
 #' Calculate the equivalent diameter of multi-stemmed trees
@@ -1048,3 +1157,184 @@ decDate <- function(x, digits = 3) {
   return(dec)
 }
 
+
+#' Colours used in figures to check processing outputs
+#'
+#' `series` are categorical colours, used in this order. `seq` is a 
+#' single-hue ramp for magnitudes, light to dark. `seq2` is a second 
+#' single-hue ramp, for a second magnitude shown alongside the first, e.g.
+#' uncertainty. `problem` and `warn` mark 
+#' data which may need correcting, e.g. outliers, and are always paired with 
+#' a label in the legend
+#'
+fig_pal <- list(
+  series = c("#2a78d6", "#eb6834", "#1baf7a"),
+  seq = c("#cde2fb", "#86b6ef", "#3987e5", "#256abf", "#184f95", "#0d366b"),
+  seq2 = c("#fde3d6", "#f8b896", "#f28c5f", "#eb6834", "#c24e1f", "#8c3312"),
+  problem = "#d03b3b",
+  warn = "#ec835a",
+  ink = "#0b0b0b",
+  ink_muted = "#52514e",
+  grid = "#e6e5e1",
+  line_muted = "#b8b7b2",
+  surface = "#fcfcfb")
+
+#' ggplot2 theme for figures to check processing outputs
+#'
+#' @param base_size base font size
+#'
+#' @return ggplot2 theme
+#'
+themeFig <- function(base_size = 12) {
+  ggplot2::theme_minimal(base_size = base_size) +
+    ggplot2::theme(
+      plot.background = ggplot2::element_rect(fill = fig_pal$surface, colour = NA),
+      panel.grid.major = ggplot2::element_line(colour = fig_pal$grid, linewidth = 0.3),
+      panel.grid.minor = ggplot2::element_blank(),
+      axis.text = ggplot2::element_text(colour = fig_pal$ink_muted),
+      axis.title = ggplot2::element_text(colour = fig_pal$ink_muted),
+      plot.title = ggplot2::element_text(colour = fig_pal$ink, face = "bold"),
+      plot.subtitle = ggplot2::element_text(colour = fig_pal$ink_muted),
+      plot.title.position = "plot",
+      strip.text = ggplot2::element_text(colour = fig_pal$ink, hjust = 0, face = "bold"),
+      legend.position = "top",
+      legend.justification = "left",
+      legend.title = ggplot2::element_text(colour = fig_pal$ink_muted),
+      legend.text = ggplot2::element_text(colour = fig_pal$ink))
+}
+
+#' ggplot2 theme for maps of plots, without grid lines, so that quadrat 
+#' grids are visible
+#'
+#' @param base_size base font size
+#'
+#' @return ggplot2 theme
+#'
+themeMap <- function(base_size = 12) {
+  themeFig(base_size) +
+    ggplot2::theme(panel.grid.major = ggplot2::element_blank())
+}
+
+#' Order plot IDs for figures, numerically if all IDs are numbers
+#'
+#' @param x vector of plot IDs
+#'
+#' @return factor with levels in order
+#'
+plotFactor <- function(x) {
+  x <- as.character(x)
+  lev <- unique(x)
+  num <- suppressWarnings(as.numeric(lev))
+  lev <- if (all(!is.na(num))) lev[order(num)] else sort(lev)
+  factor(x, levels = lev)
+}
+
+#' Number of facet columns for a figure with small multiples
+#'
+#' @param n number of panels
+#'
+#' @return integer, number of columns
+#'
+figCols <- function(n) {
+  as.integer(max(1, ceiling(sqrt(n))))
+}
+
+#' Save a figure to check processing outputs
+#'
+#' The figure is sized to fit the number of panels, laid out with 
+#' `figCols()` columns, with a minimum size so that the legend and titles 
+#' fit. Saved at 300 dpi. Text in figures wider than 8 inches is enlarged, 
+#' so that it is readable when the whole figure is viewed on screen
+#'
+#' @param p ggplot object
+#' @param file path to output PNG file
+#' @param n_panel number of panels in the figure
+#' @param panel_in width and height of each panel, in inches
+#' @param width optional figure width in inches, overrides `n_panel`
+#' @param height optional figure height in inches, overrides `n_panel`
+#' @param base_size base font size of the figure theme, see `themeFig()`
+#'
+#' @return path to output file, invisibly
+#'
+saveFig <- function(p, file, n_panel = 1, panel_in = 3.4, width = NULL, 
+  height = NULL, base_size = 12) {
+  n_col <- figCols(n_panel)
+  n_row <- ceiling(n_panel / n_col)
+  if (is.null(width)) width <- min(max(1.4 + panel_in * n_col, 8), 24)
+  if (is.null(height)) height <- min(max(2 + panel_in * n_row, 5), 24)
+  if (width > 8) {
+    p <- p + ggplot2::theme(text = ggplot2::element_text(
+      size = base_size * sqrt(width / 8)))
+  }
+  ggplot2::ggsave(file, p, width = width, height = height, dpi = 300, 
+    bg = fig_pal$surface)
+  message("Figure written: ", file)
+  invisible(file)
+}
+
+#' Print a table to the console as a message
+#'
+#' @param x dataframe
+#' @param title optional title printed above the table
+#' @param max_rows maximum number of rows to print
+#' @param digits number of significant digits for numeric columns
+#'
+#' @return NULL, invisibly
+#'
+msgTable <- function(x, title = NULL, max_rows = 30, digits = 3) {
+  x <- as.data.frame(x)
+  n <- nrow(x)
+  # Print wide tables without wrapping columns
+  op <- options(width = 250, max.print = 99999)
+  on.exit(options(op))
+  out <- utils::capture.output(print(utils::head(x, max_rows),
+    row.names = FALSE, digits = digits))
+  if (n > max_rows) {
+    out <- c(out, paste0("... ", n - max_rows, " more rows"))
+  }
+  message(paste(c(title, out), collapse = "\n"))
+  invisible(NULL)
+}
+
+#' Shift coordinates of each plot to a local origin, for maps of plots
+#'
+#' @param x dataframe with coordinates
+#' @param x_col,y_col names of coordinate columns
+#' @param group_col name of plot ID column
+#' @param origin optional dataframe of origins, with columns `group_col`, 
+#'     `x0` and `y0`. If NULL, the minimum coordinates of each plot are used
+#'
+#' @return `x` with coordinates relative to the origin of each plot
+#'
+localXY <- function(x, x_col, y_col, group_col, origin = NULL) {
+  if (is.null(origin)) {
+    origin <- data.frame(
+      id = unique(as.character(x[[group_col]])))
+    origin$x0 <- vapply(origin$id, function(g) {
+      min(x[[x_col]][as.character(x[[group_col]]) == g], na.rm = TRUE)
+    }, numeric(1))
+    origin$y0 <- vapply(origin$id, function(g) {
+      min(x[[y_col]][as.character(x[[group_col]]) == g], na.rm = TRUE)
+    }, numeric(1))
+    names(origin)[1] <- group_col
+  }
+  i <- match(as.character(x[[group_col]]), as.character(origin[[group_col]]))
+  x[[x_col]] <- x[[x_col]] - origin$x0[i]
+  x[[y_col]] <- x[[y_col]] - origin$y0[i]
+  x
+}
+
+#' Extract polygon vertices as a dataframe, for maps of plots
+#'
+#' @param x sf object of POLYGON geometries
+#' @param id_col name of plot ID column in `x`
+#'
+#' @return dataframe with columns: `X`, `Y`, `plot_id`, and `group`, which
+#'     identifies each polygon
+#'
+polyCoords <- function(x, id_col = "plot_id") {
+  xy <- as.data.frame(sf::st_coordinates(x))
+  xy$plot_id <- as.character(x[[id_col]])[xy$L2]
+  xy$group <- paste(xy$plot_id, xy$L2)
+  xy
+}

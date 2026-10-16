@@ -12,8 +12,9 @@
 # Multi-stemmed trees, see `treeEquiv()` in ./func.R, are assigned to the
 # quadrat containing the centroid of their stems, so `x_quad` and `y_quad`
 # are used to assign quadrats, while stem locations are kept
+tree_include <- if (param$multi_stem_method == "equivalent") record_agbd else character(0)
 stem_sel <- stem %>%
-  left_join(., treeEquiv(stem, record_fil)[, c("record_id", "tree_key")],
+  left_join(., treeEquiv(stem, tree_include)[, c("record_id", "tree_key")],
     by = "record_id") %>%
   dplyr::select(record_id, plot_id, tree_key, x_rel_m, y_rel_m) %>%
   filter(
@@ -55,7 +56,7 @@ plot_check <- plotPolygonFit(
   lonlat_col = NULL,
   corner_col = "corner",
   plot_col = "plot_id",
-  max_dist = 10,
+  max_dist = param$corner_outlier_dist_m,
   rm_outliers = TRUE,
   tree_data = if (nrow(stem_sel) > 0) stem_sel else NULL,
   tree_rel_col = c("x_rel_m", "y_rel_m"),
@@ -82,7 +83,7 @@ plot_divide <- BIOMASS::divide_plot(
   proj_coord = c("x_proj", "y_proj"),
   longlat = NULL,
   grid_size = param$quad_dim,
-  grid_tol = 0.1,  # Max. proportion of plot area excluded from the grid
+  grid_tol = param$quad_grid_tol,
   origin = NULL,
   tree_data = tree_quad,
   tree_coords = if (nrow(stem_sel) > 0) c("x_quad", "y_quad") else NULL,
@@ -90,6 +91,62 @@ plot_divide <- BIOMASS::divide_plot(
   tree_plot_ID = if (nrow(stem_sel) > 0) "plot_ID" else NULL,
   sd_coord = NULL, 
   n = 100)
+
+# Stems outside the quadrat grid
+# Stems whose tree centroid is outside the quadrat grid, by up to
+# `outside_max_dist_m`, are assigned to the nearest quadrat. Others are
+# excluded from quadrat summaries. All are written to a check file, so that
+# raw data can be corrected if needed
+if (nrow(stem_sel) > 0) {
+  tree_dat <- plot_divide$tree_data
+  quad_ext <- plot_divide$sub_corner_coord %>%
+    group_by(plot_ID, subplot_ID) %>%
+    summarise(
+      x_min = min(x_rel), x_max = max(x_rel),
+      y_min = min(y_rel), y_max = max(y_rel),
+      .groups = "drop")
+
+  # Distance from tree centroid to nearest quadrat. `x_rel` and `y_rel` in
+  # the output of divide_plot() are the tree centroid
+  out_idx <- which(is.na(tree_dat$subplot_ID))
+  quad_near <- lapply(out_idx, function(i) {
+    q <- quad_ext[quad_ext$plot_ID == tree_dat$plot_ID[i], ]
+    d <- sqrt(
+      pmax(q$x_min - tree_dat$x_rel[i], 0, tree_dat$x_rel[i] - q$x_max)^2 +
+      pmax(q$y_min - tree_dat$y_rel[i], 0, tree_dat$y_rel[i] - q$y_max)^2)
+    data.frame(quadrat_nearest = q$subplot_ID[which.min(d)], dist_m = min(d))
+  })
+  quad_near <- bind_rows(quad_near,
+    data.frame(quadrat_nearest = character(0), dist_m = numeric(0)))
+
+  stem_outside <- data.frame(
+    record_id = tree_dat$record_id[out_idx],
+    quadrat_nearest = quad_near$quadrat_nearest,
+    dist_m = round(quad_near$dist_m, 2)) %>%
+    mutate(
+      action = ifelse(dist_m <= param$outside_max_dist_m,
+        "assigned to nearest quadrat", "excluded"))
+
+  # Assign stems to nearest quadrat
+  assign_idx <- out_idx[stem_outside$action == "assigned to nearest quadrat"]
+  plot_divide$tree_data$subplot_ID[assign_idx] <- stem_outside$quadrat_nearest[
+    stem_outside$action == "assigned to nearest quadrat"]
+
+  if (nrow(stem_outside) > 0) {
+    message(nrow(stem_outside), " stems outside the quadrat grid: ",
+      sum(stem_outside$action != "excluded"), " assigned to the nearest quadrat, ",
+      sum(stem_outside$action == "excluded"), " excluded. See ",
+      file.path(checkdir, "stem_outside.csv"))
+  }
+
+  # Write stems outside the quadrat grid to file, to check raw data
+  stem_outside <- stem %>%
+    dplyr::select(record_id, plot_id, tree_id, stem_id, x_rel_m, y_rel_m,
+      diam_cm, code) %>%
+    inner_join(., stem_outside, by = "record_id") %>%
+    arrange(desc(dist_m))
+  write.csv(stem_outside, file.path(checkdir, "stem_outside.csv"), row.names = FALSE)
+}
 
 # Create plot polygons 
 plot_poly <- plot_check$polygon %>% 
@@ -156,3 +213,171 @@ st_write(quad_pt, file.path(outdir, "quad_pt.gpkg"), delete_dsn = TRUE)
 # Write global stem coordinates to file
 st_write(stem_pt, file.path(outdir, "stem_pt.gpkg"), delete_dsn = TRUE)
 
+
+# Summarise plot polygons. The area of the fitted polygon should be close to
+# the area defined by the relative coordinates of the plot corners. A large
+# difference suggests errors in the corner coordinates
+corner_rel <- pt_fit %>%
+  filter(corner %in% TRUE) %>%
+  distinct(plot_id, x_rel_m, y_rel_m)
+area_rel <- vapply(split(corner_rel, corner_rel$plot_id), function(x) {
+  as.numeric(st_area(st_convex_hull(st_multipoint(
+    as.matrix(x[, c("x_rel_m", "y_rel_m")]))))) / 10000
+}, numeric(1))
+
+outliers <- if (is.null(plot_check$outliers)) {
+  data.frame(plot_ID = character(0), x_proj = numeric(0), y_proj = numeric(0))
+} else {
+  plot_check$outliers
+}
+
+poly_check <- data.frame(
+  plot_id = as.character(plot_poly$plot_id),
+  area_ha_poly = as.numeric(st_area(plot_poly)) / 10000) %>%
+  mutate(
+    area_ha_rel = unname(area_rel[plot_id]),
+    area_diff_pct = round(100 * (area_ha_poly - area_ha_rel) / area_ha_rel, 1),
+    n_gnss = as.vector(table(pt_fit$plot_id)[plot_id]),
+    n_gnss_outlier = as.vector(table(factor(outliers$plot_ID, levels = plot_id))),
+    n_quadrat = as.vector(table(factor(quad_poly$plot_id, levels = plot_id)))) %>%
+  arrange(plotFactor(plot_id))
+if (nrow(stem_sel) > 0) {
+  poly_check <- poly_check %>%
+    mutate(
+      n_stem_mapped = as.vector(table(factor(stem_sel$plot_id, levels = plot_id))),
+      n_stem_outside = as.vector(table(factor(stem_outside$plot_id, levels = plot_id))))
+}
+msgTable(poly_check, paste0("Plot polygons (", param$polygon_method, 
+  " method). area_ha_rel is the area defined by the relative coordinates ",
+  "of the plot corners:"))
+
+if (any(abs(poly_check$area_diff_pct) > 5, na.rm = TRUE)) {
+  warning("Fitted polygon area differs from the area defined by the plot ",
+    "corners by more than 5% in plots: ", 
+    paste(poly_check$plot_id[abs(poly_check$area_diff_pct) > 5], collapse = ", "),
+    ". Check plot corner coordinates, see ", 
+    file.path(checkdir, "07_plot_poly.png"), call. = FALSE)
+}
+
+# Figure of plot polygons, quadrats and GNSS points. Coordinates are 
+# relative to the south-west corner of the bounding box of each plot, so that
+# plots can be shown side by side at the same scale
+plot_xy <- polyCoords(plot_poly, "plot_id")
+quad_xy <- polyCoords(quad_poly, "plot_id")
+plot_origin <- plot_xy %>%
+  group_by(plot_id) %>%
+  summarise(x0 = min(X), y0 = min(Y), .groups = "drop")
+
+gnss_xy <- pt_fit %>%
+  filter(!is.na(rover_easting_utm_m), !is.na(rover_northing_utm_m)) %>%
+  transmute(
+    plot_id = as.character(plot_id), 
+    X = rover_easting_utm_m, 
+    Y = rover_northing_utm_m,
+    type = ifelse(corner %in% TRUE, "GNSS point, corner", "GNSS point, other"))
+outlier_xy <- transmute(outliers, plot_id = as.character(plot_ID), X = x_proj, 
+  Y = y_proj, type = "Outlier, removed")
+pt_xy <- bind_rows(gnss_xy, outlier_xy)
+
+pt_type <- c(
+  "GNSS point, corner" = fig_pal$series[1], 
+  "GNSS point, other" = fig_pal$series[2],
+  "Outlier, removed" = fig_pal$problem)
+pt_type <- pt_type[names(pt_type) %in% pt_xy$type]
+
+p_poly <- ggplot() +
+  geom_polygon(data = localXY(quad_xy, "X", "Y", "plot_id", plot_origin),
+    aes(x = X, y = Y, group = group), 
+    fill = NA, colour = fig_pal$line_muted, linewidth = 0.3) +
+  geom_polygon(data = localXY(plot_xy, "X", "Y", "plot_id", plot_origin),
+    aes(x = X, y = Y, group = group), 
+    fill = NA, colour = fig_pal$ink, linewidth = 0.5) +
+  geom_point(data = localXY(pt_xy, "X", "Y", "plot_id", plot_origin),
+    aes(x = X, y = Y, colour = type, shape = type), size = 2, stroke = 0.8) +
+  scale_colour_manual(NULL, values = pt_type, breaks = names(pt_type)) +
+  scale_shape_manual(NULL, values = c("GNSS point, corner" = 16, 
+    "GNSS point, other" = 16, "Outlier, removed" = 4)[names(pt_type)],
+    breaks = names(pt_type)) +
+  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(nrow(plot_origin))) +
+  coord_equal() +
+  labs(
+    title = "Plot polygons, quadrats and GNSS points",
+    subtitle = paste0("Polygon method: ", param$polygon_method, ". EPSG:", 
+      crs_site, ", relative to the south-west of each plot"),
+    x = "Easting (m)",
+    y = "Northing (m)") +
+  themeMap()
+saveFig(p_poly, file.path(checkdir, "07_plot_poly.png"), 
+  n_panel = nrow(plot_origin))
+
+# Figure of stem locations within the quadrat grid, in plot coordinates
+if (nrow(stem_sel) > 0) {
+  quad_rel <- plot_divide$sub_corner_coord %>%
+    group_by(plot_id = as.character(plot_ID), subplot_ID) %>%
+    summarise(
+      x_min = min(x_rel), x_max = max(x_rel),
+      y_min = min(y_rel), y_max = max(y_rel),
+      .groups = "drop")
+
+  stem_xy <- stem_sel %>%
+    mutate(plot_id = as.character(plot_id)) %>%
+    left_join(., dplyr::select(stem_outside, record_id, action), 
+      by = "record_id") %>%
+    mutate(type = case_when(
+      is.na(action) ~ "Stem, in quadrat grid",
+      action == "excluded" ~ "Outside grid, excluded",
+      TRUE ~ "Outside grid, assigned to nearest quadrat"))
+
+  stem_type <- c(
+    "Stem, in quadrat grid" = fig_pal$series[1],
+    "Outside grid, assigned to nearest quadrat" = fig_pal$warn,
+    "Outside grid, excluded" = fig_pal$problem)
+  stem_type <- stem_type[names(stem_type) %in% stem_xy$type]
+  n_plot_stem <- length(unique(stem_xy$plot_id))
+
+  # Stems far outside the quadrat grid, e.g. with coordinate errors, are
+  # shown at the edge of the map, so that plots are large enough to see
+  map_x <- range(c(quad_rel$x_min, quad_rel$x_max))
+  map_y <- range(c(quad_rel$y_min, quad_rel$y_max))
+  map_margin <- 0.1 * max(diff(map_x), diff(map_y))
+  map_x <- map_x + c(-1, 1) * map_margin
+  map_y <- map_y + c(-1, 1) * map_margin
+  stem_xy <- stem_xy %>%
+    mutate(
+      edge = ifelse(x_rel_m < map_x[1] | x_rel_m > map_x[2] | 
+        y_rel_m < map_y[1] | y_rel_m > map_y[2], 
+        "Beyond map edge, shown at edge", "Within map"),
+      # Inset from the edge, so that points are not clipped
+      x_rel_m = pmin(pmax(x_rel_m, map_x[1] + 0.25 * map_margin), 
+        map_x[2] - 0.25 * map_margin),
+      y_rel_m = pmin(pmax(y_rel_m, map_y[1] + 0.25 * map_margin), 
+        map_y[2] - 0.25 * map_margin))
+
+  p_stem <- ggplot() +
+    geom_rect(data = filter(quad_rel, plot_id %in% stem_xy$plot_id),
+      aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max),
+      fill = NA, colour = fig_pal$line_muted, linewidth = 0.3) +
+    geom_point(data = filter(stem_xy, type == "Stem, in quadrat grid"),
+      aes(x = x_rel_m, y = y_rel_m, colour = type), 
+      size = 0.2, alpha = 0.4, shape = 16) +
+    geom_point(data = filter(stem_xy, type != "Stem, in quadrat grid"),
+      aes(x = x_rel_m, y = y_rel_m, colour = type, shape = edge), size = 1.4) +
+    scale_colour_manual(NULL, values = stem_type, breaks = names(stem_type)) +
+    scale_shape_manual(NULL, values = c("Within map" = 16, 
+      "Beyond map edge, shown at edge" = 17),
+      breaks = intersect("Beyond map edge, shown at edge", stem_xy$edge)) +
+    guides(
+      colour = guide_legend(order = 1, override.aes = list(size = 2, alpha = 1, shape = 16)),
+      shape = guide_legend(order = 2, override.aes = list(size = 2, colour = fig_pal$ink_muted))) +
+    facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_stem)) +
+    coord_equal(xlim = map_x, ylim = map_y, expand = FALSE) +
+    labs(
+      title = "Stem locations and quadrats",
+      subtitle = paste0(format(nrow(stem_xy), big.mark = ","), 
+        " stems with coordinates. Quadrats ", param$quad_dim[1], " x ", 
+        param$quad_dim[2], " m. Plot coordinates"),
+      x = "X (m)",
+      y = "Y (m)") +
+    themeMap()
+  saveFig(p_stem, file.path(checkdir, "07_stem_map.png"), n_panel = n_plot_stem)
+}

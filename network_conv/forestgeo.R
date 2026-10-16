@@ -9,8 +9,9 @@
 # GEO-TREES stem codes. Many sites also use their own codes.
 #
 # To use this template for a site, copy it to
-# ./sites/<SITE>/<ACQUISITION>/01_fmt.R, put the raw data in the `raw_dir`
-# defined in param.yaml, and check every line marked "TODO". When run by
+# ./sites/<SITE>/<ACQUISITION>/01_fmt.R, put the raw data in
+# `raw_dir`/`raw_version` defined in param.yaml, and check every line marked
+# "TODO". When run by
 # ./zz_site.R, `param`, `indir`, `outdir`, and the column templates are
 # already defined. To run it on its own, from the repository root, set
 # `p_file` below.
@@ -34,7 +35,7 @@ if (!exists("param")) {
 
   p_file <- "./sites/<SITE>/<ACQUISITION>/v1/param.yaml"  # TODO
   param <- read_yaml(p_file)
-  indir <- param$raw_dir
+  indir <- file.path(param$raw_dir, param$raw_version)
   outdir <- file.path(param$out_dir, "01_fmt")
   dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 

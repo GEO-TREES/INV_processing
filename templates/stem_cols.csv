@@ -1,7 +1,7 @@
 ﻿column_name,class,description,units,min_val,max_val,derived
 record_id,integer,"ID of the stem measurement record, unique within the acquisition.",NA,1,NA,TRUE
 site_id,character,GEO-TREES site name.,NA,,,
-acquisition_id,character,"Acquisition ID. The tree inventory data collection event, to separate different GEO-TREES data collection campaigns. Commonly the mid-date of stem measurements within the site for this acquisition (census).",NA,,,TRUE
+acquisition_id,character,"Acquisition ID. The tree inventory data collection event, to separate different GEO-TREES data collection campaigns. Commonly the census year, i.e. the year of the mid-date of stem measurements within the site for this acquisition (census).",NA,,,TRUE
 plot_id,character,"Plot name, unique within the site.",NA,,,
 subplot_id,character,"If the plot is divided into multiple parcels, the parcel within which the stem is found. Unique within the plot.",NA,,,
 tree_id,character,"Unique identifier for individual trees within a plot, normally the stem_id of the first or largest stem within the tree.",NA,,,

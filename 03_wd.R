@@ -77,3 +77,41 @@ wd_out <- cbind(record_id = stem_taxa_all$record_id, wd_all)
 
 # Write to file
 write.csv(wd_out, file.path(outdir, "stem_wd.csv"), row.names = FALSE)
+
+# Summarise the taxonomic level of wood density estimates. Estimates from the
+# plot mean are used where a stem has no matched genus or family
+wd_check <- wd_out %>%
+  mutate(level = ifelse(levelWD %in% c("species", "genus", "family", "dataset"),
+    levelWD, "plot mean")) %>%
+  mutate(level = factor(level, 
+    levels = intersect(c("species", "genus", "family", "plot mean", "dataset"), level)))
+
+wd_level <- wd_check %>%
+  group_by(level) %>%
+  summarise(
+    n_stem = n(),
+    meanWD_mean = mean(meanWD, na.rm = TRUE),
+    meanWD_min = min(meanWD, na.rm = TRUE),
+    meanWD_max = max(meanWD, na.rm = TRUE),
+    .groups = "drop") %>%
+  mutate(pct_stem = round(100 * n_stem / sum(n_stem), 1), .after = n_stem)
+msgTable(wd_level, "Wood density (g cm-3) by taxonomic level of the estimate:")
+
+# Figure of wood density distribution at each taxonomic level
+wd_lab <- setNames(
+  paste0(wd_level$level, " (", format(wd_level$n_stem, big.mark = ",", trim = TRUE), 
+    " stems, ", wd_level$pct_stem, "%)"),
+  wd_level$level)
+p_wd <- ggplot(wd_check, aes(x = meanWD)) +
+  geom_histogram(binwidth = 0.025, fill = fig_pal$series[1], 
+    colour = fig_pal$surface, linewidth = 0.2) +
+  facet_wrap(~level, ncol = 1, scales = "free_y", 
+    labeller = as_labeller(wd_lab)) +
+  labs(
+    title = "Wood density estimates by taxonomic level",
+    subtitle = "Each panel is one level of the estimate; y-axis scales differ",
+    x = expression("Wood density (g cm"^-3*")"),
+    y = "Stems") +
+  themeFig()
+saveFig(p_wd, file.path(checkdir, "03_wd_level.png"), 
+  width = 8, height = 2 + 2.2 * nlevels(wd_check$level))

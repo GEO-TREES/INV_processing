@@ -4,7 +4,11 @@
 
 # Remove objects left over from previous runs, e.g. when looping over sites
 # in ./zz_site_all.R. Keep `p_file` and any mocked `readline()`
-rm(list = setdiff(ls(envir = globalenv()), c("p_file", "readline")), envir = globalenv())
+rm(list = setdiff(
+    ls(envir = globalenv()), 
+    c("p_file", "readline")
+    ), 
+  envir = globalenv())
 
 # Load packages
 library(dplyr)
@@ -15,16 +19,16 @@ library(terra)
 library(BIOMASS)
 library(yaml)
 library(rocrateR)
+library(ggplot2)
 
 # Source functions
 source("./func.R")
 
 # Load YAML file with parameters for one product version of an acquisition
-# p_file <- "./sites/Bicuar/2024-02-12/v1/param.yaml"
+# p_file <- "./sites/Paracou/2023/v1/param.yaml"
 p <- yaml::read_yaml(p_file)
 
 # Acquisition directory, ./sites/<SITE>/<ACQUISITION>/, containing 01_fmt.R
-# and the WFO cache
 acq_dir <- dirname(dirname(p_file))
 
 # Load YAML file with software version
@@ -42,9 +46,19 @@ param_name_vec <- c(
   "s3_dir",
   "out_dir",
   "raw_dir",
+  "raw_version",
   "height_method",
   "wd_method",
   "polygon_method",
+  "outside_max_dist_m",
+  "corner_outlier_dist_m",
+  "quad_grid_tol",
+  "height_model",
+  "agbd_diam_min_cm",
+  "include_broken",
+  "multi_stem_method",
+  "unmapped_method",
+  "diam_error",
   "software_version",
   "product_version",
   "rocrate"
@@ -82,7 +96,10 @@ if (length(param_extra) > 0) {
 param_choices <- list(
   height_method = c("regional", "field"),
   wd_method = c("regional", "field"),
-  polygon_method = c("exact", "affine", "procrustes")
+  polygon_method = c("exact", "affine", "procrustes"),
+  height_model = c("best", "log1", "log2", "weibull", "michaelis"),
+  multi_stem_method = c("equivalent", "stem"),
+  unmapped_method = c("random", "exclude")
 )
 for (i in names(param_choices)) {
   if (!param[[i]] %in% param_choices[[i]]) {
@@ -92,6 +109,43 @@ for (i in names(param_choices)) {
 
 if (length(param$quad_dim) != 2 || !is.numeric(param$quad_dim)) {
   stop("`quad_dim` must be two numbers, e.g. [50, 50]")
+}
+
+if (length(param$raw_version) != 1 || !grepl("^[A-Za-z0-9-]+$", param$raw_version)) {
+  stop("`raw_version` must be a single version string, e.g. \"v1\", ",
+    "without underscores or dots")
+}
+
+if (length(param$outside_max_dist_m) != 1 || !is.numeric(param$outside_max_dist_m) ||
+  param$outside_max_dist_m < 0) {
+  stop("`outside_max_dist_m` must be a number >= 0")
+}
+
+if (length(param$corner_outlier_dist_m) != 1 || !is.numeric(param$corner_outlier_dist_m) ||
+  param$corner_outlier_dist_m <= 0) {
+  stop("`corner_outlier_dist_m` must be a number > 0")
+}
+
+if (length(param$quad_grid_tol) != 1 || !is.numeric(param$quad_grid_tol) ||
+  param$quad_grid_tol < 0 || param$quad_grid_tol >= 1) {
+  stop("`quad_grid_tol` must be a number >= 0 and < 1")
+}
+
+if (length(param$agbd_diam_min_cm) != 1 || !is.numeric(param$agbd_diam_min_cm) ||
+  param$agbd_diam_min_cm < 0) {
+  stop("`agbd_diam_min_cm` must be a number >= 0")
+}
+
+if (length(param$include_broken) != 1 || !is.logical(param$include_broken) ||
+  is.na(param$include_broken)) {
+  stop("`include_broken` must be true or false")
+}
+
+if (length(param$diam_error) != 1 ||
+  !(param$diam_error %in% c("chave2004", "field", "none") ||
+    (is.numeric(param$diam_error) && param$diam_error > 0))) {
+  stop("`diam_error` must be \"chave2004\", \"field\", \"none\", or a ",
+    "number > 0, the standard deviation of diameter measurement error in cm")
 }
 
 if (basename(acq_dir) != param$acquisition_id || 
@@ -115,6 +169,12 @@ height_col_class <- setNames(height_cols$class, height_cols$column_name)
 
 wd_cols <- read.csv("./templates/wd_cols.csv")
 wd_col_class <- setNames(wd_cols$class, wd_cols$column_name)
+
+taxon_cols <- read.csv("./templates/taxon_cols.csv")
+taxon_col_class <- setNames(taxon_cols$class, taxon_cols$column_name)
+
+stem_dup_cols <- read.csv("./templates/stem_dup_cols.csv")
+stem_dup_col_class <- setNames(stem_dup_cols$class, stem_dup_cols$column_name)
 
 # Define output directories
 out_dir_vec <- c(
@@ -162,6 +222,11 @@ if (tolower(trimws(user_input)) %in% c("y", "yes")) {
   stop("User must respond 'y' or 'n'")
 }
 
+# Directory for files used to check raw data, e.g. taxonomic names which
+# could not be matched, and stems outside plots
+checkdir <- file.path(param$out_dir, software_version_sanit, "checks")
+out_dir_vec <- c(out_dir_vec, "checks")
+
 # Create output directories
 for (i in out_dir_vec) {
   dir.create(file.path(param$out_dir, software_version_sanit, i), 
@@ -174,8 +239,9 @@ if (param$opt_s3) {
   s3_client <- paws::s3(config = list(region = "us-west-2"))
   bucket <- "maap-ops-workspace"
 
-  # Download all files
-  s3Download(s3_client, bucket, prefix = param$s3_dir, dest = param$raw_dir)
+  # Download all files for this version of the raw data
+  s3Download(s3_client, bucket, prefix = file.path(param$s3_dir, param$raw_version),
+    dest = file.path(param$raw_dir, param$raw_version))
 }
 
 # Create BIOMASS cache
@@ -190,7 +256,12 @@ BIOMASS_files <- c(
 for (i in BIOMASS_files) BIOMASS::cacheManager(i)
 
 # Format raw data
-indir <- param$raw_dir
+# Raw data are versioned, in `raw_dir`/`raw_version`, so that outputs can be
+# reproduced after raw data are corrected
+indir <- file.path(param$raw_dir, param$raw_version)
+if (!dir.exists(indir)) {
+  stop("Raw data directory not found: ", indir)
+}
 outdir <- file.path(param$out_dir, software_version_sanit, "01_fmt")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 runFn(file.path(acq_dir, "01_fmt.R"))
@@ -199,11 +270,16 @@ runFn(file.path(acq_dir, "01_fmt.R"))
 outdir <- file.path(param$out_dir, software_version_sanit, "02_taxa")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), colClasses = stem_col_class)
-# WFO cache is shared by all product versions of an acquisition
-wfo_path <- file.path(acq_dir, "wfo_cache.rds")
-if (!file.exists(wfo_path) && file.exists(file.path(outdir, "wfo_cache.rds"))) {
-  # Use cache from previous outputs, if any
-  file.copy(file.path(outdir, "wfo_cache.rds"), wfo_path)
+# WFO cache is shared by all product versions of an acquisition, and is
+# stored with the raw data, in the directory containing `raw_dir`
+wfo_path <- file.path(dirname(param$raw_dir), "wfo_cache.rds")
+if (!file.exists(wfo_path)) {
+  # Use cache from a previous location, if any
+  wfo_old <- c(file.path(acq_dir, "wfo_cache.rds"), file.path(outdir, "wfo_cache.rds"))
+  wfo_old <- wfo_old[file.exists(wfo_old)]
+  if (length(wfo_old) > 0) {
+    file.copy(wfo_old[1], wfo_path)
+  }
 }
 loadWFOCache(wfo_path) 
 if (file.exists(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"))) {
@@ -215,6 +291,11 @@ if (file.exists(file.path(param$out_dir, software_version_sanit, "01_fmt", "heig
   height <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "height.csv"), colClasses = height_col_class)
 } else {
   height <- NULL
+}
+if (file.exists(file.path(param$out_dir, software_version_sanit, "01_fmt", "taxon.csv"))) {
+  taxon <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "taxon.csv"), colClasses = taxon_col_class)
+} else {
+  taxon <- NULL
 }
 runFn("./02_taxa.R")
 
@@ -267,7 +348,7 @@ outdir <- file.path(param$out_dir, software_version_sanit, "07_quad")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), colClasses = stem_col_class)
 plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"), colClasses = pt_col_class)
-record_fil <- readLines(file.path(param$out_dir, software_version_sanit, "06_record_fil", "record_fil.txt"))
+record_agbd <- readLines(file.path(param$out_dir, software_version_sanit, "06_record_fil", "record_agbd.txt"))
 runFn("./07_quad.R")
 
 # Run AGB Monte-Carlo error propagation
@@ -278,6 +359,7 @@ stem_wd <- read.csv(file.path(param$out_dir, software_version_sanit, "03_wd", "s
 stem_height <- read.csv(file.path(param$out_dir, software_version_sanit, "04_height", "stem_height.csv"))
 stem_agb <- read.csv(file.path(param$out_dir, software_version_sanit, "05_agb_stem", "stem_agb.csv"))
 record_fil <- readLines(file.path(param$out_dir, software_version_sanit, "06_record_fil", "record_fil.txt"))
+record_agbd <- readLines(file.path(param$out_dir, software_version_sanit, "06_record_fil", "record_agbd.txt"))
 quad_pt <- st_read(file.path(param$out_dir, software_version_sanit, "07_quad", "quad_pt.gpkg"))
 stem_pt <- st_read(file.path(param$out_dir, software_version_sanit, "07_quad", "stem_pt.gpkg"))
 if (param$height_method == "regional") { 
@@ -285,6 +367,13 @@ if (param$height_method == "regional") {
 }
 if (param$height_method == "field") { 
   height_mod <- readRDS(file.path(param$out_dir, software_version_sanit, "04_height", "height_mod.rds"))
+}
+if (identical(param$diam_error, "field")) {
+  stem_dup_file <- file.path(param$out_dir, software_version_sanit, "01_fmt", "stem_dup.csv")
+  if (!file.exists(stem_dup_file)) {
+    stop("`diam_error` is \"field\", but no repeat diameter measurements found: ", stem_dup_file)
+  }
+  stem_dup <- read.csv(stem_dup_file, colClasses = stem_dup_col_class)
 }
 runFn("./08_agb_mc.R")
 
@@ -297,6 +386,7 @@ stem_wd <- read.csv(file.path(param$out_dir, software_version_sanit, "03_wd", "s
 stem_height <- read.csv(file.path(param$out_dir, software_version_sanit, "04_height", "stem_height.csv"))
 stem_agb <- read.csv(file.path(param$out_dir, software_version_sanit, "05_agb_stem", "stem_agb.csv"))
 record_fil <- readLines(file.path(param$out_dir, software_version_sanit, "06_record_fil", "record_fil.txt"))
+record_agbd <- readLines(file.path(param$out_dir, software_version_sanit, "06_record_fil", "record_agbd.txt"))
 stem_pt <- st_read(file.path(param$out_dir, software_version_sanit, "07_quad", "stem_pt.gpkg"))
 stem_agb_mc <- read.csv(file.path(param$out_dir, software_version_sanit, "08_agb_mc", "stem_agb_mc.csv"))
 runFn("./09_stem_summ.R")
@@ -322,4 +412,9 @@ plot_poly <- st_read(file.path(param$out_dir, software_version_sanit, "07_quad",
 stem_summ <- st_read(file.path(param$out_dir, software_version_sanit, "09_stem_summ", "stem_summ.gpkg"))  # L1_stem, L2_stem
 quad_summ <- st_read(file.path(param$out_dir, software_version_sanit, "10_quad_summ", "quad_summ.gpkg"))  # L3_quad
 runFn("./11_brm.R")
+
+# List files written to check the results of each step
+check_files <- list.files(checkdir)
+message("Files to check results, in ", checkdir, ":\n  ",
+  paste(check_files, collapse = "\n  "))
 

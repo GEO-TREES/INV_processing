@@ -3,7 +3,8 @@
 # Last updated: 2026-10-14
 
 # Choices made during name matching are stored in a World Flora Online (WFO)
-# cache, `wfo_path`, shared by all product versions of an acquisition.
+# cache, `wfo_path`, shared by all product versions of an acquisition. It is
+# stored with the raw data, in the directory containing `raw_dir`.
 #
 # Ambiguous names are only offered for manual matching in interactive
 # sessions. In batch runs (`options(inv.batch = TRUE)`, set by
@@ -42,6 +43,16 @@ for (i in seq_along(taxon_chunks)) {
 }
 taxa <- bind_rows(taxa_list)
 
+# Fill the family of names without a matched family, e.g. stems identified
+# only to family, from the optional taxon table, so that wood density can be
+# estimated at family level
+if (!is.null(taxon)) {
+  taxon_family <- trimws(taxon$taxon_family[match(taxa$nameOriginal, taxon$taxon_name)])
+  family_fill <- is.na(taxa$familyAccepted) & !is.na(taxon_family) & taxon_family != ""
+  taxa$familyAccepted[family_fill] <- taxon_family[family_fill]
+  message("Family filled from taxon table for ", sum(family_fill), " names")
+}
+
 # Create table of names which were changed or not matched, for review
 taxa_method <- vapply(taxa$nameSubmitted, function(x) {
   m <- BIOMASS::getWFOCache()[[x]]$method
@@ -67,13 +78,37 @@ message(
   sum(!is.na(taxa_review$nameAccepted)), " changed, ",
   sum(is.na(taxa_review$nameAccepted)), " not matched (",
   sum(taxa_review$n_stem[is.na(taxa_review$nameAccepted)]), " stems). ",
-  "See ", file.path(outdir, "taxa_review.csv"))
+  "See ", file.path(checkdir, "taxa_review.csv"))
+
+# Summarise matching outcomes by number of stems, to check whether unmatched
+# names affect many stems
+taxa_outcome <- taxa %>%
+  filter(!is.na(nameOriginal), nameOriginal != "") %>%
+  mutate(
+    n_stem = as.vector(table(stem$taxon_name)[nameOriginal]),
+    outcome = case_when(
+      !is.na(nameAccepted) & nameStd(nameOriginal) == nameStd(nameAccepted) ~ "matched, unchanged",
+      !is.na(nameAccepted) ~ "matched, changed",
+      !is.na(familyAccepted) ~ "family only",
+      TRUE ~ "not matched"),
+    outcome = factor(outcome, levels = c("matched, unchanged",
+      "matched, changed", "family only", "not matched"))) %>%
+  group_by(outcome, .drop = FALSE) %>%
+  summarise(n_name = n(), n_stem = sum(n_stem, na.rm = TRUE), .groups = "drop") %>%
+  mutate(pct_stem = round(100 * n_stem / sum(n_stem), 1))
+msgTable(taxa_outcome, "Taxonomic name matching:")
+
+taxa_unmatched <- filter(taxa_review, is.na(nameAccepted))
+if (nrow(taxa_unmatched) > 0) {
+  msgTable(dplyr::select(taxa_unmatched, nameOriginal, familyAccepted, n_stem),
+    "Names not matched, most stems first:", max_rows = 10)
+}
 
 # Write stem taxonomic information to file
 write.csv(taxa, file.path(outdir, "stem_taxa.csv"), row.names = FALSE)
 
-# Write names for review to file
-write.csv(taxa_review, file.path(outdir, "taxa_review.csv"), row.names = FALSE)
+# Write names for review to file, to check raw data
+write.csv(taxa_review, file.path(checkdir, "taxa_review.csv"), row.names = FALSE)
 
 # Write copy of WFO cache alongside outputs
 file.copy(wfo_path, file.path(outdir, "wfo_cache.rds"), overwrite = TRUE)

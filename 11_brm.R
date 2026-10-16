@@ -177,7 +177,7 @@ lic <- entity(
 
 # Input directory
 indir <- entity(
-  x = paste0(param$raw_dir, "/"),
+  x = paste0(file.path(param$raw_dir, param$raw_version), "/"),
   type = "Dataset",
   description = "Directory containing raw L0 data."
 )

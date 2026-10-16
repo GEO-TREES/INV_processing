@@ -83,7 +83,7 @@ test_that("ptFormat() creates plot geo-location table", {
   expect_silent(colCheck(ptFormat(z, pt_cols), pt_cols))
 })
 
-test_that("recordFilter() selects stems for AGB density", {
+test_that("recordFilter() and agbdFilter() select stems for AGB and AGB density", {
   plot <- data.frame(plot_id = "P1", meas_diam_min_cm = 10)
   stem <- data.frame(
     record_id = 1:8, site_id = "S", plot_id = "P1",
@@ -93,9 +93,13 @@ test_that("recordFilter() selects stems for AGB density", {
     pom_m = c(1.3, 1.3, 1.3, 1.3, 1.3, NA, 1.3, 2),
     measurement_date = 2024.5,
     code = c("AS", "ASB", "AS", "DS", "AST", "ASM", "AS", "AS"))
-  # Excludes small (3), dead (4), broken below POM (5), missing (6), and
-  # the lower POM of a stem measured twice (7). Broken above POM (2) included
-  expect_equal(recordFilter(stem, plot), c("1", "2", "8"))
+  # Excludes dead (4), broken below POM (5), missing (6), and the lower POM
+  # of a stem measured twice (7). Broken above POM (2) and small (3) included
+  record_fil <- recordFilter(stem, plot)
+  expect_equal(record_fil, c("1", "2", "3", "8"))
+
+  # Small stems (3) are excluded from AGB density
+  expect_equal(agbdFilter(stem, plot, record_fil), c("1", "2", "8"))
 })
 
 test_that("treeEquiv() calculates equivalent diameters", {

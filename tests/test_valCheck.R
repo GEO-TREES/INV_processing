@@ -12,7 +12,9 @@ stem_cols <- read.csv(file.path(root, "templates/stem_cols.csv"))
 plot_cols <- read.csv(file.path(root, "templates/plot_cols.csv"))
 pt_cols <- read.csv(file.path(root, "templates/pt_cols.csv"))
 height_cols <- read.csv(file.path(root, "templates/height_cols.csv"))
-cols <- list(stem = stem_cols, plot = plot_cols, pt = pt_cols, height = height_cols)
+stem_dup_cols <- read.csv(file.path(root, "templates/stem_dup_cols.csv"))
+cols <- list(stem = stem_cols, plot = plot_cols, pt = pt_cols, height = height_cols,
+  dup = stem_dup_cols)
 
 # Create a small valid set of L0 tables, with columns from the templates
 emptyTable <- function(spec, n) {
@@ -83,12 +85,22 @@ makeL0 <- function() {
     wood_density_sd_gcm3 = NA_real_,
     wood_density_n = NA_integer_)
 
-  list(plot = plot, stem = stem, pt = pt, taxon = taxon, height = height, wd = wd)
+  dup <- suppressMessages(emptyTable(stem_dup_cols, 3))
+  dup$site_id <- "Site1"
+  dup$plot_id <- c("P1", "P1", "P2")
+  dup$record_id <- c(1L, 2L, 4L)
+  dup$measurement_date <- decDate("2024-08-10")
+  dup$diam_cm <- c(12.3, 35.1, 15.2)
+  dup$pom_m <- 1.3
+  dup$reference <- FALSE
+
+  list(plot = plot, stem = stem, pt = pt, taxon = taxon, height = height, wd = wd,
+    dup = dup)
 }
 
 runCheck <- function(l) {
   valCheck(plot = l$plot, stem = l$stem, pt = l$pt, taxon = l$taxon,
-    height = l$height, wd = l$wd, cols = cols)
+    height = l$height, wd = l$wd, dup = l$dup, cols = cols)
 }
 
 test_that("valid tables pass without errors or warnings", {
@@ -213,7 +225,7 @@ test_that("checks across tables", {
   l <- makeL0(); l$wd$site_id <- "Site2"
   expect_error(runCheck(l), "`site_id` differs among tables")
 
-  l <- makeL0(); l$stem$plot_id[1] <- "P3"
+  l <- makeL0(); l$stem$plot_id[3] <- "P3"
   expect_error(runCheck(l), "missing from 'plot'")
 
   l <- makeL0(); l$pt <- l$pt[l$pt$plot_id == "P1", ]
@@ -235,4 +247,27 @@ test_that("checks across tables", {
   # Negative stem coordinates give a warning
   l <- makeL0(); l$stem$x_rel_m[1] <- -2
   expect_warning(runCheck(l), "x_rel_m` must be >= 0")
+})
+
+test_that("repeat diameter measurement checks", {
+  l <- makeL0(); l$dup$record_id[1] <- 99L
+  expect_error(runCheck(l), "`record_id` which is not in 'stem'")
+
+  l <- makeL0(); l$dup$plot_id[1] <- "P2"
+  expect_error(runCheck(l), "different `plot_id`")
+
+  l <- makeL0(); l$dup$diam_cm[1] <- NA
+  expect_error(runCheck(l), "`diam_cm` must be positive and not NA in repeat")
+
+  l <- makeL0(); l$dup$reference[1] <- TRUE
+  expect_error(runCheck(l), "`reference` must be TRUE or FALSE")
+
+  l <- makeL0(); l$dup$pom_m[1] <- 1.0
+  expect_warning(runCheck(l), "different `pom_m`")
+
+  l <- makeL0(); l$dup$measurement_date[1] <- 2026
+  expect_warning(runCheck(l), "more than one year")
+
+  l <- makeL0(); l$dup$diam_cm[1] <- 2000
+  expect_error(runCheck(l), "stem_dup\\$diam_cm` must be <= 1000")
 })

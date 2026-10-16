@@ -12,7 +12,9 @@ stem_summ <- stem %>%
   left_join(., stem_agb_mc, by = "record_id") %>%
   left_join(., st_drop_geometry(stem_pt), by = "record_id") %>%
   mutate(
-    in_quadrat_calc = ifelse(record_id %in% record_fil, TRUE, FALSE)) %>%
+    # Used to estimate AGB, and AGB density
+    in_agb_calc = record_id %in% record_fil,
+    in_quadrat_calc = record_id %in% record_agbd) %>%
   st_as_sf(., coords = c("x_utm", "y_utm"), crs = st_crs(stem_pt),
     na.fail = FALSE, remove = FALSE)
 

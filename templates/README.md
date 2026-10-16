@@ -6,6 +6,9 @@
 * `./pt_cols.csv` - Plot corner coordinates table
 * `./stem_cols.csv` - Stem measurements table
 * `./taxon_cols.csv` - Taxonomy table
+* `./height_cols.csv` - Optional height-diameter measurements table
+* `./wd_cols.csv` - Optional wood density measurements table
+* `./stem_dup_cols.csv` - Optional repeat diameter measurements table, used to estimate diameter measurement error
 
 `./plot_meta.xlsx` contains a template for data owners to manually record plot-level meta-data for a site.
 

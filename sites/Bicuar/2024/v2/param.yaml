@@ -1,10 +1,26 @@
 site_id: "Bicuar"
-acquisition_id: "2024-02-12"
+acquisition_id: "2024"
 product_version: "v2"
-out_dir: "./dat/sites/Bicuar/INV/2024-02-12/v2"
-raw_dir: "./dat/sites/Bicuar/INV/2024-02-12/L0"
-s3_raw_dir: "johngodlee/GEO-TREES_INV/dat/sites/Bicuar/L0"
+out_dir: "./dat/sites/Bicuar/INV/2024/v2"
+raw_dir: "./dat/sites/Bicuar/INV/2024/L0"
+raw_version: "v1"
+s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/Bicuar/L0"
 quad_dim: [25, 25]
 opt_s3: false
 height_method: "regional"
 wd_method: "regional"
+polygon_method: "affine"
+outside_max_dist_m: 0
+corner_outlier_dist_m: 10
+quad_grid_tol: 0.1
+height_model: "best"
+agbd_diam_min_cm: 0
+include_broken: true
+multi_stem_method: "equivalent"
+unmapped_method: "random"
+diam_error: "chave2004"
+rocrate:
+  author_name: "John L. Godlee"
+  author_email: "GodleeJ@si.edu"
+  affiliation: "Smithsonian Institution"
+  license: "TERMS.md"

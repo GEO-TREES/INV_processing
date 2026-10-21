@@ -1,11 +1,26 @@
 site_id: "Mpala"
-acquisition_id: "2025-02-14"
+acquisition_id: "2025"
 product_version: "v3"
-out_dir: "./dat/sites/Mpala/INV/2025-02-14/v3"
-raw_dir: "./dat/sites/Mpala/INV/2025-02-14/L0"
-s3_raw_dir: "johngodlee/GEO-TREES_INV/dat/sites/Mpala/L0"
+out_dir: "./dat/sites/Mpala/INV/2025/v3"
+raw_dir: "./dat/sites/Mpala/INV/2025/L0"
+raw_version: "v1"
+s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/Mpala/L0"
 quad_dim: [100, 100]
 opt_s3: false
 height_method: "regional"
 wd_method: "regional"
 polygon_method: "exact"
+outside_max_dist_m: 0
+corner_outlier_dist_m: 10
+quad_grid_tol: 0.1
+height_model: "best"
+agbd_diam_min_cm: 0
+include_broken: true
+multi_stem_method: "equivalent"
+unmapped_method: "random"
+diam_error: "chave2004"
+rocrate:
+  author_name: "John L. Godlee"
+  author_email: "GodleeJ@si.edu"
+  affiliation: "Smithsonian Institution"
+  license: "TERMS.md"

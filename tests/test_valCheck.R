@@ -87,12 +87,12 @@ makeL0 <- function() {
 
   dup <- suppressMessages(emptyTable(stem_dup_cols, 3))
   dup$site_id <- "Site1"
+  dup$record_id <- 1:3
   dup$plot_id <- c("P1", "P1", "P2")
-  dup$record_id <- c(1L, 2L, 4L)
+  dup$stem_id <- c("S1", "S2", "S4")
   dup$measurement_date <- decDate("2024-08-10")
   dup$diam_cm <- c(12.3, 35.1, 15.2)
   dup$pom_m <- 1.3
-  dup$reference <- FALSE
 
   list(plot = plot, stem = stem, pt = pt, taxon = taxon, height = height, wd = wd,
     dup = dup)
@@ -160,7 +160,7 @@ test_that("stem table checks", {
   l <- makeL0(); l$stem$code[1] <- "AST"
   expect_warning(runCheck(l), "'T' \\(broken below POM\\)")
 
-  l <- makeL0(); l$stem$stem_id[1] <- NA
+  l <- makeL0(); l$stem$stem_id[3] <- NA
   expect_warning(runCheck(l), "no `stem_id`")
 })
 
@@ -250,17 +250,25 @@ test_that("checks across tables", {
 })
 
 test_that("repeat diameter measurement checks", {
-  l <- makeL0(); l$dup$record_id[1] <- 99L
-  expect_error(runCheck(l), "`record_id` which is not in 'stem'")
+  l <- makeL0(); l$dup$stem_id[1] <- "S99"
+  expect_error(runCheck(l), "`stem_id` which are not in 'stem'")
 
+  # Stem IDs are unique within a plot, not the site
   l <- makeL0(); l$dup$plot_id[1] <- "P2"
-  expect_error(runCheck(l), "different `plot_id`")
+  expect_error(runCheck(l), "`stem_id` which are not in 'stem'")
+
+  l <- makeL0(); l$dup$stem_id[1] <- NA
+  expect_error(runCheck(l), "`stem_id` must not be NA in repeat")
+
+  l <- makeL0(); l$dup$record_id[2] <- 1L
+  expect_error(runCheck(l), "`record_id` must be unique")
+
+  # A stem can be measured again more than once
+  l <- makeL0(); l$dup$stem_id[2] <- "S1"
+  expect_silent(runCheck(l))
 
   l <- makeL0(); l$dup$diam_cm[1] <- NA
   expect_error(runCheck(l), "`diam_cm` must be positive and not NA in repeat")
-
-  l <- makeL0(); l$dup$reference[1] <- TRUE
-  expect_error(runCheck(l), "`reference` must be TRUE or FALSE")
 
   l <- makeL0(); l$dup$pom_m[1] <- 1.0
   expect_warning(runCheck(l), "different `pom_m`")
@@ -270,4 +278,25 @@ test_that("repeat diameter measurement checks", {
 
   l <- makeL0(); l$dup$diam_cm[1] <- 2000
   expect_error(runCheck(l), "stem_dup\\$diam_cm` must be <= 1000")
+})
+
+test_that("dupMatch() pairs repeat measurements with the closest POM and date", {
+  stem <- data.frame(
+    record_id = 1:5,
+    plot_id = c("P1", "P1", "P1", "P2", "P2"),
+    stem_id = c("S1", "S1", "S2", "S1", NA),
+    pom_m = c(1.3, 2.5, 1.3, 1.3, 1.3),
+    measurement_date = c(2024.1, 2024.1, 2024.1, 2024.1, 2024.1))
+  dup <- data.frame(
+    plot_id = c("P1", "P1", "P2", "P1", "P2"),
+    stem_id = c("S1", "S1", "S1", "S3", NA),
+    pom_m = c(2.5, 1.3, 1.3, 1.3, 1.3),
+    measurement_date = 2024.2)
+  # Same stem ID in two plots, two POMs for one stem, unknown stem, NA stem ID
+  expect_equal(dupMatch(dup, stem), c(2L, 1L, 4L, NA, NA))
+
+  # Ties in POM are broken by the closest date
+  stem2 <- data.frame(record_id = 1:2, plot_id = "P1", stem_id = "S1",
+    pom_m = 1.3, measurement_date = c(2020.5, 2024.1))
+  expect_equal(dupMatch(dup[1:2, ], stem2), c(2L, 2L))
 })

@@ -445,6 +445,41 @@ ptValCheck <- function(x, cols = NULL) {
   rangeCheck(x, cols, "pt")
 }
 
+#' Match repeat diameter measurements to their original stem measurement
+#'
+#' Repeat measurements are matched to records in the stem table with the same
+#' `plot_id` and `stem_id`. Where a stem has more than one record, e.g.
+#' measured at more than one POM, the record with the closest POM, then the
+#' closest measurement date, is used
+#'
+#' @param x repeat diameter measurements table, see 
+#'     ./templates/stem_dup_cols.csv
+#' @param stem stem measurement table
+#'
+#' @return integer vector, the row of `stem` matching each row of `x`, NA if
+#'     the stem is not in `stem`
+#'
+dupMatch <- function(x, stem) {
+  stem_ok <- !is.na(stem$stem_id) & stem$stem_id != ""
+  stem_rows <- split(which(stem_ok), 
+    paste(stem$plot_id, stem$stem_id, sep = "::")[stem_ok])
+  key <- paste(x$plot_id, x$stem_id, sep = "::")
+
+  vapply(seq_len(nrow(x)), function(j) {
+    i <- stem_rows[[key[j]]]
+    if (is.null(i) || is.na(x$stem_id[j])) {
+      return(NA_integer_)
+    }
+    if (length(i) > 1) {
+      pom_d <- abs(stem$pom_m[i] - x$pom_m[j])
+      date_d <- abs(stem$measurement_date[i] - x$measurement_date[j])
+      i <- i[order(ifelse(is.na(pom_d), Inf, pom_d), 
+        ifelse(is.na(date_d), Inf, date_d))]
+    }
+    as.integer(i[1])
+  }, integer(1))
+}
+
 #' Check repeat diameter measurement table values
 #'
 #' Runs various checks on the values in repeat diameter measurement table
@@ -461,9 +496,14 @@ dupValCheck <- function(x, stem = NULL, cols = NULL) {
     stop("`site_id` must be the same for all plots within a site")
   }
 
-  # Record ID must not be NA
-  if (any(is.na(x$record_id))) {
-    stop("`record_id` must not be NA in repeat diameter measurements")
+  # Record IDs must be unique
+  if (any(is.na(x$record_id)) || any(duplicated(x$record_id))) {
+    stop("`record_id` must be unique and not NA in repeat diameter measurements")
+  }
+
+  # Stem ID is needed to match the original measurement
+  if (any(is.na(x$stem_id) | x$stem_id == "")) {
+    stop("`stem_id` must not be NA in repeat diameter measurements")
   }
 
   # Diameter must be positive and not NA
@@ -471,32 +511,21 @@ dupValCheck <- function(x, stem = NULL, cols = NULL) {
     stop("`diam_cm` must be positive and not NA in repeat diameter measurements")
   }
 
-  # Reference must be the same for all repeat measurements
-  if (length(unique(x$reference)) != 1 || any(is.na(x$reference))) {
-    stop("`reference` must be TRUE or FALSE, and the same for all repeat ",
-      "diameter measurements")
-  }
-
   # Values within ranges defined in spec table
   rangeCheck(x, cols, "stem_dup")
 
   if (!is.null(stem)) {
-    # Repeat measurements must refer to records in the stem table
-    i <- match(x$record_id, stem$record_id)
+    # Repeat measurements must refer to stems in the stem table
+    i <- dupMatch(x, stem)
     if (any(is.na(i))) {
-      stop(sum(is.na(i)), " repeat diameter measurements have a `record_id` ",
-        "which is not in 'stem'")
-    }
-
-    if (any(x$plot_id != stem$plot_id[i])) {
-      stop(sum(x$plot_id != stem$plot_id[i]), " repeat diameter measurements ",
-        "have a different `plot_id` to the record they refer to in 'stem'")
+      stop(sum(is.na(i)), " repeat diameter measurements have a `plot_id` ",
+        "and `stem_id` which are not in 'stem'")
     }
 
     # Original measurements without a diameter can't be compared
     if (any(is.na(stem$diam_cm[i]))) {
       warning(sum(is.na(stem$diam_cm[i])), " repeat diameter measurements ",
-        "refer to records in 'stem' without `diam_cm`, these will be ignored",
+        "refer to stems in 'stem' without `diam_cm`, these will be ignored",
         call. = FALSE)
     }
 

@@ -111,15 +111,24 @@ if (identical(param$diam_error, "none")) {
   # measurement error
   dup_max_diff_cm <- 20
 
-  # Pair repeat measurements with their original measurements. Pairs at a
+  # Pair repeat measurements with their original measurements, matched by
+  # `plot_id` and `stem_id`, see `dupMatch()` in ./func.R. Pairs at a
   # different POM, more than one year apart, or with very large differences
   # are not used
+  dup_i <- dupMatch(stem_dup, stem)
   diam_dup <- stem_dup %>%
-    dplyr::select(record_id, diam_cm_dup = diam_cm, pom_m_dup = pom_m,
-      measurement_date_dup = measurement_date, any_of("team"), reference) %>%
-    inner_join(stem[, c("record_id", "plot_id", "tree_id", "stem_id",
-      "diam_cm", "pom_m", "measurement_date")], ., by = "record_id") %>%
+    dplyr::select(record_id_dup = record_id, plot_id, stem_id,
+      diam_cm_dup = diam_cm, pom_m_dup = pom_m,
+      measurement_date_dup = measurement_date, any_of("team")) %>%
+    mutate(
+      record_id = stem$record_id[dup_i],
+      tree_id = stem$tree_id[dup_i],
+      diam_cm = stem$diam_cm[dup_i],
+      pom_m = stem$pom_m[dup_i],
+      measurement_date = stem$measurement_date[dup_i],
+      .after = stem_id) %>%
     mutate(status = case_when(
+      is.na(record_id) ~ "excluded: stem not found",
       is.na(diam_cm) ~ "excluded: no original diameter",
       !is.na(pom_m) & !is.na(pom_m_dup) & abs(pom_m - pom_m_dup) > 0.05 ~
         "excluded: different POM",
@@ -144,13 +153,11 @@ if (identical(param$diam_error, "none")) {
     diam_error <- "chave2004"
     diam_dup$prob_large <- NA_real_
   } else {
-    # The original measurement is `D1`, so that the model describes the error
-    # of the original measurements if the repeat measurements are reference
-    # measurements
+    # Original and repeat measurements are assumed to have the same error, so
+    # the model describes the error of a single measurement
     diam_error <- fitDiamError(
       D1 = diam_dup$diam_cm[dup_used],
       D2 = diam_dup$diam_cm_dup[dup_used],
-      reference = isTRUE(diam_dup$reference[dup_used][1]),
       large = sum(dup_used) >= dup_n_large)
     print(diam_error)
 
@@ -194,7 +201,6 @@ if (identical(param$diam_error, "none")) {
       large_estimated = diam_error$large,
       bias_cm = diam_error$bias,
       bias_se_cm = diam_error$bias_se,
-      reference = diam_error$reference,
       n_pairs = diam_error$n,
       diam_min_cm = diam_error$D_range[1],
       diam_max_cm = diam_error$D_range[2]),

@@ -1,10 +1,10 @@
 column_name,class,description,units,min_val,max_val,derived
+record_id,integer,"ID of the repeat measurement record, unique within the acquisition.",NA,1,NA,TRUE
 site_id,character,GEO-TREES site name.,NA,,,
 plot_id,character,"Plot name, unique within the site.",NA,,,
-record_id,integer,"ID of the stem measurement record in the stem table which was measured again. Each row is one repeat measurement of that record.",NA,1,NA,
+stem_id,character,"ID of the stem which was measured again, matching `stem_id` in the stem table. Unique within the plot. Each row is one repeat measurement of that stem.",NA,,,
 measurement_date,numeric,"The date of the repeat measurement in decimal years. To three decimal places (8.8 hours). Should be close to the date of the original measurement, so that stem growth is negligible.",year,,,
 diam_cm,numeric,"Repeat stem diameter measurement in cm to nearest mm (one decimal place), measured independently of the original measurement, i.e. without knowing the original value.",cm,0,1000,
-pom_m,numeric,"The height at which 'diam_cm' was measured again. Must be the same as the POM of the original measurement. In metres to nearest 10 cm (one decimal place).",m,0,50,
+pom_m,numeric,"The height at which 'diam_cm' was measured again. Must be the same as the POM of the original measurement. Where a stem has measurements at more than one POM in the stem table, the repeat measurement is paired with the measurement at the closest POM. In metres to nearest 10 cm (one decimal place).",m,0,50,
 team,character,"Optional. ID of the team which made the repeat measurement.",NA,,,
-reference,logical,"TRUE if the repeat measurement is a reference measurement with negligible error compared to the original measurement, e.g. by a quality control team. FALSE if both measurements are expected to have the same error. Must be the same for all rows.",NA,,,
 notes,character,Optional. Notes on the repeat measurement.,NA,,,

@@ -1,6 +1,6 @@
 # Clean Bicuar tree inventory data
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-03-03
+# Last updated: 2026-10-14
 
 # Import data
 s <- read.csv(file.path(indir, "stems.csv"))
@@ -28,8 +28,8 @@ pt <- plot_corners %>%
   filter(plot_id != "P1")
 
 ptc <- st_coordinates(pt) 
-crs <- unique(getUTM(ptc[,1], ptc[,2], epsg = TRUE))
-crs_name <- unique(getUTM(ptc[,1], ptc[,2], epsg = FALSE))
+crs <- unique(utmZone(ptc[,1], ptc[,2], epsg = TRUE))
+crs_name <- unique(utmZone(ptc[,1], ptc[,2], epsg = FALSE))
 
 pt_clean <- pt %>% 
   filter(plot_id != "P16") %>% 
@@ -67,18 +67,20 @@ s_clean <- s %>%
   mutate(
     acquisition_id = param$acquisition_id,
     site_id = param$site_id,
+    measurement_date = decDate(measurement_date),
+    measurement_date_res = "YYYY-MM-DD",
     alive = ifelse(stem_status %in% c("a", "r"), "A", "D"),
     broken = ifelse(grepl("b|p", stem_mode), "B", ""),
     fallen = ifelse(grepl("f", stem_mode), "F", "S"),
     missing = ifelse(grepl("v|q", stem_mode), "M", ""),
     stump = ifelse(grepl("t", stem_mode), "T", ""),
-    code = pasteVals(alive, broken, fallen, missing),
+    code = pasteVals(alive, broken, fallen, missing, stump),
     growth_form = NA_character_,
     height_allometry = NA_character_,
     agb_allometry = NA_character_,
     subplot_id = as.character(subplot_id)) %>% 
   mutate(
-    year = gsub("-.*", "", measurement_date),
+    year = as.character(floor(measurement_date)),
     census_id = case_when(
       plot_id %in% paste0("P", 1:4) & year == "2018" ~ "1",
       plot_id %in% paste0("P", 2:4) & year == "2021" ~ "2",
@@ -104,7 +106,7 @@ s_out <- s_clean %>%
   mutate(record_id = row_number()) %>% 
   filter(
     plot_id != "P16",
-    grepl("2024", census_date)) %>% 
+    measurement_date >= 2024) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
 # Create optional height measurements table

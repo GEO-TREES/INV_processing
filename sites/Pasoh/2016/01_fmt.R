@@ -1,6 +1,6 @@
 # Clean Pasoh stem data
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-05-12
+# Last updated: 2026-10-15
 
 # Import stem data
 load(file.path(indir, "pasoh.stem7.rdata"))  # TODO: replace with 2024 census
@@ -13,11 +13,42 @@ load(file.path(indir, "pasoh.spptable.rdata"))
 # Import elevation raster 
 elev <- rast(file.path(indir, "elev_rast_legacy.tif"))
 
+# Translate stem codes into GEO-TREES stem codes, see ./templates/stem_codes.csv
+# Stem status in `DFstatus`
+status_map <- c(
+  "alive" = "A",           # Alive
+  "broken below" = "AT",   # Alive, broken below breast height
+  "dead" = "D",            # Dead
+  "no data" = "D")         # No data, `Status` is "D" for all of these stems
+
+# ForestGEO codes, separated by ";" in `Codes`
+# Pasoh doesn't use the standard ForestGEO dead codes (DC, DN, DS, DT), or
+# Q and X for broken stems
+code_map <- c(
+  A = "",      # POM at alternative height, not 1.3 m
+  B = "T",     # Standard ForestGEO is "large buttress", but at Pasoh all
+               #   stems with B are "broken below" with no diameter
+  C = "",      # POM changed since prior census
+  D = "D",     # Dead. Not a standard ForestGEO code. Never combined with
+               #   other codes, all stems are dead with no diameter
+  I = "I",     # Stem irregular where measured
+  L = "",      # Stem leaning
+  M = "",      # Multiple stems
+  P = "",      # Problem requiring further attention
+  R = "",      # Resprout
+  Y = "F",     # Stem prostrate. At Pasoh all stems are dead with no diameter
+  # TODO: Pasoh-specific codes, not in the standard ForestGEO list. Ignored
+  #   until definitions are found
+  E = "",      # Mostly alive, with diameter
+  H = "",      # All alive, with diameter
+  K = "",      # All alive, with no diameter
+  S = "",      # All alive, with diameter
+  Z = "")      # Mostly alive, with diameter
+
 # Format stem data
 s_clean <- pasoh.stem7 %>% 
   left_join(., pasoh.spptable, by = c("SP" = "sp")) %>% 
   rename(
-    census_id = CensusID,
     subplot_id = Quadrat,
     tree_id = TreeID,
     stem_id = StemID,
@@ -30,11 +61,9 @@ s_clean <- pasoh.stem7 %>%
   mutate(
     site_id = param$site_id,
     plot_id = "Pasoh",
-    acquisition_id = "2016-08-15",
-    measurement_date = as.Date(measurement_date),
-    census_date = as.character(mean(measurement_date, na.rm = TRUE)),
-    measurement_date = as.character(measurement_date),
-    census_id = as.character(census_id),
+    acquisition_id = param$acquisition_id,
+    measurement_date = decDate(na_if(measurement_date, "NULL")),
+    measurement_date_res = ifelse(is.na(measurement_date), NA_character_, "YYYY-MM-DD"),
     tree_id = as.character(tree_id),
     stem_id = as.character(stem_id),
     diam_cm = as.numeric(diam_cm) / 10,
@@ -47,14 +76,16 @@ s_clean <- pasoh.stem7 %>%
       toupper(substr(tolower(taxon_name), 1, 1)), 
       substr(tolower(taxon_name), 2, nchar(taxon_name))
     ),
-    fallen = ifelse(grepl("Y", Codes), "F", "S"),
-    broken = ifelse(DFstatus == "broken below" | grepl("R", Codes), "B", ""),
-    missing = ifelse(grepl("DD", Codes), "M", ""),
-    code = pasteVals(Status, fallen, broken, missing)) %>%  # TODO: Double check
-  group_by(plot_id, stem_id) %>% 
-  mutate(measurement_id = row_number()) %>% 
-  ungroup() %>% 
-  mutate(record_id = row_number()) %>% 
+    alive = DFstatus %in% c("alive", "broken below"),
+    code = codeCombine(
+      codeMap(DFstatus, status_map, split = NA),
+      codeMap(na_if(Codes, "NULL"), code_map, split = "[;, ]+"),
+      standing = alive),
+    # Stems broken below the POM with a diameter were measured below the
+    # break, so are broken above the POM
+    code = ifelse(grepl("T", code) & !is.na(diam_cm),
+      codeCombine(gsub("T", "B", code)), code)) %>%
+  mutate(record_id = row_number()) %>%
   colGen(., stem_cols$column_name, stem_cols$class) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
@@ -72,7 +103,6 @@ plot_pt <- st_as_sfc(st_bbox(elev)) %>%
     plot_id = "Pasoh",
     point_id = c("SW", "SE", "NE", "NW"),
     corner = TRUE,
-    acquisition_id = "2016-08-15",
     x_rel_m = case_when(
       point_id == "SW" ~ 0,
       point_id == "SE" ~ 1000,
@@ -94,10 +124,8 @@ plot_pt <- st_as_sfc(st_bbox(elev)) %>%
 # Clean plot meta-data
 plot_meta <- data.frame(
   site_id = param$site_id,
-  acquisition_id = "2016-08-15",
+  acquisition_id = param$acquisition_id,
   plot_id = "Pasoh",
-  census_id = unique(s_clean$census_id),
-  census_date = unique(s_clean$census_date),
   plot_planar = TRUE,
   plot_length_m = 1000,
   plot_width_m = 500,

@@ -1,6 +1,11 @@
 # Clean Panama plot polygons data
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2025-06-18
+# Last updated: 2026-10-14
+
+
+# Evan Rutishauser - Biomass dynamics paper
+# Martinez-Cano height diameter allometry
+# Wood density in Dryad
 
 # Import stem data from Gigante
 # c/o Suzanne Lao, Helene Muller-Landau
@@ -353,7 +358,6 @@ s_clean <- s %>%
     x_rel_m = as.numeric(gx23),
     y_rel_m = as.numeric(gy23),
     stem_id = tag,
-    census_id = as.integer(1),
     taxon_name = paste(genus, species)) %>% 
   dplyr::select(any_of(stem_cols$column_name))
 
@@ -386,8 +390,7 @@ s2_clean <- s2 %>%
       plot_id == "San Lorenzo B" ~ y_rel_m - 40,
       TRUE ~ y_rel_m),
     pom_m = as.numeric(HOM),
-    taxon_name = paste(Genus, SpeciesName),
-    census_id = as.integer(PlotCensusNumber)
+    taxon_name = paste(Genus, SpeciesName)
   ) %>% 
   rename(
     measurement_date = ExactDate,
@@ -410,7 +413,6 @@ s3_clean <- s3 %>%
     diam_cm = dbh,
     alive = status) %>% 
   mutate(
-    census_id = as.integer(3),
     diam_cm = diam_cm / 10,
     measurement_date = format(as.Date(as.character(measurement_date), format = "%Y%m%d")),
     taxon_name = paste(genus, species),
@@ -449,7 +451,6 @@ s_all <- bind_rows(s_clean, s2_clean, s3_clean) %>%
   mutate(census_date = as.character(median(as.Date(measurement_date), na.rm = TRUE))) %>% 
   ungroup() %>%
   mutate(
-    census_id = as.character(census_id),
     site_id = param$site_id,
     acquisition_id = param$acquisition_id,
     subplot_id = as.character(subplot_id),
@@ -469,7 +470,7 @@ s_all <- bind_rows(s_clean, s2_clean, s3_clean) %>%
 
 # Prepare census table
 plots  <- s_all %>% 
-  dplyr::select(site_id, acquisition_id, plot_id, census_date, census_id) %>% 
+  dplyr::select(site_id, acquisition_id, plot_id, census_date) %>% 
   distinct() %>% 
   mutate(
     plot_width_m = case_when(

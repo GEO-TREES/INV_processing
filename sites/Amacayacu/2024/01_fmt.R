@@ -1,6 +1,6 @@
 # Process Amacayacu plot data
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-02-25
+# Last updated: 2026-10-14
 
 # Import data
 s <- readRDS(file.path(indir, "amacayacu_census4_20260225.rds"))
@@ -11,8 +11,8 @@ poly <- st_read(file.path(indir, "poly/Amacayacu_plot_new.shp"))
 
 # Process plot corners
 ptc <- st_coordinates(poly) 
-crs <- unique(getUTM(ptc[,1], ptc[,2], epsg = TRUE))
-crs_name <- paste("UTM", unique(getUTM(ptc[,1], ptc[,2], epsg = FALSE)))
+crs <- unique(utmZone(ptc[,1], ptc[,2], epsg = TRUE))
+crs_name <- paste("UTM", unique(utmZone(ptc[,1], ptc[,2], epsg = FALSE)))
 
 pt <- poly %>% 
   st_set_crs(., 4326) %>% 
@@ -60,11 +60,11 @@ s_clean <- s %>%
   mutate(
     acquisition_id = param$acquisition_id,
     site_id = param$site_id, 
-    census_id = "4",
     plot_id = "Amacayacu_1",
     diam_cm = dbh4 / 10,
     height_m = NA_real_,
-    measurement_date = as.character(measurement_date),
+    measurement_date_res = "YYYY-MM-DD",
+    measurement_date = decDate(as.character(measurement_date)),
     alive = ifelse(status4 %in% c("alive", "P"), "A", "D"),
     fallen = "S",
     broken = ifelse(grepl("Q", codes4), "B", ""),
@@ -73,12 +73,6 @@ s_clean <- s %>%
     agb_allometry = NA_character_,
     growth_form = NA_character_,
     height_allometry = NA_character_) %>% 
-  group_by(plot_id) %>% 
-  mutate(census_date = as.character(median(as.Date(measurement_date)))) %>% 
-  ungroup() %>% 
-  group_by(plot_id, stem_id) %>% 
-  mutate(measurement_id = row_number()) %>% 
-  ungroup() %>% 
   mutate(record_id = row_number()) %>% 
   dplyr::select(all_of(stem_cols$column_name))
 
@@ -87,8 +81,6 @@ p_clean <- data.frame(
   site_id = param$site_id, 
   acquisition_id = param$acquisition_id,
   plot_id = "Amacayacu_1",
-  census_date = unique(s_clean$census_date),
-  census_id = "4",
   plot_width_m = 500,
   plot_length_m = 500,
   plot_slope_deg = NA_real_,

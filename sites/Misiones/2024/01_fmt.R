@@ -1,6 +1,6 @@
 # Clean Misiones plot polygons data
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2025-07-09
+# Last updated: 2026-10-14
 
 # Import stem data 
 s <- read_excel(file.path(indir, "Medicion2024 planilla compartida GEO-TREES.xlsx"), sheet = 2, guess_max = Inf)
@@ -19,7 +19,7 @@ st_cent <- polys %>%
   st_coordinates() 
 
 polys_utm <- polys %>% 
-  st_transform(., getUTM(st_cent[1], st_cent[2]))
+  st_transform(., utmZone(st_cent[1], st_cent[2]))
 
 point_id_list <- rep(list(c("SW", "NW", "NE", "SE")), nrow(polys_utm))
 pt <- bind_rows(lapply(seq_len(nrow(polys_utm)), function(i) {
@@ -56,8 +56,8 @@ pt <- bind_rows(lapply(seq_len(nrow(polys_utm)), function(i) {
     rover_easting_utm_m = X, 
     rover_northing_utm_m = Y) %>%
   mutate(
-    crs_name = getUTM(st_cent[1], st_cent[2], epsg = FALSE),
-    crs_epsg = as.integer(getUTM(st_cent[1], st_cent[2], epsg = TRUE)),
+    crs_name = utmZone(st_cent[1], st_cent[2], epsg = FALSE),
+    crs_epsg = as.integer(utmZone(st_cent[1], st_cent[2], epsg = TRUE)),
     site_id = param$site_id,
     acquisition_id = param$acquisition_id,
     corner = TRUE,
@@ -100,7 +100,7 @@ s_clean <- s %>%
     missing = "",
     broken = ifelse(grepl("B|R", danio_24), "B", ""),
     code = pasteVals(alive, fallen, broken, missing),
-    measurement_date = as.numeric(measurement_date),
+    measurement_date = decDate(measurement_date),
     measurement_date_res = "YYYY",
     x_rel_m = case_when(
       x_rel_m == "1,2" ~ 12,
@@ -137,7 +137,7 @@ recs_clean <- recs %>%
     missing = "",
     broken = ifelse(grepl("B|R", danio_24), "B", ""),
     code = pasteVals(alive, fallen, broken, missing),
-    measurement_date = as.numeric(2024),
+    measurement_date = decDate(2024),
     measurement_date_res = "YYYY",
     height_m = as.numeric(height_m),
     x_rel_m = case_when(

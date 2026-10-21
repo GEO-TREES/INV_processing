@@ -1186,6 +1186,52 @@ decDate <- function(x, digits = 3) {
   return(dec)
 }
 
+#' Convert decimal years to dates
+#'
+#' Inverse of `decDate()`. Decimal years are rounded to the nearest day
+#'
+#' @param x numeric vector of decimal years
+#'
+#' @return Date vector
+#'
+decToDate <- function(x) {
+  x[!is.finite(x)] <- NA_real_
+  y <- floor(x)
+  y_start <- as.Date(ifelse(is.na(y), NA_character_, sprintf("%04d-01-01", y)))
+  y_len <- as.numeric(as.Date(ifelse(is.na(y), NA_character_,
+    sprintf("%04d-01-01", y + 1))) - y_start)
+  y_start + round((x - y) * y_len)
+}
+
+#' Format decimal years as dates at a given resolution
+#'
+#' @param x numeric vector of decimal years
+#' @param res resolution of the dates: "YYYY-MM-DD", "YYYY-MM" or "YYYY".
+#'     Recycled to the length of `x`
+#'
+#' @return character vector of dates
+#'
+decFormat <- function(x, res = "YYYY-MM-DD") {
+  fmt <- c("YYYY-MM-DD" = "%Y-%m-%d", "YYYY-MM" = "%Y-%m", "YYYY" = "%Y")
+  res <- rep_len(res, length(x))
+  res_fmt <- ifelse(res %in% names(fmt), fmt[res], "%Y-%m-%d")
+  d <- decToDate(x)
+  vapply(seq_along(x), function(i) {
+    if (is.na(d[i])) NA_character_ else format(d[i], res_fmt[i])
+  }, character(1))
+}
+
+#' Read an optional CSV file
+#'
+#' @param file path to CSV file
+#' @param ... further arguments passed to `read.csv()`
+#'
+#' @return dataframe, or NULL if `file` does not exist
+#'
+readOpt <- function(file, ...) {
+  if (file.exists(file)) read.csv(file, ...) else NULL
+}
+
 
 #' Colours used in figures to check processing outputs
 #'
@@ -1268,6 +1314,34 @@ figCols <- function(n) {
   as.integer(max(1, ceiling(sqrt(n))))
 }
 
+#' Colour bar legend, the same shape in all figures
+#'
+#' A wide bar with the title above it, so that the labels of long scales do
+#'     not overlap
+#'
+#' @return a `ggplot2::guide_colourbar()` object, passed to `guide` of a
+#'     continuous colour or fill scale
+#'
+colourBar <- function() {
+  ggplot2::guide_colourbar(theme = ggplot2::theme(
+    legend.title.position = "top",
+    legend.key.width = ggplot2::unit(16, "lines"),
+    legend.key.height = ggplot2::unit(0.8, "lines")))
+}
+
+#' Width of a figure with panels laid out with `figCols()` columns
+#'
+#' @param n_panel number of panels in the figure
+#' @param panel_in width of each panel, in inches
+#'
+#' @return figure width in inches, between 8 and 24. Allows 1.4 inches for
+#'     the axis title and labels, so each panel is about
+#'     `(width - 1.4) / figCols(n_panel)` inches wide
+#'
+figWidth <- function(n_panel = 1, panel_in = 3.4) {
+  min(max(1.4 + panel_in * figCols(n_panel), 8), 24)
+}
+
 #' Save a figure to check processing outputs
 #'
 #' The figure is sized to fit the number of panels, laid out with 
@@ -1285,20 +1359,54 @@ figCols <- function(n) {
 #'
 #' @return path to output file, invisibly
 #'
-saveFig <- function(p, file, n_panel = 1, panel_in = 3.4, width = NULL, 
+saveFig <- function(p, file, n_panel = 1, panel_in = 3.4, width = NULL,
   height = NULL, base_size = 12) {
   n_col <- figCols(n_panel)
   n_row <- ceiling(n_panel / n_col)
-  if (is.null(width)) width <- min(max(1.4 + panel_in * n_col, 8), 24)
+  if (is.null(width)) width <- figWidth(n_panel, panel_in)
   if (is.null(height)) height <- min(max(2 + panel_in * n_row, 5), 24)
+  text_size <- base_size
   if (width > 8) {
-    p <- p + ggplot2::theme(text = ggplot2::element_text(
-      size = base_size * sqrt(width / 8)))
+    text_size <- base_size * sqrt(width / 8)
+    p <- p + ggplot2::theme(text = ggplot2::element_text(size = text_size))
   }
-  ggplot2::ggsave(file, p, width = width, height = height, dpi = 300, 
+  # Wrap long subtitles to the width of the figure. Characters are about
+  # 0.55 times the font size wide
+  if (is.character(p$labels$subtitle)) {
+    n_char <- floor((width - 0.5) * 72 / (0.55 * text_size))
+    p$labels$subtitle <- paste(strwrap(p$labels$subtitle, width = n_char),
+      collapse = "\n")
+  }
+  ggplot2::ggsave(file, p, width = width, height = height, dpi = 300,
     bg = fig_pal$surface)
   message("Figure written: ", file)
   invisible(file)
+}
+
+#' Histograms of wood density estimates at each taxonomic level
+#'
+#' One panel per level, labelled with the number and percentage of stems at
+#' that level. Y-axis scales differ between panels
+#'
+#' @param wd numeric vector of wood density estimates, g cm-3
+#' @param level taxonomic level of each estimate, e.g. "species", "genus".
+#'     Panels are in the order of the levels if a factor
+#'
+#' @return ggplot object
+#'
+wdLevelPlot <- function(wd, level) {
+  level <- droplevels(as.factor(level))
+  n <- table(level)
+  lab <- stats::setNames(paste0(names(n), " (",
+    format(as.vector(n), big.mark = ",", trim = TRUE), " stems, ",
+    round(100 * as.vector(n) / sum(n), 1), "%)"), names(n))
+  ggplot2::ggplot(data.frame(wd = wd, level = level), ggplot2::aes(x = wd)) +
+    ggplot2::geom_histogram(binwidth = 0.025, fill = fig_pal$series[1],
+      colour = fig_pal$surface, linewidth = 0.2) +
+    ggplot2::facet_wrap(~level, ncol = 1, scales = "free_y",
+      labeller = ggplot2::as_labeller(lab)) +
+    ggplot2::labs(x = expression("Wood density (g cm"^-3*")"), y = "Stems") +
+    themeFig()
 }
 
 #' Print a table to the console as a message
@@ -1351,6 +1459,35 @@ localXY <- function(x, x_col, y_col, group_col, origin = NULL) {
   x[[x_col]] <- x[[x_col]] - origin$x0[i]
   x[[y_col]] <- x[[y_col]] - origin$y0[i]
   x
+}
+
+#' Square extent of each plot, for maps of plots faceted with free scales
+#'
+#' Facets with free scales cannot use `coord_equal()`. Drawing these points
+#'     with `geom_blank()`, with `theme(aspect.ratio = 1)`, gives each facet
+#'     its own axes with equal x and y scales
+#'
+#' @param x dataframe with coordinates
+#' @param x_col,y_col names of coordinate columns
+#' @param group_col name of plot ID column
+#'
+#' @return dataframe with two rows per plot, the corners of a square centred
+#'     on the plot, with sides equal to the larger of the x and y ranges
+#'
+squareExtent <- function(x, x_col, y_col, group_col) {
+  out <- lapply(split(x, as.character(x[[group_col]])), function(g) {
+    xr <- range(g[[x_col]], na.rm = TRUE)
+    yr <- range(g[[y_col]], na.rm = TRUE)
+    half <- max(diff(xr), diff(yr)) / 2
+    data.frame(
+      id = g[[group_col]][1],
+      x = mean(xr) + c(-half, half),
+      y = mean(yr) + c(-half, half))
+  })
+  out <- do.call(rbind, out)
+  names(out) <- c(group_col, x_col, y_col)
+  rownames(out) <- NULL
+  out
 }
 
 #' Extract polygon vertices as a dataframe, for maps of plots

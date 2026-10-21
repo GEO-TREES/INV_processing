@@ -1,6 +1,6 @@
 # Estimate stem height
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-21
 
 # Regional height estimation
 if (param$height_method == "regional") { 
@@ -68,6 +68,9 @@ if (param$height_method == "regional") {
 
   msgTable(height_mod_comp, paste0("Height-diameter models, fitted to ",
     nrow(height), " measurements. RSE in m. Model used: ", height_mod_best))
+  write.csv(
+    mutate(height_mod_comp, used = method == height_mod_best, n_height = nrow(height)),
+    file.path(outdir, "height_mod_comp.csv"), row.names = FALSE)
 
   # Fit best height diameter model
   height_mod <- modelHD(
@@ -115,38 +118,45 @@ height_summ <- height_check %>%
 msgTable(height_summ, paste0("Predicted stem height (", param$height_method, 
   " height-diameter model):"))
 
-# Figure of predicted height against diameter, with field measurements and
-# the fitted model if `height_method` is "field"
-p_height <- ggplot() +
-  geom_point(data = height_check, aes(x = diam_cm, y = height_m_pred, 
-    colour = "Predicted, stems"), size = 0.6, alpha = 0.3, shape = 16)
+# Figure of stem height against diameter, for stems used to estimate AGB
+# density, see `agbdFilter()` in ./func.R. Measured heights are from the
+# height table, or from the stem table if there is no height table. 
+# Predicted heights are drawn on top of measured heights
+record_agbd <- agbdFilter(stem, plot, recordFilter(stem, plot),
+  diam_min_cm = param$agbd_diam_min_cm,
+  include_broken = param$include_broken)
+height_pred_fig <- filter(height_check, as.character(record_id) %in% record_agbd)
+height_obs <- if (!is.null(height)) {
+  filter(height, !is.na(diam_cm), !is.na(height_m))
+} else {
+  filter(stem, !is.na(diam_cm), !is.na(height_m))
+}
+p_height <- ggplot()
+if (nrow(height_obs) > 0) {
+  p_height <- p_height +
+    geom_point(data = height_obs, aes(x = diam_cm, y = height_m, colour = "Measured"),
+      size = 0.8, alpha = 0.5, shape = 16)
+}
+p_height <- p_height +
+  geom_point(data = height_pred_fig, aes(x = diam_cm, y = height_m_pred, 
+    colour = "Predicted"), size = 0.6, alpha = 0.3, shape = 16)
 if (param$height_method == "field") {
-  height_obs <- filter(height, !is.na(diam_cm), !is.na(height_m))
   height_curve <- data.frame(diam_cm = seq(min(height_obs$diam_cm), 
     max(height_obs$diam_cm), length.out = 200))
   height_curve$height_m <- retrieveH(D = height_curve$diam_cm, model = height_mod)$H
   p_height <- p_height +
-    geom_point(data = height_obs, aes(x = diam_cm, y = height_m, 
-      colour = "Measured"), size = 1.2, alpha = 0.6, shape = 16) +
     geom_line(data = height_curve, aes(x = diam_cm, y = height_m, 
       colour = "Fitted model"), linewidth = 0.7)
 }
 p_height <- p_height +
   scale_colour_manual(NULL, 
-    values = c("Predicted, stems" = fig_pal$series[1], 
-      "Measured" = fig_pal$series[2], "Fitted model" = fig_pal$ink),
-    breaks = c("Predicted, stems", "Measured", "Fitted model")) +
-  guides(colour = if (param$height_method == "field") {
-    guide_legend(override.aes = list(alpha = 1, size = 2))
-  } else {
-    "none"
-  }) +
+    values = c("Measured" = fig_pal$series[2], "Predicted" = fig_pal$series[1], 
+      "Fitted model" = fig_pal$ink),
+    breaks = c("Measured", "Predicted", "Fitted model")) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 2))) +
   labs(
     title = "Stem height against diameter",
-    subtitle = paste0("Height method: ", param$height_method,
-      if (param$height_method == "field") paste0(", model: ", height_mod_best) else 
-        ", Chave et al. (2014) Eq. 6a at plot centres"),
-    x = "Diameter (cm)",
+    x = "Diameter (cm)", 
     y = "Height (m)") +
   themeFig()
-saveFig(p_height, file.path(checkdir, "04_height_diam.png"), width = 8, height = 6)
+saveFig(p_height, file.path(report_dir, "04_height_diam.png"), width = 8, height = 6)

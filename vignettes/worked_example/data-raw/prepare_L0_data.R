@@ -70,7 +70,7 @@ param_anon <- param
 param_anon$site_id <- "Site1"
 param_anon$out_dir <- paste0("./dat/sites/Site1/INV/", unique(stem$acquisition_id), "/v1")
 param_anon$raw_dir <- paste0("./dat/sites/Site1/INV/", unique(stem$acquisition_id), "/L0")
-param_anon$s3_dir <- paste0("GEO-TREES_INV/dat/sites/Site1/", unique(stem$acquisition_id), "/L0")
+param_anon$s3_dir <- paste0("GEO-TREES_INV/dat/sites/Site1/INV/", unique(stem$acquisition_id), "/L0")
 
 # Thin out stem data
 stem_fil <- stem_anon %>% 

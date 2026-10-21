@@ -115,50 +115,65 @@ if (nrow(quad_diff) > 0) {
     "from the sum of stem AGB by more than 10%:"), max_rows = 10)
 }
 
+# Colour scale of quadrat AGB density, the same in each figure. Histogram 
+# bins can be centred slightly outside the range of the data, so values 
+# outside the limits take the colour of the nearest limit
+agbd_lim <- range(quad_check$agbd_Mg_ha_mc_mean, na.rm = TRUE)
+agbd_fill <- scale_fill_gradientn("AGBD (Mg/ha)", colours = fig_pal$seq,
+  limits = agbd_lim, oob = scales::squish, guide = colourBar())
+agbd_colour <- scale_colour_gradientn("AGBD (Mg/ha)", colours = fig_pal$seq,
+  limits = agbd_lim, oob = scales::squish, guide = colourBar())
+
 # Figure of quadrat AGB density in each plot. Coordinates are relative to
 # the south-west corner of the bounding box of each plot
 quad_xy <- polyCoords(quad_summ, "plot_id") %>%
   mutate(agbd = quad_check$agbd_Mg_ha_mc_mean[L2])
 n_plot_quad <- length(unique(quad_xy$plot_id))
-p_quad_map <- ggplot(localXY(quad_xy, "X", "Y", "plot_id"), 
+quad_xy_local <- localXY(quad_xy, "X", "Y", "plot_id")
+p_quad_map <- ggplot(quad_xy_local,
   aes(x = X, y = Y, group = group, fill = agbd)) +
+  geom_blank(data = squareExtent(quad_xy_local, "X", "Y", "plot_id"),
+    aes(x = X, y = Y), inherit.aes = FALSE) +
   geom_polygon(colour = fig_pal$surface, linewidth = 0.3) +
-  scale_fill_gradientn("AGB density (Mg/ha)", colours = fig_pal$seq) +
-  guides(fill = guide_colourbar(theme = theme(
-    legend.title.position = "top",
-    legend.key.width = unit(16, "lines"),
-    legend.key.height = unit(0.8, "lines")))) +
-  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_quad)) +
-  coord_equal() +
+  agbd_fill +
+  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_quad),
+    scales = "free") +
   labs(
-    title = "Quadrat AGB density",
-    subtitle = paste0("Simulated mean. Quadrats ", param$quad_dim[1], " x ",
-      param$quad_dim[2], " m. Relative to the south-west of each plot"),
+    title = "Quadrat AGBD",
     x = "Easting (m)",
     y = "Northing (m)") +
-  themeMap()
-saveFig(p_quad_map, file.path(checkdir, "10_quad_agbd_map.png"), 
+  themeMap() +
+  theme(aspect.ratio = 1)
+saveFig(p_quad_map, file.path(report_dir, "10_quad_agbd_map.png"), 
   n_panel = n_plot_quad)
 
 # Figure comparing quadrat AGB density from error propagation and from the
 # sum of stem AGB
 quad_lim <- range(c(quad_check$agb_Mg_sum_ha, quad_check$agbd_Mg_ha_mc_ci2.5,
   quad_check$agbd_Mg_ha_mc_ci97.5), na.rm = TRUE)
+# Quadrats where the 95% interval is entirely above the 1:1 line, e.g. with
+# trees without coordinates assigned to them at random, are labelled
+quad_above <- filter(quad_check, agbd_Mg_ha_mc_ci2.5 > agb_Mg_sum_ha)
 p_quad_comp <- ggplot(quad_check, aes(x = agb_Mg_sum_ha, y = agbd_Mg_ha_mc_mean)) +
   geom_abline(intercept = 0, slope = 1, colour = fig_pal$ink_muted, 
-    linewidth = 0.4) +
+    linewidth = 0.5, linetype = 2) +
   geom_linerange(aes(ymin = agbd_Mg_ha_mc_ci2.5, ymax = agbd_Mg_ha_mc_ci97.5),
     colour = fig_pal$series[1], alpha = 0.25, linewidth = 0.4) +
   geom_point(colour = fig_pal$series[1], size = 1.2, alpha = 0.7, shape = 16) +
+  # Labels are moved apart so that they do not overlap
+  ggrepel::geom_text_repel(data = quad_above, aes(label = quadrat_id), 
+    size = 2.8, colour = fig_pal$ink_muted, segment.colour = fig_pal$line_muted,
+    min.segment.length = 0, max.overlaps = Inf, seed = 42) +
   coord_equal(xlim = quad_lim, ylim = quad_lim) +
   labs(
-    title = "Quadrat AGB density: simulated against sum of stem AGB",
+    title = "Quadrat AGBD: simulated against sum of stem AGB",
     subtitle = paste0(nrow(quad_check), " quadrats. Simulated mean with 95% ",
-      "interval. Line shows 1:1"),
+      "interval. Dashed line shows 1:1. Quadrats where the 95% interval is ",
+      "above the 1:1 line are labelled"),
     x = "Sum of stem AGB (Mg/ha)",
-    y = "Simulated AGB density (Mg/ha)") +
+    y = "Simulated AGBD (Mg/ha)") +
   themeFig()
-saveFig(p_quad_comp, file.path(checkdir, "10_quad_agbd_compare.png"), 
+saveFig(p_quad_comp, file.path(report_dir, "10_quad_agbd_compare.png"), 
   width = 7.5, height = 8)
 
 # Quadrats with the most uncertain AGB density
@@ -178,49 +193,50 @@ quad_rank <- quad_check %>%
   mutate(rank = rank(agbd_Mg_ha_mc_mean, ties.method = "first")) %>%
   ungroup()
 n_plot_rank <- length(unique(quad_rank$plot_id))
+# Lines and points are scaled to the width available for each quadrat in the
+# panel of the plot with the most quadrats, up to a maximum size for plots
+# with few quadrats
+quad_slot_mm <- 25.4 * (figWidth(n_plot_rank) - 1.4) / figCols(n_plot_rank) /
+  max(table(quad_rank$plot_id))
 p_quad_int <- ggplot(quad_rank, aes(x = rank)) +
   geom_linerange(aes(ymin = agbd_Mg_ha_mc_ci2.5, ymax = agbd_Mg_ha_mc_ci97.5),
-    colour = fig_pal$seq[2], linewidth = 0.8) +
-  geom_point(aes(y = agbd_Mg_ha_mc_mean), colour = fig_pal$series[1], 
-    size = 1.4) +
+    colour = fig_pal$seq[3], linewidth = min(2.2, max(0.2, 0.1 * quad_slot_mm))) +
+  geom_point(aes(y = agbd_Mg_ha_mc_mean), colour = fig_pal$seq[6],
+    size = min(4.5, max(0.3, 0.2 * quad_slot_mm))) +
   facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_rank), 
     scales = "free_x") +
   scale_y_continuous(limits = c(0, NA)) +
   labs(
-    title = "Quadrat AGB density with 95% interval",
-    subtitle = paste0("Simulated mean and 95% interval. Quadrats ranked by AGB ",
-      "density within each plot"),
-    x = "Quadrats, ranked by AGB density",
-    y = "AGB density (Mg/ha)") +
+    title = "Quadrat AGBD with 95% interval",
+    subtitle = paste0("Simulated mean and 95% interval. Quadrats ranked by AGBD ",
+      "within each plot"),
+    x = "Quadrats, ranked by AGBD",
+    y = "AGBD (Mg/ha)") +
   themeFig() +
   theme(
     axis.text.x = element_blank(),
     panel.grid.major.x = element_blank())
-saveFig(p_quad_int, file.path(checkdir, "10_quad_agbd_interval.png"), 
+saveFig(p_quad_int, file.path(report_dir, "10_quad_agbd_interval.png"), 
   n_panel = n_plot_rank)
 
 # Figure of the coefficient of variation of quadrat AGB density in each plot
-quad_xy$cv <- quad_check$cv_pct[quad_xy$L2]
-p_quad_cv_map <- ggplot(localXY(quad_xy, "X", "Y", "plot_id"), 
+quad_xy_local$cv <- quad_check$cv_pct[quad_xy_local$L2]
+p_quad_cv_map <- ggplot(quad_xy_local,
   aes(x = X, y = Y, group = group, fill = cv)) +
+  geom_blank(data = squareExtent(quad_xy_local, "X", "Y", "plot_id"),
+    aes(x = X, y = Y), inherit.aes = FALSE) +
   geom_polygon(colour = fig_pal$surface, linewidth = 0.3) +
-  scale_fill_gradientn("Coefficient of variation of AGB density (%)", 
-    colours = fig_pal$seq2) +
-  guides(fill = guide_colourbar(theme = theme(
-    legend.title.position = "top",
-    legend.key.width = unit(16, "lines"),
-    legend.key.height = unit(0.8, "lines")))) +
-  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_quad)) +
-  coord_equal() +
+  scale_fill_gradientn("Coefficient of variation of AGBD (%)", 
+    colours = fig_pal$seq2, guide = colourBar()) +
+  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_quad),
+    scales = "free") +
   labs(
-    title = "Uncertainty in quadrat AGB density",
-    subtitle = paste0("Coefficient of variation of simulations. Quadrats ", 
-      param$quad_dim[1], " x ", param$quad_dim[2], 
-      " m. Relative to the south-west of each plot"),
+    title = "Uncertainty in quadrat AGBD",
     x = "Easting (m)",
     y = "Northing (m)") +
-  themeMap()
-saveFig(p_quad_cv_map, file.path(checkdir, "10_quad_agbd_cv_map.png"), 
+  themeMap() +
+  theme(aspect.ratio = 1)
+saveFig(p_quad_cv_map, file.path(report_dir, "10_quad_agbd_cv_map.png"), 
   n_panel = n_plot_quad)
 
 # Figure of the coefficient of variation against quadrat AGB density
@@ -229,11 +245,125 @@ p_quad_cv <- ggplot(filter(quad_check, !is.na(cv_pct)),
   geom_point(colour = fig_pal$series[2], size = 1.6, alpha = 0.7, shape = 16) +
   scale_y_continuous(limits = c(0, NA)) +
   labs(
-    title = "Uncertainty against quadrat AGB density",
-    subtitle = paste0(sum(!is.na(quad_check$cv_pct)), " quadrats. ",
-      "Coefficient of variation of simulations"),
-    x = "Simulated AGB density (Mg/ha)",
+    title = "Uncertainty against quadrat AGBD",
+    x = "Simulated AGBD (Mg/ha)",
     y = "Coefficient of variation (%)") +
   themeFig()
-saveFig(p_quad_cv, file.path(checkdir, "10_quad_agbd_cv.png"), 
+saveFig(p_quad_cv, file.path(report_dir, "10_quad_agbd_cv.png"), 
   width = 8, height = 6)
+
+# Figure of the distribution of quadrat AGB density, all plots
+p_quad_hist <- ggplot(quad_check, aes(x = agbd_Mg_ha_mc_mean)) +
+  geom_histogram(aes(fill = after_stat(x)), bins = 25,
+    colour = fig_pal$surface, linewidth = 0.2) +
+  agbd_fill +
+  guides(fill = "none") +
+  labs(
+    title = "Quadrat AGBD",
+    x = "Quadrat AGBD (Mg/ha)", 
+    y = "Quadrats") +
+  themeFig()
+saveFig(p_quad_hist, file.path(report_dir, "10_quad_agbd_hist.png"), 
+  width = 8, height = 5)
+
+# Figure of quadrat AGB density across the site, in longitude and latitude
+quad_ll <- st_transform(quad_summ, 4326)
+p_quad_map_site <- ggplot() +
+  geom_sf(data = quad_ll, aes(fill = agbd_Mg_ha_mc_mean),
+    colour = fig_pal$surface, linewidth = 0.1) +
+  agbd_fill +
+  labs(
+    title = "Quadrat AGBD",
+    x = "Longitude", 
+    y = "Latitude") +
+  themeMap() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+saveFig(p_quad_map_site, file.path(report_dir, "10_quad_agbd_map_site.png"), 
+  width = 8, height = 8)
+
+# Figure of quadrat AGB density with its 95% interval, all quadrats of the
+# site ranked by AGB density. Means are joined by a black line, so they stay
+# visible when intervals of many quadrats overlap. Points are added for few
+# quadrats
+quad_rank <- quad_check %>%
+  arrange(agbd_Mg_ha_mc_mean) %>%
+  mutate(rank = row_number())
+p_quad_int_site <- ggplot(quad_rank, aes(y = rank)) +
+  geom_linerange(aes(xmin = agbd_Mg_ha_mc_ci2.5, xmax = agbd_Mg_ha_mc_ci97.5,
+    colour = agbd_Mg_ha_mc_mean), linewidth = 0.4) +
+  geom_path(aes(x = agbd_Mg_ha_mc_mean), colour = fig_pal$ink, linewidth = 0.6)
+if (nrow(quad_rank) <= 100) {
+  p_quad_int_site <- p_quad_int_site +
+    geom_point(aes(x = agbd_Mg_ha_mc_mean), colour = fig_pal$ink, size = 0.9)
+}
+p_quad_int_site <- p_quad_int_site +
+  agbd_colour +
+  guides(colour = "none") +
+  labs(
+    title = "Quadrat AGBD and its uncertainty",
+    subtitle = paste0("Simulated mean (black line) and 95% interval, all ",
+      "quadrats ranked by AGBD"),
+    x = "Quadrat AGBD (Mg/ha)", 
+    y = "Quadrat rank") +
+  themeFig()
+saveFig(p_quad_int_site, file.path(report_dir, "10_quad_agbd_interval_site.png"), 
+  width = 8, height = 6)
+
+# Figures of stem AGB, for stems used to estimate AGB density, across the
+# site in longitude and latitude, and in each plot, relative to the 
+# south-west of the quadrat grid of each plot as in the map of quadrat AGB
+# density
+stem_map <- stem_summ %>%
+  filter(in_quadrat_calc %in% TRUE, !st_is_empty(.), !is.na(agb_Mg), agb_Mg > 0) %>%
+  mutate(plot_id = as.character(plot_id)) %>%
+  arrange(agb_Mg)
+# The lightest colour of the ramp is not used, so that stems with little AGB
+# stay visible
+stem_agb_colour <- scale_colour_gradientn("Stem AGB (Mg)", colours = fig_pal$seq2[-1],
+  trans = "log10", breaks = 10^(-3:3),
+  labels = function(x) format(x, drop0trailing = TRUE, scientific = FALSE, trim = TRUE),
+  guide = colourBar())
+
+p_stem_map_site <- ggplot() +
+  geom_sf(data = quad_ll, fill = NA, colour = fig_pal$line_muted, linewidth = 0.2) +
+  geom_sf(data = st_transform(stem_map, 4326), aes(colour = agb_Mg), 
+    size = 0.8, shape = 16) +
+  stem_agb_colour +
+  labs(
+    title = "Stem AGB",
+    x = "Longitude", 
+    y = "Latitude") +
+  themeMap() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+saveFig(p_stem_map_site, file.path(report_dir, "10_stem_agb_map_site.png"), 
+  width = 8, height = 8)
+
+quad_xy0 <- quad_xy %>%
+  group_by(plot_id) %>%
+  summarise(x0 = min(X), y0 = min(Y), .groups = "drop")
+stem_map_xy <- stem_map %>%
+  st_drop_geometry() %>%
+  filter(plot_id %in% quad_xy0$plot_id) %>%
+  localXY(., "x_utm", "y_utm", "plot_id", quad_xy0)
+p_stem_map <- ggplot() +
+  geom_blank(data = squareExtent(quad_xy_local, "X", "Y", "plot_id"),
+    aes(x = X, y = Y)) +
+  geom_polygon(data = quad_xy_local,
+    aes(x = X, y = Y, group = group),
+    fill = NA, colour = fig_pal$line_muted, linewidth = 0.3) +
+  geom_point(data = stem_map_xy, aes(x = x_utm, y = y_utm, colour = agb_Mg),
+    size = 1.2, shape = 16) +
+  stem_agb_colour +
+  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_quad),
+    scales = "free") +
+  labs(
+    title = "Stem AGB in each plot",
+    subtitle = paste0("Stems used to estimate AGBD, with ", 
+      param$quad_dim[1], " x ", param$quad_dim[2], " m quadrats. Relative to ",
+      "the south-west of each plot"),
+    x = "Easting (m)",
+    y = "Northing (m)") +
+  themeMap() +
+  theme(aspect.ratio = 1)
+saveFig(p_stem_map, file.path(report_dir, "10_stem_agb_map.png"), 
+  n_panel = n_plot_quad)

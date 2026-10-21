@@ -1,6 +1,6 @@
 # Filter stem data for AGB estimation and quadrat summaries
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-21
 
 # Select stems used to estimate AGB, see `recordFilter()` in ./func.R.
 # Stems without coordinates are kept, and are assigned to quadrats at random
@@ -46,33 +46,19 @@ msgTable(record_status, paste0("Stem records used to estimate AGB (",
   length(record_fil), ") and AGB density (", length(record_agbd), "), of ",
   nrow(stem), " records. \"AGB only\" stems have AGB estimates, but are not ",
   "included in AGB density:"))
+write.csv(record_status, file.path(outdir, "record_status.csv"), row.names = FALSE)
 
-# Figure of stem diameter distribution in each plot, stems per hectare in 
-# 10 cm diameter classes, for stems used to estimate AGB at or above the 
-# minimum diameter threshold of each plot. Classes start at the threshold. 
-# Uses the nominal plot area
-diam_dist <- stem %>%
-  mutate(diam_min_cm = ifelse(is.na(diam_min), 0, diam_min)) %>%
-  filter(
-    as.character(record_id) %in% record_fil,
-    diam_cm >= diam_min_cm) %>%
-  mutate(diam_class_cm = floor((diam_cm - diam_min_cm) / 10) * 10 + diam_min_cm + 5) %>%
-  count(plot_id, diam_class_cm, name = "n_stem") %>%
-  left_join(., dplyr::select(plot, plot_id, plot_length_m, plot_width_m), 
-    by = "plot_id") %>%
-  mutate(stem_ha = n_stem / (plot_length_m * plot_width_m / 10000))
-n_plot_diam <- length(unique(diam_dist$plot_id))
-diam_min_fig <- min(diam_min[stem$plot_id %in% diam_dist$plot_id], na.rm = TRUE)
-p_diam <- ggplot(diam_dist, aes(x = diam_class_cm, y = stem_ha)) +
-  geom_point(colour = fig_pal$series[1], size = 2) +
-  scale_x_continuous(limits = c(diam_min_fig, NA), expand = expansion(mult = c(0, 0.05))) +
-  scale_y_log10() +
-  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_diam)) +
+# Figure of the diameter of stems used to estimate AGB density, all plots
+diam_hist_cm <- 5
+p_diam <- ggplot(filter(stem, as.character(record_id) %in% record_agbd), 
+  aes(x = diam_cm)) +
+  geom_histogram(binwidth = diam_hist_cm, boundary = min(diam_min, na.rm = TRUE),
+    fill = fig_pal$series[1], colour = fig_pal$surface, linewidth = 0.2) +
   labs(
-    title = "Stem diameter distribution",
-    subtitle = paste0("Stems used to estimate AGB, at or above the minimum ",
-      "diameter threshold, in 10 cm classes. Log scale. Nominal plot area"),
-    x = "Diameter class midpoint (cm)",
-    y = "Stems per hectare") +
+    title = "Stem diameter",
+    subtitle = paste0("Stems used to estimate AGBD, all plots, in ",
+      diam_hist_cm, " cm classes"),
+    x = "Diameter (cm)", 
+    y = "Stems") +
   themeFig()
-saveFig(p_diam, file.path(checkdir, "06_diam_dist.png"), n_panel = n_plot_diam)
+saveFig(p_diam, file.path(report_dir, "06_diam_hist.png"), width = 8, height = 5)

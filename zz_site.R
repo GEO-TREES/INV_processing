@@ -1,6 +1,6 @@
 # Run the data processing for one product version of an acquisition at one site
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-21
 
 # Remove objects left over from previous runs, e.g. when looping over sites
 # in ./zz_site_all.R. Keep `p_file` and any mocked `readline()`
@@ -25,7 +25,7 @@ library(ggplot2)
 source("./func.R")
 
 # Load YAML file with parameters for one product version of an acquisition
-# p_file <- "./sites/Paracou/2023/v1/param.yaml"
+# p_file <- "./sites/Paracou/2019/v1/param.yaml"
 p <- yaml::read_yaml(p_file)
 
 # Acquisition directory, ./sites/<SITE>/<ACQUISITION>/, containing 01_fmt.R
@@ -64,6 +64,17 @@ param_name_vec <- c(
   "rocrate"
 )
 
+# Define optional parameter names
+# `als_date` is the date of the airborne lidar acquisition matched to the
+# plot data, YYYY-MM-DD, YYYY-MM or YYYY, used in ./12_report.R
+# `quad_origin` is the alignment of the quadrat grid in each plot, see
+# ./07_quad.R: "centre" (default), "corner", or an offset [x, y] in metres
+# from the origin corner of each plot
+param_optional_vec <- c(
+  "als_date",
+  "quad_origin"
+)
+
 # Define RO-Crate parameter names, `author_orcid` is optional
 rocrate_name_vec <- c(
   "author_name",
@@ -87,7 +98,7 @@ if (length(rocrate_missing) > 0) {
   stop("Missing `rocrate` parameters in ", p_file, ": ", paste(rocrate_missing, collapse = ", "))
 }
 
-param_extra <- setdiff(names(param), param_name_vec)
+param_extra <- setdiff(names(param), c(param_name_vec, param_optional_vec))
 if (length(param_extra) > 0) {
   warning("Unrecognised parameters in ", p_file, ": ", paste(param_extra, collapse = ", "))
 }
@@ -148,7 +159,24 @@ if (length(param$diam_error) != 1 ||
     "number > 0, the standard deviation of diameter measurement error in cm")
 }
 
-if (basename(acq_dir) != param$acquisition_id || 
+if (is.null(param$quad_origin)) {
+  param$quad_origin <- "centre"
+}
+if (!(identical(param$quad_origin, "centre") || identical(param$quad_origin, "corner") ||
+  (is.numeric(param$quad_origin) && length(param$quad_origin) == 2 && 
+    all(param$quad_origin >= 0)))) {
+  stop("`quad_origin` must be \"centre\", \"corner\", or two numbers >= 0, ",
+    "the offset of the quadrat grid from the origin corner of each plot in m, e.g. [10, 10]")
+}
+
+if (!is.null(param$als_date)) {
+  param$als_date <- as.character(param$als_date)
+  if (length(param$als_date) != 1 || is.na(decDate(param$als_date))) {
+    stop("`als_date` must be a single date: YYYY-MM-DD, YYYY-MM or YYYY")
+  }
+}
+
+if (basename(acq_dir) != param$acquisition_id ||
   basename(dirname(acq_dir)) != param$site_id) {
   warning("Location of ", p_file, " does not match `site_id` and `acquisition_id`, ",
     "expected ./sites/", param$site_id, "/", param$acquisition_id, "/<VERSION>/param.yaml")
@@ -188,6 +216,7 @@ out_dir_vec <- c(
   "08_agb_mc",
   "09_stem_summ",
   "10_quad_summ",
+  "report",
   "L1",
   "L2",
   "L3"
@@ -222,10 +251,15 @@ if (tolower(trimws(user_input)) %in% c("y", "yes")) {
   stop("User must respond 'y' or 'n'")
 }
 
-# Directory for files used to check raw data, e.g. taxonomic names which
-# could not be matched, and stems outside plots
-checkdir <- file.path(param$out_dir, software_version_sanit, "checks")
-out_dir_vec <- c(out_dir_vec, "checks")
+# Directory for site reports, with tables and figures written by
+# ./12_report.R, and files written by other steps to check raw data and the
+# results of each step, e.g. taxonomic names which could not be matched, and
+# stems outside plots
+report_dir <- file.path(param$out_dir, software_version_sanit, "report")
+
+# Diameter thresholds for large trees, in cm, used in figures and tables for
+# site reports in ./05_agb_stem.R and ./12_report.R
+large_diam_cm <- c(60, 100)
 
 # Create output directories
 for (i in out_dir_vec) {
@@ -307,6 +341,7 @@ taxa <- read.csv(file.path(param$out_dir, software_version_sanit, "02_taxa", "st
 if (param$wd_method == "field") {
   wd <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"), colClasses = wd_col_class)
 }
+plot <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot.csv"), colClasses = plot_col_class)
 runFn("./03_wd.R")
 
 # Estimate stem height
@@ -319,6 +354,8 @@ if (param$height_method == "regional") {
 if (param$height_method == "field") {
   height <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "height.csv"), colClasses = height_col_class)
 }
+plot <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot.csv"), colClasses = plot_col_class)
+height <- readOpt(file.path(param$out_dir, software_version_sanit, "01_fmt", "height.csv"), colClasses = height_col_class)
 runFn("./04_height.R")
 
 # Estimate AGB for every measurement
@@ -413,8 +450,32 @@ stem_summ <- st_read(file.path(param$out_dir, software_version_sanit, "09_stem_s
 quad_summ <- st_read(file.path(param$out_dir, software_version_sanit, "10_quad_summ", "quad_summ.gpkg"))  # L3_quad
 runFn("./11_brm.R")
 
-# List files written to check the results of each step
-check_files <- list.files(checkdir)
-message("Files to check results, in ", checkdir, ":\n  ",
-  paste(check_files, collapse = "\n  "))
+# Summarise outputs and processing choices for site reports
+outdir <- report_dir
+dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
+ver_dir <- file.path(param$out_dir, software_version_sanit)
+id_class <- c(plot_id = "character", quadrat_id = "character")
+plot <- read.csv(file.path(ver_dir, "01_fmt", "plot.csv"), colClasses = plot_col_class)
+plot_pt <- read.csv(file.path(ver_dir, "01_fmt", "plot_pt.csv"), colClasses = pt_col_class)
+plot_poly <- st_read(file.path(ver_dir, "07_quad", "plot_poly.gpkg"))
+stem_summ <- st_read(file.path(ver_dir, "09_stem_summ", "stem_summ.gpkg"))
+quad_summ <- st_read(file.path(ver_dir, "10_quad_summ", "quad_summ.gpkg"))
+quad_agb_simu <- read.csv(file.path(ver_dir, "08_agb_mc", "quad_agb_mc.csv"), colClasses = id_class)
+plot_agb <- read.csv(file.path(ver_dir, "08_agb_mc", "plot_agb.csv"), colClasses = c(plot_id = "character"))
+poly_check <- read.csv(file.path(ver_dir, "07_quad", "plot_poly_check.csv"), colClasses = c(plot_id = "character"))
+record_status <- read.csv(file.path(ver_dir, "06_record_fil", "record_status.csv"))
+taxa_outcome <- read.csv(file.path(ver_dir, "02_taxa", "taxa_outcome.csv"))
+height_mod_comp <- readOpt(file.path(ver_dir, "04_height", "height_mod_comp.csv"))
+diam_error_fit <- readOpt(file.path(ver_dir, "08_agb_mc", "diam_error.csv"))
+diam_dup <- readOpt(file.path(report_dir, "diam_dup.csv"))
+stem_outside <- readOpt(file.path(report_dir, "stem_outside.csv"), colClasses = c(plot_id = "character"))
+tree_unmapped <- readOpt(file.path(report_dir, "tree_unmapped.csv"), colClasses = c(plot_id = "character"))
+height <- readOpt(file.path(ver_dir, "01_fmt", "height.csv"), colClasses = height_col_class)
+wd <- readOpt(file.path(ver_dir, "01_fmt", "wd.csv"), colClasses = wd_col_class)
+taxon <- readOpt(file.path(ver_dir, "01_fmt", "taxon.csv"), colClasses = taxon_col_class)
+runFn("./12_report.R")
+
+# List files written for site reports, and to check the results of each step
+message("Files for site reports and to check results, in ", report_dir, ":\n  ",
+  paste(list.files(report_dir), collapse = "\n  "))
 

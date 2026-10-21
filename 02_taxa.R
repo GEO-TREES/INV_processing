@@ -1,6 +1,6 @@
 # Correct taxonomic names
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-21
 
 # Choices made during name matching are stored in a World Flora Online (WFO)
 # cache, `wfo_path`, shared by all product versions of an acquisition. It is
@@ -78,7 +78,7 @@ message(
   sum(!is.na(taxa_review$nameAccepted)), " changed, ",
   sum(is.na(taxa_review$nameAccepted)), " not matched (",
   sum(taxa_review$n_stem[is.na(taxa_review$nameAccepted)]), " stems). ",
-  "See ", file.path(checkdir, "taxa_review.csv"))
+  "See ", file.path(report_dir, "taxa_review.csv"))
 
 # Summarise matching outcomes by number of stems, to check whether unmatched
 # names affect many stems
@@ -97,6 +97,7 @@ taxa_outcome <- taxa %>%
   summarise(n_name = n(), n_stem = sum(n_stem, na.rm = TRUE), .groups = "drop") %>%
   mutate(pct_stem = round(100 * n_stem / sum(n_stem), 1))
 msgTable(taxa_outcome, "Taxonomic name matching:")
+write.csv(taxa_outcome, file.path(outdir, "taxa_outcome.csv"), row.names = FALSE)
 
 taxa_unmatched <- filter(taxa_review, is.na(nameAccepted))
 if (nrow(taxa_unmatched) > 0) {
@@ -108,7 +109,7 @@ if (nrow(taxa_unmatched) > 0) {
 write.csv(taxa, file.path(outdir, "stem_taxa.csv"), row.names = FALSE)
 
 # Write names for review to file, to check raw data
-write.csv(taxa_review, file.path(checkdir, "taxa_review.csv"), row.names = FALSE)
+write.csv(taxa_review, file.path(report_dir, "taxa_review.csv"), row.names = FALSE)
 
 # Write copy of WFO cache alongside outputs
 file.copy(wfo_path, file.path(outdir, "wfo_cache.rds"), overwrite = TRUE)

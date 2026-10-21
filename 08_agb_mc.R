@@ -1,6 +1,6 @@
 # Estimate AGB and its uncertainty in quadrats
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-21
 
 # Errors in diameter, wood density, height and the allometric model are
 # propagated to each stem with BIOMASS::AGBmonteCarlo(), then simulations are
@@ -48,7 +48,7 @@ stem_fil <- stem %>%
   filter(record_id %in% record_fil) %>%
   left_join(., stem_wd, by = "record_id") %>%
   left_join(., stem_height, by = "record_id") %>%
-  left_join(., st_drop_geometry(stem_pt)[, c("record_id", "quadrat_id")],
+  left_join(., st_drop_geometry(stem_pt)[, c("record_id", "quadrat_id", "grid_excl")],
     by = "record_id")
 
 if (param$height_method == "regional") {
@@ -78,7 +78,9 @@ stem_fil <- stem_fil %>%
   group_by(tree_key) %>%
   mutate(
     tree_mapped = any(!is.na(x_rel_m) & !is.na(y_rel_m)),
-    quadrat_id = first(na.omit(quadrat_id))) %>%
+    quadrat_id = first(na.omit(quadrat_id)),
+    # In a strip of the plot left out of the quadrat grid, see ./07_quad.R
+    grid_excl = any(grid_excl %in% TRUE)) %>%
   ungroup()
 
 # One row per tree. Wood density depends on taxonomic identity, which is the
@@ -142,7 +144,7 @@ if (identical(param$diam_error, "none")) {
     warning(sum(diam_dup$status == "excluded: likely data error"),
       " repeat diameter measurements differ from the original measurement by ",
       "more than ", dup_max_diff_cm, " cm, and are not used. Check ",
-      file.path(checkdir, "diam_dup.csv"), call. = FALSE)
+      file.path(report_dir, "diam_dup.csv"), call. = FALSE)
   }
   dup_used <- diam_dup$status == "used"
 
@@ -179,7 +181,7 @@ if (identical(param$diam_error, "none")) {
       abs(diam_error$bias) > 2 * diam_error$bias_se) {
       warning("Systematic difference between original and repeat diameter ",
         "measurements of ", signif(diam_error$bias, 2), " cm, this is not ",
-        "propagated to AGB. Check ", file.path(checkdir, "diam_dup.csv"),
+        "propagated to AGB. Check ", file.path(report_dir, "diam_dup.csv"),
         call. = FALSE)
     }
 
@@ -213,7 +215,45 @@ if (identical(param$diam_error, "none")) {
   diam_dup %>%
     mutate(diff_cm = diam_cm - diam_cm_dup) %>%
     arrange(status == "used", desc(prob_large), desc(abs(diff_cm))) %>%
-    write.csv(., file.path(checkdir, "diam_dup.csv"), row.names = FALSE)
+    write.csv(., file.path(report_dir, "diam_dup.csv"), row.names = FALSE)
+
+  # Figure of differences between repeat diameter measurements, with the
+  # fitted measurement error model. The difference between two measurements,
+  # each with standard deviation s, has standard deviation sqrt(2) * s
+  if (is.list(diam_error)) {
+    dup_fig <- diam_dup %>%
+      filter(status == "used") %>%
+      mutate(
+        diam_mean_cm = (diam_cm + diam_cm_dup) / 2,
+        diff_cm = diam_cm - diam_cm_dup,
+        type = ifelse(!is.na(prob_large) & prob_large > 0.5,
+          "Likely large error", "Small error"))
+    dup_curve <- data.frame(diam_mean_cm = seq(min(dup_fig$diam_mean_cm),
+      max(dup_fig$diam_mean_cm), length.out = 200)) %>%
+      mutate(
+        upper = 1.96 * sqrt(2) * (diam_error$a + diam_error$b * diam_mean_cm),
+        lower = -upper)
+    p_dup <- ggplot() +
+      geom_hline(yintercept = 0, colour = fig_pal$line_muted) +
+      geom_point(data = dup_fig, aes(x = diam_mean_cm, y = diff_cm, colour = type),
+        size = 1.2, alpha = 0.6, shape = 16) +
+      geom_line(data = dup_curve, aes(x = diam_mean_cm, y = upper),
+        colour = fig_pal$ink, linewidth = 0.6, linetype = 2) +
+      geom_line(data = dup_curve, aes(x = diam_mean_cm, y = lower),
+        colour = fig_pal$ink, linewidth = 0.6, linetype = 2) +
+      scale_colour_manual(NULL, values = c("Small error" = fig_pal$series[1],
+        "Likely large error" = fig_pal$warn)) +
+      guides(colour = guide_legend(override.aes = list(alpha = 1, size = 2))) +
+      labs(
+        title = "Repeat diameter measurements",
+        subtitle = paste0(nrow(dup_fig), " pairs. Dashed lines: 95% range of ",
+          "differences from small errors, SD = ", signif(diam_error$a, 3),
+          " + ", signif(diam_error$b, 3), " D cm per measurement"),
+        x = "Mean diameter (cm)",
+        y = "Difference between measurements (cm)") +
+      themeFig()
+    saveFig(p_dup, file.path(report_dir, "08_diam_error.png"), width = 8, height = 6)
+  }
 } else {
   diam_error <- param$diam_error
 }
@@ -267,13 +307,25 @@ stopifnot(nrow(tree_simu) == nrow(tree))
 agb_simu <- tree_simu[match(stem_fil$tree_key, tree$tree_key), , drop = FALSE] *
   stem_fil$ba_share
 
+# Trees where no stems have coordinates
+unmapped <- !stem_fil$tree_mapped
+
+# Stems below the minimum diameter threshold of the plot are used to estimate
+# AGB, but are not included in AGB density
+in_agbd <- stem_fil$record_id %in% record_agbd
+
 # Calculate mean and standard deviation of stem AGB
+# Stems used to estimate quadrat AGB density are those in a quadrat, and
+# stems of trees without coordinates if they are assigned to random quadrats
 agb_Mg_mean <- rowMeans(agb_simu, na.rm = TRUE)
 stem_agb_mc <- data.frame(
   record_id = stem_fil$record_id,
   agb_Mg_mean = agb_Mg_mean,
   agb_Mg_sd = sqrt(rowSums((agb_simu - agb_Mg_mean)^2, na.rm = TRUE) /
-    (rowSums(!is.na(agb_simu)) - 1)))
+    (rowSums(!is.na(agb_simu)) - 1)),
+  quadrat_id_tree = stem_fil$quadrat_id,
+  in_quadrat_calc = in_agbd & ((!unmapped & !is.na(stem_fil$quadrat_id)) |
+    (unmapped & param$unmapped_method == "random")))
 
 # Write stem-level data to file
 write.csv(stem_agb_mc, file.path(outdir, "stem_agb_mc.csv"), row.names = FALSE)
@@ -298,13 +350,6 @@ quad_area <- quad_pt_clean %>%
       rbind(cbind(x_proj, y_proj), cbind(x_proj, y_proj)[1, ]))))) / 10000,
     .groups = "drop")
 
-# Trees where no stems have coordinates
-unmapped <- !stem_fil$tree_mapped
-
-# Stems below the minimum diameter threshold of the plot are used to estimate
-# AGB, but are not included in AGB density
-in_agbd <- stem_fil$record_id %in% record_agbd
-
 # Write trees without coordinates to file, to check raw data
 tree_unmapped <- stem_fil[unmapped, ] %>%
   mutate(agb_Mg_mean = agb_Mg_mean[unmapped]) %>%
@@ -316,13 +361,15 @@ tree_unmapped <- stem_fil[unmapped, ] %>%
     agb_Mg_mean = sum(agb_Mg_mean),
     .groups = "drop") %>%
   dplyr::select(-tree_key)
-write.csv(tree_unmapped, file.path(checkdir, "tree_unmapped.csv"), row.names = FALSE)
+write.csv(tree_unmapped, file.path(report_dir, "tree_unmapped.csv"), row.names = FALSE)
 
 # Aggregate simulations to quadrats
 # subplot_summary() is run separately for each plot, as it assigns the wrong
 # plot IDs to quadrats when filling empty quadrats if plots have different
 # numbers of quadrats
-plot_vec <- intersect(unique(quad_pt_clean$plot_ID), unique(stem_fil$plot_id))
+# Plots with no stems used to estimate AGB, e.g. plots with no trees above
+# the minimum diameter threshold, have quadrats with zero AGB density
+plot_vec <- unique(quad_pt_clean$plot_ID)
 
 quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
   quads <- quad_area[quad_area$plot_ID == x, ]
@@ -365,9 +412,11 @@ quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
       sample(nrow(quads), length(tree_un_id) * ncol(agb_un), replace = TRUE,
         prob = quads$area_ha),
       nrow = length(tree_un_id))[match(tree_un, tree_un_id), , drop = FALSE]
-    agb_quad <- vapply(seq_len(ncol(agb_un)), function(j) {
+    # One row per quadrat, one column per simulation. matrix() keeps this
+    # shape for plots with a single quadrat, where vapply() returns a vector
+    agb_quad <- matrix(vapply(seq_len(ncol(agb_un)), function(j) {
       tapply(agb_un[, j], factor(quad_idx[, j], levels = seq_len(nrow(quads))), sum, default = 0)
-    }, numeric(nrow(quads)))
+    }, numeric(nrow(quads))), nrow = nrow(quads))
     agbd_quad <- agb_quad / quads$area_ha
 
     i <- cbind(match(out$quadrat_id, quads$subplot_ID), out$sim)
@@ -421,36 +470,44 @@ plot_agb_mc <- quad_agb_simu %>%
     agbd_Mg_ha_mc_ci97.5 = quantile(agbd_Mg_ha, 0.975),
     .groups = "drop")
 
-plot_agb_det <- stem %>%
+# Stems in strips of the plot left out of the quadrat grid are excluded, as
+# the quadrat grid area does not include them
+plot_agb_det <- stem_fil %>%
+  filter(as.character(record_id) %in% record_agbd, !grid_excl) %>%
   dplyr::select(record_id, plot_id) %>%
   inner_join(., stem_agb, by = "record_id") %>%
-  filter(as.character(record_id) %in% record_agbd) %>%
   mutate(plot_id = as.character(plot_id)) %>%
   group_by(plot_id) %>%
   summarise(agb_Mg = sum(agb_Mg, na.rm = TRUE), .groups = "drop") %>%
-  inner_join(., quad_area_join %>% group_by(plot_id) %>% 
+  right_join(., quad_area_join %>% group_by(plot_id) %>% 
     summarise(area_ha = sum(area_ha), n_quadrat = n(), .groups = "drop"),
     by = "plot_id") %>%
-  mutate(agbd_Mg_ha_stem_sum = agb_Mg / area_ha)
+  mutate(
+    agb_Mg = ifelse(is.na(agb_Mg), 0, agb_Mg),
+    agbd_Mg_ha_stem_sum = agb_Mg / area_ha)
 
 plot_agb_check <- plot_agb_det %>%
   dplyr::select(plot_id, n_quadrat, area_ha, agbd_Mg_ha_stem_sum) %>%
   inner_join(., plot_agb_mc, by = "plot_id") %>%
   mutate(
-    cv_pct = round(100 * agbd_Mg_ha_mc_sd / agbd_Mg_ha_mc_mean, 1),
-    diff_pct = round(100 * (agbd_Mg_ha_mc_mean - agbd_Mg_ha_stem_sum) / 
-      agbd_Mg_ha_stem_sum, 1)) %>%
+    # Undefined for plots with zero AGB density
+    cv_pct = ifelse(agbd_Mg_ha_mc_mean > 0, 
+      round(100 * agbd_Mg_ha_mc_sd / agbd_Mg_ha_mc_mean, 1), NA_real_),
+    diff_pct = ifelse(agbd_Mg_ha_stem_sum > 0, 
+      round(100 * (agbd_Mg_ha_mc_mean - agbd_Mg_ha_stem_sum) / 
+        agbd_Mg_ha_stem_sum, 1), NA_real_)) %>%
   arrange(desc(agbd_Mg_ha_mc_mean))
 msgTable(plot_agb_check, paste0("Plot AGB density (Mg/ha) over the quadrat ",
   "grid, from ", nsim, " simulations (mc), and the sum of stem AGB ",
   "(stem_sum). diff_pct is the difference between them:"))
+write.csv(plot_agb_check, file.path(outdir, "plot_agb.csv"), row.names = FALSE)
 
 if (any(abs(plot_agb_check$diff_pct) > 10, na.rm = TRUE)) {
   warning("Simulated plot AGB density differs from the sum of stem AGB by ",
     "more than 10% in plots: ", 
     paste(plot_agb_check$plot_id[abs(plot_agb_check$diff_pct) > 10], collapse = ", "),
     ". Check stems outside the quadrat grid, see ", 
-    file.path(checkdir, "stem_outside.csv"), call. = FALSE)
+    file.path(report_dir, "stem_outside.csv"), call. = FALSE)
 }
 
 # Figure of plot AGB density with 95% interval from simulations, and the 
@@ -467,12 +524,12 @@ p_plot_agb <- ggplot(plot_agb_fig, aes(y = plot_id)) +
   scale_shape_manual(NULL, values = c("Simulated mean, 95% interval" = 16, 
     "Sum of stem AGB" = 1)) +
   labs(
-    title = "Plot AGB density",
+    title = "Plot AGBD",
     subtitle = paste0("Over the quadrat grid of each plot. ", nsim, 
       " simulations, diameter error: ", 
       if (is.list(diam_error)) "field" else format(param$diam_error)),
-    x = "AGB density (Mg/ha)",
+    x = "AGBD (Mg/ha)",
     y = "Plot") +
   themeFig()
-saveFig(p_plot_agb, file.path(checkdir, "08_plot_agbd.png"), width = 8,
+saveFig(p_plot_agb, file.path(report_dir, "08_plot_agbd.png"), width = 8,
   height = min(max(2.6 + 0.35 * nrow(plot_agb_fig), 4), 24))

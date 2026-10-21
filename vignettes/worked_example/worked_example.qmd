@@ -143,7 +143,7 @@ There should be one `param.yaml` file for each version of the processed data.
 * `out_dir` -- Path to where processed data will be exported, e.g. `"./dat/sites/Bicuar/INV/2024/v1"`
 * `raw_dir` -- Path to the raw input data, e.g. `"./dat/sites/Bicuar/INV/2024/L0"`
 * `raw_version` -- Version of the raw input data, a sub-directory of `raw_dir`, e.g. `"v1"`. When raw data are corrected, create a new version so that previous outputs can still be reproduced
-* `s3_dir` -- Optional, path to AWS S3 directory containing raw input data, e.g. `"johngodlee/GEO-TREES_INV/dat/sites/Amacayacu/L0"`
+* `s3_dir` -- Optional, path to AWS S3 directory containing raw input data, e.g. `"johngodlee/GEO-TREES_INV/dat/sites/Amacayacu/INV/2024/L0"`
 * `quad_dim` -- Dimensions in metres of quadrats, e.g. `[50, 50]` for 50x50 m square quadrats
 * `opt_s3` -- Boolean (`true`/`false`). If `true`, raw input data will be pulled from an AWS S3 bucket specified in `s3_dir`, otherwise a local directory specified in `raw_dir`
 * `product_version` -- String specifying the version of the data products, e.g. `"v1"`. Data products may be specified with different parameter sets, for example different size quadrats (`quad_dim`) or different methods of estimating stem height (`height_method`). 
@@ -153,13 +153,15 @@ There should be one `param.yaml` file for each version of the processed data.
 * `polygon_method` -- Method used to fit plot polygons, one of `"exact"`, `"affine"` or `"procrustes"`, see [Fit plot spatial polygons]
 * `outside_max_dist_m` -- Maximum distance in metres outside the quadrat grid at which stems are assigned to the nearest quadrat, e.g. `5`. `0` excludes all stems outside the grid from quadrat summaries
 * `corner_outlier_dist_m` -- Maximum distance in metres between a measured plot corner and the fitted plot polygon, beyond which the corner is treated as an outlier, e.g. `10`, see [Fit plot spatial polygons]
-* `quad_grid_tol` -- Maximum proportion of the plot area which may be excluded from the grid of quadrats, e.g. `0.1`
+* `quad_grid_tol` -- Maximum proportion of the area of each plot which may be excluded from the grid of quadrats, e.g. `0.1`. The automated workflow centres the quadrat grid in each plot, so where the plot dimensions are not a multiple of the quadrat dimensions, equal strips along opposite edges of the plot are excluded, e.g. `0.4` allows 100 x 100 m quadrats in a 250 x 250 m plot, which excludes 36% of the plot
 * `height_model` -- Height-diameter model used if `height_method` is `"field"`, one of `"best"` (lowest residual standard error), `"log1"`, `"log2"`, `"weibull"` or `"michaelis"`
 * `agbd_diam_min_cm` -- Minimum stem diameter in cm for AGB density. The larger of this and the minimum diameter threshold of each plot is used, e.g. `0` uses the threshold of each plot
 * `include_broken` -- `true` or `false`, whether stems broken above the POM are included in AGB density
 * `multi_stem_method` -- How AGB is estimated for multi-stemmed trees, either `"equivalent"` (from the equivalent diameter of a single stem with the same basal area as the tree) or `"stem"` (from each stem separately)
 * `unmapped_method` -- How trees without stem coordinates are treated, either `"random"` (assigned to a random quadrat in their plot in each Monte Carlo simulation) or `"exclude"` (excluded from AGB density)
 * `diam_error` -- Diameter measurement error propagated to AGB, either `"chave2004"` (Chave et al. 2004), `"field"` (estimated from repeat diameter measurements in `stem_dup.csv` with `BIOMASS::fitDiamError()`), `"none"`, or a number giving the standard deviation of diameter measurement error in cm
+* `quad_origin` -- Optional, alignment of the quadrat grid in each plot: `"centre"` (default) centres the grid in the plot, `"corner"` starts it at the origin corner of the plot, and `[x, y]` starts it x and y m from the origin corner. Where the plot dimensions are not a multiple of the quadrat dimensions, strips of the plot outside the grid are left out
+* `als_date` -- Optional, date of the airborne lidar acquisition matched to the plot data, `"YYYY-MM-DD"`, `"YYYY-MM"` or `"YYYY"`, used to report the time between the ALS acquisition and the census in `12_report.R`
 * `rocrate` -- Information on who ran the workflow, used in the RO-Crate meta-data files which accompany each data product:
   * `author_name` -- e.g. `"John L. Godlee"`
   * `author_email` -- e.g. `"GodleeJ@si.edu"`
@@ -245,6 +247,11 @@ for (i in names(param_choices)) {
   }
 }
 
+# Optional parameters
+if (is.null(param$quad_origin)) {
+  param$quad_origin <- "centre"
+}
+
 # Print parameters
 param
 ```
@@ -302,28 +309,36 @@ Filename: PanamaCanal_INV_2025-01-01_v2_v2-4_L3_quad.gpkg
 ## Import L0 data
 
 For convenience, we create a list `L0` where each element is a different L0
-tree inventory data object.
+tree inventory data object. Column classes are taken from the column
+templates in `./templates/`, so that e.g. an `acquisition_id` of `"2024"` is
+read as a character string rather than a number.
 
 ```{r}
+# Import column classes from column templates
+colClass <- function(x) {
+  cols <- read.csv(file.path("../../templates", paste0(x, "_cols.csv")))
+  setNames(cols$class, cols$column_name)
+}
+
 # Import raw L0 data
 L0 <- list(
   # Import stem measurements
-  stem = read.csv(file.path(indir, "stem.csv")),
+  stem = read.csv(file.path(indir, "stem.csv"), colClasses = colClass("stem")),
 
   # Import plot meta-data
-  plot = read.csv(file.path(indir, "plot.csv")),
+  plot = read.csv(file.path(indir, "plot.csv"), colClasses = colClass("plot")),
 
   # Import plot geo-location data
-  pt = read.csv(file.path(indir, "pt.csv")),
+  pt = read.csv(file.path(indir, "pt.csv"), colClasses = colClass("pt")),
 
   # Import taxonomy data (optional)
-  taxa = read.csv(file.path(indir, "taxa.csv")),
+  taxa = read.csv(file.path(indir, "taxa.csv"), colClasses = colClass("taxon")),
 
   # Import individual local wood density estimates (optional)
-  wd = read.csv(file.path(indir, "wd.csv")),
+  wd = read.csv(file.path(indir, "wd.csv"), colClasses = colClass("wd")),
 
   # Import additional height-diameter measurements (optional)
-  height = read.csv(file.path(indir, "hd.csv"))
+  height = read.csv(file.path(indir, "hd.csv"), colClasses = colClass("height"))
 )
 ```
 
@@ -465,12 +480,6 @@ which may be legitimate, e.g. stems mapped far outside the plot, or stems
 without a `stem_id`.
 
 ```{r}
-# Import column templates
-stem_cols <- read.csv("../../templates/stem_cols.csv")
-plot_cols <- read.csv("../../templates/plot_cols.csv")
-pt_cols <- read.csv("../../templates/pt_cols.csv")
-height_cols <- read.csv("../../templates/height_cols.csv")
-
 # Check values in L0 data
 valCheck(
   plot = L0$plot,
@@ -586,7 +595,7 @@ kable(head(stem_taxa_all))
 To make it easier to check the results, we create a table of names which were
 changed (e.g. synonyms, spelling corrections) or which could not be matched,
 with the method used to match each name and the number of stems affected. In
-the automated workflow this table is written to `checks/taxa_review.csv`. Methods
+the automated workflow this table is written to `report/taxa_review.csv`. Methods
 include `"AUTO"` (a single exact match), `"AUTO ACC"` (the only accepted name
 among several candidates), `"MANUAL"` (picked by the user), `"SKIP"` (skipped
 by the user), and `"EMPTY"` (no match found).
@@ -1176,13 +1185,23 @@ Next we divide the plot into 50x50 m (0.25 ha) quadrats using the
 `BIOMASS::divide_plot()` function. This function also assigns stem measurements
 to individual quadrats. Where a multi-stemmed tree has stems in more than one
 quadrat, all its stems are assigned to the quadrat containing the centroid of
-its stems. `grid_tol`, set by `quad_grid_tol` in `param.yaml`, is the
-maximum proportion of the plot area which may be excluded from the grid. With
-`0.1` an error is returned if more than 10% of the plot area is not covered by the grid of quadrats, e.g. if
-the plot dimensions are not a multiple of the quadrat dimensions.
+its stems. 
+
+Each plot is divided separately, as `divide_plot()` uses one grid origin for
+all plots. The grid is aligned by `quad_origin` in `param.yaml`: `"centre"`
+centres the grid in the plot, `"corner"` starts the grid at the origin corner
+of the plot, and a pair of numbers `[x, y]` starts the grid `x` and `y` m from
+the origin corner. Where the plot dimensions are not a multiple of the quadrat
+dimensions, strips along the edges of the plot are left out of the grid, e.g.
+with `"centre"`, 25 m strips along each edge of a 250 x 250 m plot divided
+into 100 x 100 m quadrats. `grid_tol`, set by `quad_grid_tol` in
+`param.yaml`, is the maximum proportion of the plot area which may be left
+out of the grid. With `0.1` an error is returned if more than 10% of the plot
+area is not covered by the grid of quadrats. In this example the plot
+dimensions are a multiple of the quadrat dimensions, so no area is left out.
 
 ```{r}
-# Divide plot into 50x50 m quadrats, assigning stems to quadrats using the
+# Divide plots into 50x50 m quadrats, assigning stems to quadrats using the
 # centroid of their tree. divide_plot() renames `tree_coords` to `x_rel` and
 # `y_rel`, so the stem coordinates are removed
 tree_quad <- if (nrow(stem_sel) > 0) {
@@ -1191,20 +1210,49 @@ tree_quad <- if (nrow(stem_sel) > 0) {
   NULL
 }
 
-plot_divide <- BIOMASS::divide_plot(
-  corner_data = plot_check$corner_coord,
-  rel_coord = c("x_rel", "y_rel"),
-  proj_coord = c("x_proj", "y_proj"),
-  longlat = NULL,
-  grid_size = param$quad_dim,
-  grid_tol = param$quad_grid_tol,
-  origin = NULL,
-  tree_data = tree_quad,
-  tree_coords = if (nrow(stem_sel) > 0) c("x_quad", "y_quad") else NULL,
-  corner_plot_ID = "plot_ID",
-  tree_plot_ID = if (nrow(stem_sel) > 0) "plot_ID" else NULL,
-  sd_coord = NULL, 
-  n = 100)
+# Each plot is divided separately, with the quadrat grid aligned by 
+# `quad_origin`
+corner_coord <- as.data.frame(plot_check$corner_coord)
+divide_list <- lapply(split(corner_coord, corner_coord$plot_ID), function(cc) {
+  x_rng <- range(cc$x_rel)
+  y_rng <- range(cc$y_rel)
+  origin <- if (identical(param$quad_origin, "centre")) {
+    c(x_rng[1] + (diff(x_rng) %% param$quad_dim[1]) / 2,
+      y_rng[1] + (diff(y_rng) %% param$quad_dim[2]) / 2)
+  } else if (identical(param$quad_origin, "corner")) {
+    c(x_rng[1], y_rng[1])
+  } else {
+    c(x_rng[1], y_rng[1]) + param$quad_origin
+  }
+  td <- if (!is.null(tree_quad)) {
+    tree_quad[tree_quad$plot_ID == cc$plot_ID[1], , drop = FALSE]
+  } else {
+    NULL
+  }
+  if (!is.null(td) && nrow(td) == 0) td <- NULL
+
+  BIOMASS::divide_plot(
+    corner_data = cc,
+    rel_coord = c("x_rel", "y_rel"),
+    proj_coord = c("x_proj", "y_proj"),
+    longlat = NULL,
+    grid_size = param$quad_dim,
+    grid_tol = param$quad_grid_tol,
+    origin = origin,
+    tree_data = td,
+    tree_coords = if (!is.null(td)) c("x_quad", "y_quad") else NULL,
+    corner_plot_ID = "plot_ID",
+    tree_plot_ID = if (!is.null(td)) "plot_ID" else NULL,
+    sd_coord = NULL, 
+    n = 100)
+})
+plot_divide <- list(
+  sub_corner_coord = bind_rows(lapply(divide_list, function(x) {
+    as.data.frame(x$sub_corner_coord)
+  })),
+  tree_data = bind_rows(lapply(divide_list, function(x) {
+    if (is.null(x$tree_data)) NULL else as.data.frame(x$tree_data)
+  })))
 ```
 
 ```{r}
@@ -1226,12 +1274,21 @@ create `sf` spatial objects. We now have the following objects:
 # Stems outside the quadrat grid
 # Stems whose tree centroid is outside the quadrat grid, by up to
 # `outside_max_dist_m`, are assigned to the nearest quadrat. Others are
-# excluded from quadrat summaries. In the automated workflow all are written
-# to `checks/stem_outside.csv`, so that raw data can be corrected if needed
+# excluded from quadrat summaries. In the automated workflow stems outside
+# the plot are written to `report/stem_outside.csv`, so that raw data can be
+# corrected if needed. Stems inside the plot, in strips left out of the 
+# quadrat grid, are marked with `grid_excl`
 if (nrow(stem_sel) > 0) {
+  plot_divide$tree_data$grid_excl <- FALSE
   tree_dat <- plot_divide$tree_data
   quad_ext <- plot_divide$sub_corner_coord %>%
     group_by(plot_ID, subplot_ID) %>%
+    summarise(
+      x_min = min(x_rel), x_max = max(x_rel),
+      y_min = min(y_rel), y_max = max(y_rel),
+      .groups = "drop")
+  plot_ext <- corner_coord %>%
+    group_by(plot_ID) %>%
     summarise(
       x_min = min(x_rel), x_max = max(x_rel),
       y_min = min(y_rel), y_max = max(y_rel),
@@ -1250,18 +1307,31 @@ if (nrow(stem_sel) > 0) {
   quad_near <- bind_rows(quad_near,
     data.frame(quadrat_nearest = character(0), dist_m = numeric(0)))
 
+  # Whether the tree centroid is inside the plot
+  pe <- plot_ext[match(tree_dat$plot_ID[out_idx], plot_ext$plot_ID), ]
+  in_plot <- tree_dat$x_rel[out_idx] >= pe$x_min & 
+    tree_dat$x_rel[out_idx] <= pe$x_max &
+    tree_dat$y_rel[out_idx] >= pe$y_min & 
+    tree_dat$y_rel[out_idx] <= pe$y_max
+
   stem_outside <- data.frame(
     record_id = tree_dat$record_id[out_idx],
     quadrat_nearest = quad_near$quadrat_nearest,
     dist_m = round(quad_near$dist_m, 2)) %>%
     mutate(
-      action = ifelse(dist_m <= param$outside_max_dist_m,
-        "assigned to nearest quadrat", "excluded"))
+      action = case_when(
+        dist_m <= param$outside_max_dist_m ~ "assigned to nearest quadrat",
+        in_plot ~ "excluded, in plot outside quadrat grid",
+        TRUE ~ "excluded"))
 
   # Assign stems to nearest quadrat
   assign_idx <- out_idx[stem_outside$action == "assigned to nearest quadrat"]
   plot_divide$tree_data$subplot_ID[assign_idx] <- stem_outside$quadrat_nearest[
     stem_outside$action == "assigned to nearest quadrat"]
+
+  # Mark stems in strips left out of the quadrat grid
+  grid_excl_idx <- out_idx[stem_outside$action == "excluded, in plot outside quadrat grid"]
+  plot_divide$tree_data$grid_excl[grid_excl_idx] <- TRUE
 }
 
 # Create plot polygons 
@@ -1308,11 +1378,13 @@ if (nrow(stem_sel) > 0) {
     dplyr::select(
       record_id,
       quadrat_id = subplot_ID,
+      grid_excl,
       x_utm, y_utm)
 } else {
   stem_pt <- st_sf(
     record_id = integer(0),
     quadrat_id = character(0),
+    grid_excl = logical(0),
     x_utm = numeric(0),
     y_utm = numeric(0),
     geometry = st_sfc(crs = crs_site))
@@ -1398,7 +1470,7 @@ stem_fil <- L0$stem %>%
   filter(record_id %in% record_fil) %>% 
   left_join(., stem_wd_all, by = "record_id") %>% 
   left_join(., stem_height_all, by = "record_id") %>% 
-  left_join(., st_drop_geometry(stem_pt)[, c("record_id", "quadrat_id")], 
+  left_join(., st_drop_geometry(stem_pt)[, c("record_id", "quadrat_id", "grid_excl")], 
     by = "record_id")
 
 if (param$height_method == "regional") {
@@ -1422,7 +1494,9 @@ stem_fil <- stem_fil %>%
   group_by(tree_key) %>%
   mutate(
     tree_mapped = any(!is.na(x_rel_m) & !is.na(y_rel_m)),
-    quadrat_id = first(na.omit(quadrat_id))) %>%
+    quadrat_id = first(na.omit(quadrat_id)),
+    # In a strip of the plot left out of the quadrat grid
+    grid_excl = any(grid_excl %in% TRUE)) %>%
   ungroup()
 
 # One row per tree. Wood density depends on taxonomic identity, which is the
@@ -1501,13 +1575,25 @@ stopifnot(nrow(tree_simu) == nrow(tree))
 agb_simu <- tree_simu[match(stem_fil$tree_key, tree$tree_key), , drop = FALSE] *
   stem_fil$ba_share
 
+# Trees where no stems have coordinates
+unmapped <- !stem_fil$tree_mapped
+
+# Stems below the minimum diameter threshold of the plot are used to estimate
+# AGB, but are not included in AGB density
+in_agbd <- stem_fil$record_id %in% record_agbd
+
 # Calculate mean and standard deviation of stem AGB
+# Stems used to estimate quadrat AGB density are those in a quadrat, and 
+# stems of trees without coordinates if they are assigned to random quadrats
 agb_Mg_mean <- rowMeans(agb_simu, na.rm = TRUE)
 stem_agb_mc <- data.frame(
   record_id = stem_fil$record_id,
   agb_Mg_mean = agb_Mg_mean,
   agb_Mg_sd = sqrt(rowSums((agb_simu - agb_Mg_mean)^2, na.rm = TRUE) / 
-    (rowSums(!is.na(agb_simu)) - 1)))
+    (rowSums(!is.na(agb_simu)) - 1)),
+  quadrat_id_tree = stem_fil$quadrat_id,
+  in_quadrat_calc = in_agbd & ((!unmapped & !is.na(stem_fil$quadrat_id)) |
+    (unmapped & param$unmapped_method == "random")))
 ```
 
 Then we aggregate the simulations to quadrats:
@@ -1533,15 +1619,10 @@ quad_area <- quad_pt_clean %>%
       rbind(cbind(x_proj, y_proj), cbind(x_proj, y_proj)[1, ]))))) / 10000,
     .groups = "drop")
 
-# Trees where no stems have coordinates
-unmapped <- !stem_fil$tree_mapped
-
-# Stems below the minimum diameter threshold of the plot are used to estimate
-# AGB, but are not included in AGB density
-in_agbd <- stem_fil$record_id %in% record_agbd
-
 # Aggregate simulations to quadrats, separately for each plot
-plot_vec <- intersect(unique(quad_pt_clean$plot_ID), unique(stem_fil$plot_id))
+# Plots with no stems used to estimate AGB, e.g. plots with no trees above
+# the minimum diameter threshold, have quadrats with zero AGB density
+plot_vec <- unique(quad_pt_clean$plot_ID)
 
 quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
   quads <- quad_area[quad_area$plot_ID == x, ]
@@ -1584,9 +1665,11 @@ quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
       sample(nrow(quads), length(tree_un_id) * ncol(agb_un), replace = TRUE,
         prob = quads$area_ha),
       nrow = length(tree_un_id))[match(tree_un, tree_un_id), , drop = FALSE]
-    agb_quad <- vapply(seq_len(ncol(agb_un)), function(j) {
+    # One row per quadrat, one column per simulation. matrix() keeps this
+    # shape for plots with a single quadrat, where vapply() returns a vector
+    agb_quad <- matrix(vapply(seq_len(ncol(agb_un)), function(j) {
       tapply(agb_un[, j], factor(quad_idx[, j], levels = seq_len(nrow(quads))), sum, default = 0)
-    }, numeric(nrow(quads)))
+    }, numeric(nrow(quads))), nrow = nrow(quads))
     agbd_quad <- agb_quad / quads$area_ha
 
     i <- cbind(match(out$quadrat_id, quads$subplot_ID), out$sim)
@@ -1672,9 +1755,14 @@ stem_summ <- L0$stem %>%
   left_join(., stem_agb_mc, by = "record_id") %>%
   left_join(., st_drop_geometry(stem_pt), by = "record_id") %>%
   mutate(
-    # Used to estimate AGB, and AGB density
+    # Stems without coordinates in trees with other stems that have 
+    # coordinates take the quadrat of the tree
+    quadrat_id = coalesce(quadrat_id_tree, quadrat_id),
+    # Used to estimate AGB, and AGB density. Stems outside the quadrat grid
+    # are not used to estimate AGB density
     in_agb_calc = record_id %in% record_fil,
-    in_quadrat_calc = record_id %in% record_agbd) %>%
+    in_quadrat_calc = in_quadrat_calc %in% TRUE) %>%
+  dplyr::select(-quadrat_id_tree) %>%
   st_as_sf(., coords = c("x_utm", "y_utm"), crs = st_crs(stem_pt),
     na.fail = FALSE, remove = FALSE)
 ```
@@ -1904,7 +1992,7 @@ param_fil[["quad_dim"]] <- NULL
 if (param_fil$opt_s3) { 
   param_fil[["raw_dir"]] <- param_fil$s3_dir
 } 
-param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate")] <- NULL
+param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate", "als_date", "quad_origin")] <- NULL
 
 L3_quad <- quad_summ %>% 
   dplyr::select(

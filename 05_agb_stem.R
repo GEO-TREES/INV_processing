@@ -89,9 +89,11 @@ agb_plot <- stem %>%
     agb_Mg = sum(agb_Mg, na.rm = TRUE),
     ba_m2 = sum(ba_m2, na.rm = TRUE),
     .groups = "drop") %>%
-  left_join(., dplyr::select(plot, plot_id, plot_length_m, plot_width_m), 
+  # Plots with no stems used to estimate AGB density have zero AGB
+  right_join(., dplyr::select(plot, plot_id, plot_length_m, plot_width_m), 
     by = "plot_id") %>%
   mutate(
+    across(c(n_stem, agb_Mg, ba_m2), ~ifelse(is.na(.x), 0, .x)),
     area_ha = plot_length_m * plot_width_m / 10000,
     agbd_Mg_ha = agb_Mg / area_ha,
     ba_m2_ha = ba_m2 / area_ha) %>%
@@ -116,9 +118,41 @@ p_agb <- ggplot(tree_check, aes(x = diam_eq_cm, y = agb_Mg)) +
   labs(
     title = "Tree AGB against diameter",
     subtitle = paste0(format(nrow(tree_check), big.mark = ","), 
-      " trees. Equivalent diameter for multi-stemmed trees. Log scales; ",
-      "vertical spread is due to wood density"),
+      " trees. Equivalent diameter for multi-stemmed trees. Log scales"),
     x = "Diameter (cm)",
     y = "AGB (Mg)") +
   themeFig()
-saveFig(p_agb, file.path(checkdir, "05_agb_diam.png"), width = 8, height = 6)
+saveFig(p_agb, file.path(report_dir, "05_agb_diam.png"), width = 8, height = 6)
+
+# Figure of the share of AGB in each diameter class, for trees used to
+# estimate AGB density, all plots. Classes from `diam_class_max_cm` upwards
+# are combined
+diam_class_cm <- 10
+diam_class_max_cm <- 150
+tree_agbd <- tree %>%
+  filter(tree_key %in% stem_all$tree_key[as.character(stem_all$record_id) %in% record_agbd],
+    !is.na(agb_Mg))
+diam_class <- tree_agbd %>%
+  mutate(diam_class = pmin(floor(diam_eq_cm / diam_class_cm) * diam_class_cm, 
+    diam_class_max_cm)) %>%
+  group_by(diam_class) %>%
+  summarise(n_tree = n(), agb_Mg = sum(agb_Mg), .groups = "drop") %>%
+  mutate(
+    pct_agb = 100 * agb_Mg / sum(agb_Mg),
+    label = ifelse(diam_class == diam_class_max_cm, paste0(diam_class_max_cm, "+"),
+      paste0(diam_class, "-", diam_class + diam_class_cm)),
+    label = factor(label, levels = label))
+p_diam_class <- ggplot(diam_class, aes(x = label, y = pct_agb)) +
+  geom_col(fill = fig_pal$series[1], width = 0.8) +
+  geom_text(aes(label = format(n_tree, big.mark = ",", trim = TRUE)),
+    vjust = -0.4, size = 3, colour = fig_pal$ink_muted) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(
+    title = "Share of AGB by diameter class",
+    subtitle = paste0("Trees used to estimate AGBD, all plots. Numbers are ",
+      "trees in each class. Equivalent diameter for multi-stemmed trees"),
+    x = "Diameter class (cm)",
+    y = "Share of AGB (%)") +
+  themeFig() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+saveFig(p_diam_class, file.path(report_dir, "05_agb_diam_class.png"), width = 8, height = 5)

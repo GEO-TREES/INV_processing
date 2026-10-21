@@ -1,6 +1,6 @@
 # Estimate wood density for each measurement
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-21
 
 # Join taxonomy data to stem data
 stem_taxa_all <- left_join(stem, taxa, by = c("taxon_name" = "nameOriginal"))
@@ -97,21 +97,15 @@ wd_level <- wd_check %>%
   mutate(pct_stem = round(100 * n_stem / sum(n_stem), 1), .after = n_stem)
 msgTable(wd_level, "Wood density (g cm-3) by taxonomic level of the estimate:")
 
-# Figure of wood density distribution at each taxonomic level
-wd_lab <- setNames(
-  paste0(wd_level$level, " (", format(wd_level$n_stem, big.mark = ",", trim = TRUE), 
-    " stems, ", wd_level$pct_stem, "%)"),
-  wd_level$level)
-p_wd <- ggplot(wd_check, aes(x = meanWD)) +
-  geom_histogram(binwidth = 0.025, fill = fig_pal$series[1], 
-    colour = fig_pal$surface, linewidth = 0.2) +
-  facet_wrap(~level, ncol = 1, scales = "free_y", 
-    labeller = as_labeller(wd_lab)) +
+# Figure of wood density at each taxonomic level of the estimate, for stems
+# used to estimate AGB density, see `agbdFilter()` in ./func.R
+record_agbd <- agbdFilter(stem, plot, recordFilter(stem, plot),
+  diam_min_cm = param$agbd_diam_min_cm,
+  include_broken = param$include_broken)
+wd_fig <- filter(wd_check, as.character(record_id) %in% record_agbd)
+p_wd <- wdLevelPlot(wd_fig$meanWD, wd_fig$level) +
   labs(
     title = "Wood density estimates by taxonomic level",
-    subtitle = "Each panel is one level of the estimate; y-axis scales differ",
-    x = expression("Wood density (g cm"^-3*")"),
-    y = "Stems") +
-  themeFig()
-saveFig(p_wd, file.path(checkdir, "03_wd_level.png"), 
-  width = 8, height = 2 + 2.2 * nlevels(wd_check$level))
+    subtitle = "Stems used to estimate AGBD. Y-axis scales differ")
+saveFig(p_wd, file.path(report_dir, "03_wd_level.png"), width = 8,
+  height = 2 + 2.2 * nlevels(droplevels(wd_fig$level)))

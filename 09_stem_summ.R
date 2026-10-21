@@ -12,9 +12,14 @@ stem_summ <- stem %>%
   left_join(., stem_agb_mc, by = "record_id") %>%
   left_join(., st_drop_geometry(stem_pt), by = "record_id") %>%
   mutate(
-    # Used to estimate AGB, and AGB density
+    # Stems without coordinates in trees with other stems that have
+    # coordinates take the quadrat of the tree, see ./08_agb_mc.R
+    quadrat_id = coalesce(quadrat_id_tree, quadrat_id),
+    # Used to estimate AGB, and AGB density. Stems outside the quadrat grid
+    # are not used to estimate AGB density
     in_agb_calc = record_id %in% record_fil,
-    in_quadrat_calc = record_id %in% record_agbd) %>%
+    in_quadrat_calc = in_quadrat_calc %in% TRUE) %>%
+  dplyr::select(-quadrat_id_tree) %>%
   st_as_sf(., coords = c("x_utm", "y_utm"), crs = st_crs(stem_pt),
     na.fail = FALSE, remove = FALSE)
 

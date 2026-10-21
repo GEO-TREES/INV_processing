@@ -1,6 +1,6 @@
 # Prepare L1, L2 and L3 data products
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-21
 
 # Prepare L1 stems dataset
 L1_stem <- stem_summ %>% 
@@ -77,7 +77,7 @@ param_fil[["quad_dim"]] <- NULL
 if (param_fil$opt_s3) { 
   param_fil[["raw_dir"]] <- param_fil$s3_dir
 } 
-param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate")] <- NULL
+param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate", "als_date", "quad_origin")] <- NULL
 
 L3_quad <- quad_summ %>% 
   dplyr::select(

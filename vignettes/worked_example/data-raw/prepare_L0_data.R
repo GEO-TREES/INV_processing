@@ -7,8 +7,8 @@
 
 # Set input directory
 args <- commandArgs(trailingOnly = TRUE)
-indir <- if (length(args) > 0) args[1] else "../../../dat/sites/Amacayacu/INV/2024-08-03/v1/v0-1"
-paramfile <- "../../../sites/Amacayacu/2024-08-03/v1/param.yaml"
+indir <- if (length(args) > 0) args[1] else "../../../dat/sites/Amacayacu/INV/2024/v1/v0-1"
+paramfile <- "../../../sites/Amacayacu/2024/v1/param.yaml"
 
 # Ensure reproducibility
 set.seed(42)

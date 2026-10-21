@@ -139,9 +139,10 @@ There should be one `param.yaml` file for each version of the processed data.
 `param.yaml` files should contain the following parameters:
 
 * `site_id` -- Name of the site, e.g. `"Bicuar"`
-* `acquisition_id` -- ID of data acquisition, e.g. `"2024-08-03"`
-* `out_dir` -- Path to where processed data will be exported, e.g. `"./dat/sites/Bicuar/INV/2024-08-03/v1"`
-* `raw_dir` -- Path to the raw input data, e.g. `"./dat/sites/Bicuar/INV/2024-08-03/L0"`
+* `acquisition_id` -- ID of data acquisition, e.g. `"2024"`
+* `out_dir` -- Path to where processed data will be exported, e.g. `"./dat/sites/Bicuar/INV/2024/v1"`
+* `raw_dir` -- Path to the raw input data, e.g. `"./dat/sites/Bicuar/INV/2024/L0"`
+* `raw_version` -- Version of the raw input data, a sub-directory of `raw_dir`, e.g. `"v1"`. When raw data are corrected, create a new version so that previous outputs can still be reproduced
 * `s3_dir` -- Optional, path to AWS S3 directory containing raw input data, e.g. `"johngodlee/GEO-TREES_INV/dat/sites/Amacayacu/L0"`
 * `quad_dim` -- Dimensions in metres of quadrats, e.g. `[50, 50]` for 50x50 m square quadrats
 * `opt_s3` -- Boolean (`true`/`false`). If `true`, raw input data will be pulled from an AWS S3 bucket specified in `s3_dir`, otherwise a local directory specified in `raw_dir`
@@ -150,6 +151,15 @@ There should be one `param.yaml` file for each version of the processed data.
 * `height_method` -- Method used to estimate stem height, either `"regional"` or `"field"`
 * `wd_method` -- Method used to estimate wood density, either `"regional"` or `"field"`
 * `polygon_method` -- Method used to fit plot polygons, one of `"exact"`, `"affine"` or `"procrustes"`, see [Fit plot spatial polygons]
+* `outside_max_dist_m` -- Maximum distance in metres outside the quadrat grid at which stems are assigned to the nearest quadrat, e.g. `5`. `0` excludes all stems outside the grid from quadrat summaries
+* `corner_outlier_dist_m` -- Maximum distance in metres between a measured plot corner and the fitted plot polygon, beyond which the corner is treated as an outlier, e.g. `10`, see [Fit plot spatial polygons]
+* `quad_grid_tol` -- Maximum proportion of the plot area which may be excluded from the grid of quadrats, e.g. `0.1`
+* `height_model` -- Height-diameter model used if `height_method` is `"field"`, one of `"best"` (lowest residual standard error), `"log1"`, `"log2"`, `"weibull"` or `"michaelis"`
+* `agbd_diam_min_cm` -- Minimum stem diameter in cm for AGB density. The larger of this and the minimum diameter threshold of each plot is used, e.g. `0` uses the threshold of each plot
+* `include_broken` -- `true` or `false`, whether stems broken above the POM are included in AGB density
+* `multi_stem_method` -- How AGB is estimated for multi-stemmed trees, either `"equivalent"` (from the equivalent diameter of a single stem with the same basal area as the tree) or `"stem"` (from each stem separately)
+* `unmapped_method` -- How trees without stem coordinates are treated, either `"random"` (assigned to a random quadrat in their plot in each Monte Carlo simulation) or `"exclude"` (excluded from AGB density)
+* `diam_error` -- Diameter measurement error propagated to AGB, either `"chave2004"` (Chave et al. 2004), `"field"` (estimated from repeat diameter measurements in `stem_dup.csv` with `BIOMASS::fitDiamError()`), `"none"`, or a number giving the standard deviation of diameter measurement error in cm
 * `rocrate` -- Information on who ran the workflow, used in the RO-Crate meta-data files which accompany each data product:
   * `author_name` -- e.g. `"John L. Godlee"`
   * `author_email` -- e.g. `"GodleeJ@si.edu"`
@@ -179,9 +189,19 @@ param_name_vec <- c(
   "s3_dir",
   "out_dir",
   "raw_dir",
+  "raw_version",
   "height_method",
   "wd_method",
   "polygon_method",
+  "outside_max_dist_m",
+  "corner_outlier_dist_m",
+  "quad_grid_tol",
+  "height_model",
+  "agbd_diam_min_cm",
+  "include_broken",
+  "multi_stem_method",
+  "unmapped_method",
+  "diam_error",
   "software_version",
   "product_version",
   "rocrate"
@@ -214,7 +234,10 @@ if (length(rocrate_missing) > 0) {
 param_choices <- list(
   height_method = c("regional", "field"),
   wd_method = c("regional", "field"),
-  polygon_method = c("exact", "affine", "procrustes")
+  polygon_method = c("exact", "affine", "procrustes"),
+  height_model = c("best", "log1", "log2", "weibull", "michaelis"),
+  multi_stem_method = c("equivalent", "stem"),
+  unmapped_method = c("random", "exclude")
 )
 for (i in names(param_choices)) {
   if (!param[[i]] %in% param_choices[[i]]) {
@@ -241,7 +264,7 @@ GEO-TREES data products are organised in a strict directory hierarchy:
 
 * SITE - The site name. Matches the `site_id` column in tree inventory datasets.
 * DATATYPE - in this case "INV" tree inventory data. Alternatively, e.g. "ALS" (airborne laser scanning) or "TLS" (terrestrial laser scanning)
-* ACQUISITION - The ID of the discrete period when L0 data was acquired in the field using a particular platform, normally including the date of acquisition in YYYY-MM-DD format. Where a L0 dataset was acquired over multiple days, prefer the mid-acquisition date.
+* ACQUISITION - The ID of the discrete period when L0 data was acquired in the field using a particular platform, normally including the date of acquisition in YYYY-MM-DD format. Where a L0 dataset was acquired over multiple days, prefer the mid-acquisition date. Tree inventory acquisitions are named by census year, i.e. the year of the mid-date of all stem measurements, in YYYY format.
 * PRODUCT - Data product level, either:
   * "L0" - raw data 
   * "L1" - re-formatted raw data (raw instrument)
@@ -508,10 +531,10 @@ higher-order taxonomic rank such as just the genus or family. Some examples of v
 
 If `useCache = TRUE`, `correctTaxo()` creates a cache object containing
 previously queried taxonomic names, including the choices made during
-interactive matching. In the automated workflow this cache is saved to
-`./sites/<SITE>/<ACQUISITION>/wfo_cache.rds`, which is shared by all product
-versions of an acquisition and is tracked in the git repository, as a record
-of the choices made. Names are matched in chunks, and the cache is saved after
+interactive matching. In the automated workflow this cache is saved with the
+raw data, to `wfo_cache.rds` in the directory containing `raw_dir`, e.g.
+`./dat/sites/<SITE>/INV/<ACQUISITION>/wfo_cache.rds`. It is shared by all
+product versions of an acquisition, as a record of the choices made. Names are matched in chunks, and the cache is saved after
 each chunk, so choices are kept if interactive matching is interrupted. Names
 which could not be matched in a batch run are not saved, so they are offered
 again in the next interactive run.
@@ -563,7 +586,7 @@ kable(head(stem_taxa_all))
 To make it easier to check the results, we create a table of names which were
 changed (e.g. synonyms, spelling corrections) or which could not be matched,
 with the method used to match each name and the number of stems affected. In
-the automated workflow this table is written to `taxa_review.csv`. Methods
+the automated workflow this table is written to `checks/taxa_review.csv`. Methods
 include `"AUTO"` (a single exact match), `"AUTO ACC"` (the only accepted name
 among several candidates), `"MANUAL"` (picked by the user), `"SKIP"` (skipped
 by the user), and `"EMPTY"` (no match found).
@@ -754,10 +777,15 @@ kable(height_mod_comp)
 ```
 
 ```{r}
-# Choose best height diameter model
-# Based on lowest residual standard error, calculated on the untransformed
-# height scale for all models, so comparable across log and non-log models
-height_mod_best <- height_mod_comp$method[which.min(height_mod_comp$RSE)]
+# Choose height diameter model, set by `height_model`. If "best", use the
+# model with the lowest residual standard error, calculated on the
+# untransformed height scale for all models, so comparable across log and
+# non-log models
+height_mod_best <- if (param$height_model == "best") {
+  height_mod_comp$method[which.min(height_mod_comp$RSE)]
+} else {
+  param$height_model
+}
 
 # Fit best height diameter model
 height_mod <- modelHD(
@@ -848,8 +876,8 @@ ggplot(s_cent, aes(x = diam_cm, y = height_m_pred)) +
 `05_agb_stem.R`
 
 Here we estimate the above-ground woody biomass (AGB, `agb_Mg`) of each stem
-measurement using the `BIOMASS::computeAGB()` function. `computeAGB()` returns
-a list with one element per allometry. Where heights come from a local
+measurement using the `BIOMASS::computeAGB()` function, which returns the AGB
+of each tree in Mg. Where heights come from a local
 height-diameter model (`height_method: "field"`), Equation 4 from @Chave2014
 is used to estimate AGB with stem diameter (`D`), stem height (`H`), and wood
 density (`WD`). Where no local height data are available (`height_method:
@@ -875,8 +903,9 @@ separately would underestimate the AGB of multi-stemmed trees, because AGB
 increases more than proportionally with stem diameter. Tree AGB is then shared
 among its stems in proportion to their basal area. Trees are formed from the
 stems used to estimate AGB density (see [Filter stem data]), grouped by
-`tree_id` within each plot, using `recordFilter()` and `treeEquiv()` from
-`func.R`. Other stems, e.g. dead stems, are treated as single-stemmed trees.
+`tree_id` within each plot, using `recordFilter()`, `agbdFilter()` and
+`treeEquiv()` from `func.R`. Other stems, e.g. dead stems, and stems below the
+minimum diameter threshold of the plot, are treated as single-stemmed trees.
 Wood density depends on taxonomic identity, which is the same for all stems of
 a tree, so the wood density of the largest stem is used.
 
@@ -884,14 +913,18 @@ We also create some additional variables like stem basal area (`ba_m2`) and
 stem volume (`volume_m3`).
 
 ```{r}
-# Stems which form multi-stemmed trees
-record_fil <- recordFilter(L0$stem, L0$plot)
+# Stems which form multi-stemmed trees. If `multi_stem_method` is "stem", AGB
+# is estimated for each stem separately
+record_agbd <- agbdFilter(L0$stem, L0$plot, recordFilter(L0$stem, L0$plot),
+  diam_min_cm = param$agbd_diam_min_cm,
+  include_broken = param$include_broken)
+tree_include <- if (param$multi_stem_method == "equivalent") record_agbd else character(0)
 
 # Join wood density, height, and equivalent diameter to stem data
 stem_all <- L0$stem %>%
   left_join(., stem_wd_all, by = "record_id") %>%
   left_join(., stem_height_all, by = "record_id") %>%
-  left_join(., treeEquiv(L0$stem, record_fil), by = "record_id")
+  left_join(., treeEquiv(L0$stem, tree_include), by = "record_id")
 
 # One row per tree. Wood density depends on taxonomic identity, which is the
 # same for all stems of a tree, so the wood density of the largest stem is used
@@ -918,12 +951,12 @@ if (param$height_method == "regional") {
   tree$agb_Mg <- BIOMASS::computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
-    coord = as.matrix(tree[, c("X", "Y")]))[[1]]
+    coord = as.matrix(tree[, c("X", "Y")]))
 } else if (param$height_method == "field") {
   tree$agb_Mg <- BIOMASS::computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
-    H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H)[[1]]
+    H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H)
 }
 
 # Share tree AGB among stems
@@ -985,20 +1018,30 @@ density in each 50x50 m quadrat.
 We apply the following filters:
 
 * Remove stems with no diameter measurement. 
-* Remove stems with diameter less than the stated minimum diameter threshold.
 * Include only living stems.
 * Include only standing stems.
 * Remove stems that are broken below the diameter Point of Measurement (POM). Stems broken above the POM are included.
 * Remove "missing" stems. I.e. stems which were not measured during the census.
 * Where stems were measured multiple times at multiple POMs, choose the highest POM, latest measurement date, and largest diameter measurement. Stems without a `stem_id` cannot be matched across measurements, so each of their records is treated as a separate stem.
 
+Stems with a diameter below the minimum diameter threshold of the plot have
+their own AGB estimates, but are not part of multi-stemmed trees, and are
+excluded when AGB is summed to estimate AGB density, so that AGB density
+matches the sampling of the plot.
+
 ```{r}
-# Filter stem data, see `recordFilter()` in func.R
+# Select stems used to estimate AGB, see `recordFilter()` in func.R
 # Stems without coordinates are kept, and are assigned to quadrats at random
 # during AGB error propagation
 record_fil <- recordFilter(L0$stem, L0$plot)
 
-head(record_fil)
+# Select stems used to estimate AGB density, see `agbdFilter()` in func.R
+# Stems below the minimum diameter threshold, the larger of
+# `agbd_diam_min_cm` and the threshold of the plot, are excluded. Stems broken
+# above the POM are excluded if `include_broken` is false
+record_agbd <- agbdFilter(L0$stem, L0$plot, record_fil,
+  diam_min_cm = param$agbd_diam_min_cm,
+  include_broken = param$include_broken)
 ```
 
 ::: {.callout-warning title="TODO"}
@@ -1090,7 +1133,7 @@ if (length(unique(pt_fit$crs_epsg)) > 1) {
 # their stems, so `x_quad` and `y_quad` are used to assign quadrats, while
 # stem locations are kept
 stem_sel <- L0$stem %>%
-  left_join(., treeEquiv(L0$stem, record_fil)[, c("record_id", "tree_key")],
+  left_join(., treeEquiv(L0$stem, tree_include)[, c("record_id", "tree_key")],
     by = "record_id") %>%
   dplyr::select(record_id, plot_id, tree_key, x_rel_m, y_rel_m) %>%
   filter(
@@ -1116,7 +1159,7 @@ plot_check <- BIOMASS::plotPolygonFit(
   lonlat_col = NULL,
   corner_col = "corner",
   plot_col = "plot_id",
-  max_dist = 10,
+  max_dist = param$corner_outlier_dist_m,
   rm_outliers = TRUE,
   tree_data = if (nrow(stem_sel) > 0) stem_sel else NULL,
   tree_rel_col = c("x_rel_m", "y_rel_m"),
@@ -1133,8 +1176,9 @@ Next we divide the plot into 50x50 m (0.25 ha) quadrats using the
 `BIOMASS::divide_plot()` function. This function also assigns stem measurements
 to individual quadrats. Where a multi-stemmed tree has stems in more than one
 quadrat, all its stems are assigned to the quadrat containing the centroid of
-its stems. `grid_tol = 0.1` means that an error is returned if
-more than 10% of the plot area is not covered by the grid of quadrats, e.g. if
+its stems. `grid_tol`, set by `quad_grid_tol` in `param.yaml`, is the
+maximum proportion of the plot area which may be excluded from the grid. With
+`0.1` an error is returned if more than 10% of the plot area is not covered by the grid of quadrats, e.g. if
 the plot dimensions are not a multiple of the quadrat dimensions.
 
 ```{r}
@@ -1153,7 +1197,7 @@ plot_divide <- BIOMASS::divide_plot(
   proj_coord = c("x_proj", "y_proj"),
   longlat = NULL,
   grid_size = param$quad_dim,
-  grid_tol = 0.1,  # Max. proportion of plot area excluded from the grid
+  grid_tol = param$quad_grid_tol,
   origin = NULL,
   tree_data = tree_quad,
   tree_coords = if (nrow(stem_sel) > 0) c("x_quad", "y_quad") else NULL,
@@ -1179,6 +1223,47 @@ create `sf` spatial objects. We now have the following objects:
 * `stem_pt` - `sf` object with spatial points for each stem measurement.
 
 ```{r}
+# Stems outside the quadrat grid
+# Stems whose tree centroid is outside the quadrat grid, by up to
+# `outside_max_dist_m`, are assigned to the nearest quadrat. Others are
+# excluded from quadrat summaries. In the automated workflow all are written
+# to `checks/stem_outside.csv`, so that raw data can be corrected if needed
+if (nrow(stem_sel) > 0) {
+  tree_dat <- plot_divide$tree_data
+  quad_ext <- plot_divide$sub_corner_coord %>%
+    group_by(plot_ID, subplot_ID) %>%
+    summarise(
+      x_min = min(x_rel), x_max = max(x_rel),
+      y_min = min(y_rel), y_max = max(y_rel),
+      .groups = "drop")
+
+  # Distance from tree centroid to nearest quadrat. `x_rel` and `y_rel` in
+  # the output of divide_plot() are the tree centroid
+  out_idx <- which(is.na(tree_dat$subplot_ID))
+  quad_near <- lapply(out_idx, function(i) {
+    q <- quad_ext[quad_ext$plot_ID == tree_dat$plot_ID[i], ]
+    d <- sqrt(
+      pmax(q$x_min - tree_dat$x_rel[i], 0, tree_dat$x_rel[i] - q$x_max)^2 +
+      pmax(q$y_min - tree_dat$y_rel[i], 0, tree_dat$y_rel[i] - q$y_max)^2)
+    data.frame(quadrat_nearest = q$subplot_ID[which.min(d)], dist_m = min(d))
+  })
+  quad_near <- bind_rows(quad_near,
+    data.frame(quadrat_nearest = character(0), dist_m = numeric(0)))
+
+  stem_outside <- data.frame(
+    record_id = tree_dat$record_id[out_idx],
+    quadrat_nearest = quad_near$quadrat_nearest,
+    dist_m = round(quad_near$dist_m, 2)) %>%
+    mutate(
+      action = ifelse(dist_m <= param$outside_max_dist_m,
+        "assigned to nearest quadrat", "excluded"))
+
+  # Assign stems to nearest quadrat
+  assign_idx <- out_idx[stem_outside$action == "assigned to nearest quadrat"]
+  plot_divide$tree_data$subplot_ID[assign_idx] <- stem_outside$quadrat_nearest[
+    stem_outside$action == "assigned to nearest quadrat"]
+}
+
 # Create plot polygons 
 plot_poly <- plot_check$polygon %>% 
   rename(plot_id = plot_ID) %>% 
@@ -1326,7 +1411,7 @@ if (param$height_method == "regional") {
 stopifnot(all(!is.na(stem_fil$meanWD) & !is.na(stem_fil$sdWD)))
 
 # Equivalent diameter of multi-stemmed trees
-stem_fil <- left_join(stem_fil, treeEquiv(stem_fil, stem_fil$record_id),
+stem_fil <- left_join(stem_fil, treeEquiv(stem_fil, tree_include),
   by = "record_id")
 
 # Stems of a tree share the quadrat of the tree. Stems without coordinates in
@@ -1371,7 +1456,17 @@ tree_split <- split(tree, list(tree$plot_id, tree$mc_chunk), drop = TRUE)
 Then we run the Monte-Carlo error propagation on each group of trees, and
 share the simulated AGB of each tree among its stems:
 
+If repeat diameter measurements of some stems are available, a
+site-specific model of diameter measurement error can be estimated with
+`BIOMASS::fitDiamError()` and used instead of the model of Chave et al.
+(2004). The automated workflow does this if `diam_error` is `"field"`, see
+`08_agb_mc.R`. The example data have no repeat measurements, so we use the
+value of `diam_error` directly.
+
 ```{r}
+# Diameter measurement error, see `diam_error` in param.yaml
+diam_error <- if (identical(param$diam_error, "none")) NULL else param$diam_error
+
 # Run AGB Monte Carlo error propagation on each chunk
 tree_simu_list <- lapply(seq_along(tree_split), function(i) {
   x <- tree_split[[i]]
@@ -1391,7 +1486,7 @@ tree_simu_list <- lapply(seq_along(tree_split), function(i) {
     errH = NULL,
     HDmodel = if (param$height_method == "field") height_mod else NULL,
     coord = if (param$height_method == "regional") as.matrix(x[, c("X", "Y")]) else NULL,
-    Dpropag = "chave2004",
+    Dpropag = diam_error,
     n = nsim,
     Carbon = FALSE,
     Dlim = NULL)
@@ -1441,6 +1536,10 @@ quad_area <- quad_pt_clean %>%
 # Trees where no stems have coordinates
 unmapped <- !stem_fil$tree_mapped
 
+# Stems below the minimum diameter threshold of the plot are used to estimate
+# AGB, but are not included in AGB density
+in_agbd <- stem_fil$record_id %in% record_agbd
+
 # Aggregate simulations to quadrats, separately for each plot
 plot_vec <- intersect(unique(quad_pt_clean$plot_ID), unique(stem_fil$plot_id))
 
@@ -1448,7 +1547,7 @@ quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
   quads <- quad_area[quad_area$plot_ID == x, ]
 
   # Stems with coordinates
-  sel <- stem_fil$plot_id == x & !unmapped
+  sel <- stem_fil$plot_id == x & !unmapped & in_agbd
   if (any(sel)) {
     subplots <- list(
       sub_corner_coord = quad_pt_clean[quad_pt_clean$plot_ID == x, ],
@@ -1474,8 +1573,9 @@ quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
 
   # Trees where no stems have coordinates, assigned to a random quadrat in
   # each simulation
-  sel_un <- stem_fil$plot_id == x & unmapped
-  if (any(sel_un)) {
+  # If `unmapped_method` is "exclude", they are not included in AGB density
+  sel_un <- stem_fil$plot_id == x & unmapped & in_agbd
+  if (param$unmapped_method == "random" && any(sel_un)) {
     agb_un <- agb_simu[sel_un, , drop = FALSE]
     # Stems of the same tree are assigned to the same quadrat
     tree_un <- stem_fil$tree_key[sel_un]
@@ -1572,7 +1672,9 @@ stem_summ <- L0$stem %>%
   left_join(., stem_agb_mc, by = "record_id") %>%
   left_join(., st_drop_geometry(stem_pt), by = "record_id") %>%
   mutate(
-    in_quadrat_calc = ifelse(record_id %in% record_fil, TRUE, FALSE)) %>%
+    # Used to estimate AGB, and AGB density
+    in_agb_calc = record_id %in% record_fil,
+    in_quadrat_calc = record_id %in% record_agbd) %>%
   st_as_sf(., coords = c("x_utm", "y_utm"), crs = st_crs(stem_pt),
     na.fail = FALSE, remove = FALSE)
 ```

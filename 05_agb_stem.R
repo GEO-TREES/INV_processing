@@ -46,19 +46,19 @@ if (any(tree$n_taxa > 1)) {
 }
 
 # Estimate tree-level AGB
-# computeAGB() returns a list with one element per allometry
+# computeAGB() returns a vector of tree AGB in Mg
 if (param$height_method == "regional") {
   tree <- left_join(tree, plot_cent, by = "plot_id")
   stopifnot(all(!is.na(tree$X)))
   tree$agb_Mg <- computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
-    coord = as.matrix(tree[, c("X", "Y")]))[[1]]
+    coord = as.matrix(tree[, c("X", "Y")]))
 } else if (param$height_method == "field") {
   tree$agb_Mg <- computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
-    H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H)[[1]]
+    H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H)
 }
 
 # Share tree AGB among stems

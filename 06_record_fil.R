@@ -4,14 +4,17 @@
 
 # Select stems used to estimate AGB, see `recordFilter()` in ./func.R.
 # Stems without coordinates are kept, and are assigned to quadrats at random
-# during AGB error propagation in ./08_agb_mc.R
-record_fil <- recordFilter(stem, plot)
+# during AGB error propagation in ./08_agb_mc.R. If `missing_diam_method` is
+# "impute", stems without a diameter are kept, and their diameters are 
+# imputed during AGB error propagation
+record_fil <- recordFilter(stem, plot, 
+  missing_diam = param$missing_diam_method == "impute")
 
 # Select stems used to estimate AGB density, and to form multi-stemmed trees,
 # see `agbdFilter()` in ./func.R. Stems below the minimum diameter threshold,
 # the larger of `agbd_diam_min_cm` and the threshold of the plot, are
 # excluded. Stems broken above the POM are excluded if `include_broken` is
-# false
+# false. Stems without a diameter are assumed to be above the threshold
 record_agbd <- agbdFilter(stem, plot, record_fil,
   diam_min_cm = param$agbd_diam_min_cm,
   include_broken = param$include_broken)
@@ -28,6 +31,8 @@ diam_min <- pmax(plot$meas_diam_min_cm[match(stem$plot_id, plot$plot_id)],
 record_status <- stem %>%
   mutate(
     status = case_when(
+      as.character(record_id) %in% record_agbd & is.na(diam_cm) ~ 
+        "included in AGB density, diameter imputed",
       as.character(record_id) %in% record_agbd ~ "included in AGB density",
       is.na(code) | code == "" ~ "excluded: no code",
       grepl("M", code) ~ "excluded: missing",
@@ -36,21 +41,23 @@ record_status <- stem %>%
       grepl("T", code) ~ "excluded: broken below POM",
       is.na(diam_cm) ~ "excluded: no diameter",
       !as.character(record_id) %in% record_fil ~ "excluded: repeat measurement of stem",
-      !is.na(diam_min) & diam_cm < diam_min ~ "AGB only: below diameter threshold",
+      !is.na(diam_min) & !is.na(diam_cm) & diam_cm < diam_min ~ 
+        "AGB only: below diameter threshold",
       grepl("B", code) & !param$include_broken ~ "AGB only: broken above POM",
       TRUE ~ "AGB only: other")) %>%
   count(status, name = "n_record") %>%
   mutate(pct_record = round(100 * n_record / sum(n_record), 1)) %>%
-  arrange(desc(status == "included in AGB density"), desc(n_record))
+  arrange(desc(grepl("^included", status)), desc(n_record))
 msgTable(record_status, paste0("Stem records used to estimate AGB (",
   length(record_fil), ") and AGB density (", length(record_agbd), "), of ",
   nrow(stem), " records. \"AGB only\" stems have AGB estimates, but are not ",
   "included in AGB density:"))
 write.csv(record_status, file.path(outdir, "record_status.csv"), row.names = FALSE)
 
-# Figure of the diameter of stems used to estimate AGB density, all plots
+# Figure of the diameter of stems used to estimate AGB density, all plots.
+# Stems without a diameter are not shown
 diam_hist_cm <- 5
-p_diam <- ggplot(filter(stem, as.character(record_id) %in% record_agbd), 
+p_diam <- ggplot(filter(stem, as.character(record_id) %in% record_agbd, !is.na(diam_cm)), 
   aes(x = diam_cm)) +
   geom_histogram(binwidth = diam_hist_cm, boundary = min(diam_min, na.rm = TRUE),
     fill = fig_pal$series[1], colour = fig_pal$surface, linewidth = 0.2) +

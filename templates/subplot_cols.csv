@@ -1,0 +1,8 @@
+column_name,class,description,units,min_val,max_val,derived
+site_id,character,GEO-TREES site name.,NA,,,
+plot_id,character,"Plot name, unique within the site.",NA,,,
+subplot_id,character,"Field subplot ID, matching `subplot_id` in the stem table. Unique within the plot.",NA,,,
+x_rel_min_m,numeric,"Minimum X coordinate of the subplot, in the same relative coordinate system as `x_rel_m` in the stem table.",m,,,
+x_rel_max_m,numeric,"Maximum X coordinate of the subplot, in the same relative coordinate system as `x_rel_m` in the stem table.",m,,,
+y_rel_min_m,numeric,"Minimum Y coordinate of the subplot, in the same relative coordinate system as `y_rel_m` in the stem table.",m,,,
+y_rel_max_m,numeric,"Maximum Y coordinate of the subplot, in the same relative coordinate system as `y_rel_m` in the stem table.",m,,,

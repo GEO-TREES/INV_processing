@@ -70,9 +70,12 @@ param_name_vec <- c(
 # `quad_origin` is the alignment of the quadrat grid in each plot, see
 # ./07_quad.R: "centre" (default), "corner", or an offset [x, y] in metres
 # from the origin corner of each plot
+# `missing_diam_method` is how live stems without a diameter measurement are
+# treated, see ./08_agb_mc.R: "impute" (default) or "exclude"
 param_optional_vec <- c(
   "als_date",
-  "quad_origin"
+  "quad_origin",
+  "missing_diam_method"
 )
 
 # Define RO-Crate parameter names, `author_orcid` is optional
@@ -162,6 +165,13 @@ if (length(param$diam_error) != 1 ||
 if (is.null(param$quad_origin)) {
   param$quad_origin <- "centre"
 }
+if (is.null(param$missing_diam_method)) {
+  param$missing_diam_method <- "impute"
+}
+if (!identical(param$missing_diam_method, "impute") && 
+  !identical(param$missing_diam_method, "exclude")) {
+  stop("`missing_diam_method` must be one of: impute, exclude")
+}
 if (!(identical(param$quad_origin, "centre") || identical(param$quad_origin, "corner") ||
   (is.numeric(param$quad_origin) && length(param$quad_origin) == 2 && 
     all(param$quad_origin >= 0)))) {
@@ -203,6 +213,9 @@ taxon_col_class <- setNames(taxon_cols$class, taxon_cols$column_name)
 
 stem_dup_cols <- read.csv("./templates/stem_dup_cols.csv")
 stem_dup_col_class <- setNames(stem_dup_cols$class, stem_dup_cols$column_name)
+
+subplot_cols <- read.csv("./templates/subplot_cols.csv")
+subplot_col_class <- setNames(subplot_cols$class, subplot_cols$column_name)
 
 # Define output directories
 out_dir_vec <- c(
@@ -386,6 +399,7 @@ dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), colClasses = stem_col_class)
 plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"), colClasses = pt_col_class)
 record_agbd <- readLines(file.path(param$out_dir, software_version_sanit, "06_record_fil", "record_agbd.txt"))
+subplot <- readOpt(file.path(param$out_dir, software_version_sanit, "01_fmt", "subplot.csv"), colClasses = subplot_col_class)
 runFn("./07_quad.R")
 
 # Run AGB Monte-Carlo error propagation
@@ -412,6 +426,9 @@ if (identical(param$diam_error, "field")) {
   }
   stem_dup <- read.csv(stem_dup_file, colClasses = stem_dup_col_class)
 }
+plot <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot.csv"), colClasses = plot_col_class)
+plot_pt <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot_pt.csv"), colClasses = pt_col_class)
+subplot <- readOpt(file.path(param$out_dir, software_version_sanit, "01_fmt", "subplot.csv"), colClasses = subplot_col_class)
 runFn("./08_agb_mc.R")
 
 # Create master stem summary object
@@ -470,6 +487,7 @@ diam_error_fit <- readOpt(file.path(ver_dir, "08_agb_mc", "diam_error.csv"))
 diam_dup <- readOpt(file.path(report_dir, "diam_dup.csv"))
 stem_outside <- readOpt(file.path(report_dir, "stem_outside.csv"), colClasses = c(plot_id = "character"))
 tree_unmapped <- readOpt(file.path(report_dir, "tree_unmapped.csv"), colClasses = c(plot_id = "character"))
+subplot_check <- readOpt(file.path(ver_dir, "07_quad", "subplot_check.csv"), colClasses = c(plot_id = "character", subplot_id = "character"))
 height <- readOpt(file.path(ver_dir, "01_fmt", "height.csv"), colClasses = height_col_class)
 wd <- readOpt(file.path(ver_dir, "01_fmt", "wd.csv"), colClasses = wd_col_class)
 taxon <- readOpt(file.path(ver_dir, "01_fmt", "taxon.csv"), colClasses = taxon_col_class)

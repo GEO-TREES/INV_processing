@@ -77,7 +77,7 @@
       "RemoteRepo": "BIOMASS",
       "RemoteUsername": "umr-amap",
       "RemoteRef": "BIOMASS_for_GEOTREES",
-      "RemoteSha": "b36311a2c812095cb8418826cc66ef5a2b462016",
+      "RemoteSha": "7a24b040f6968ce07372686985d5920a022007e3",
       "NeedsCompilation": "no",
       "Author": "Dominique Lamonica [aut, cre], Maxime Réjou-Méchain [aut, dtc], Arthur Bailly [aut], Guillaume Cornu [aut] (ORCID: <https://orcid.org/0000-0002-7523-5176>), John Godlee [ctb], Fabian Fischer [ctb], Jerome Chave [ctb], Arthur Pere [aut], Ariane Tanguy [aut], Camille Piponiot [aut], Bruno Hérault [aut], Philippe Verley [ctb], Ted Feldpausch [dtc]",
       "Maintainer": "Dominique Lamonica <dominique.lamonica@ird.fr>"

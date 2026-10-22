@@ -122,7 +122,8 @@ msgTable(height_summ, paste0("Predicted stem height (", param$height_method,
 # density, see `agbdFilter()` in ./func.R. Measured heights are from the
 # height table, or from the stem table if there is no height table. 
 # Predicted heights are drawn on top of measured heights
-record_agbd <- agbdFilter(stem, plot, recordFilter(stem, plot),
+record_agbd <- agbdFilter(stem, plot, 
+  recordFilter(stem, plot, missing_diam = param$missing_diam_method == "impute"),
   diam_min_cm = param$agbd_diam_min_cm,
   include_broken = param$include_broken)
 height_pred_fig <- filter(height_check, as.character(record_id) %in% record_agbd)

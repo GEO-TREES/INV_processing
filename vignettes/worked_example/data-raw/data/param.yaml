@@ -7,6 +7,7 @@ s3_dir: GEO-TREES_INV/dat/sites/Site1/INV/2024/L0
 quad_dim:
 - 50
 - 50
+quad_origin: centre
 opt_s3: no
 product_version: v1
 height_method: regional
@@ -20,6 +21,7 @@ agbd_diam_min_cm: 0
 include_broken: yes
 multi_stem_method: equivalent
 unmapped_method: random
+missing_diam_method: impute
 diam_error: chave2004
 rocrate:
   author_name: John L. Godlee

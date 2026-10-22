@@ -77,7 +77,7 @@ param_fil[["quad_dim"]] <- NULL
 if (param_fil$opt_s3) { 
   param_fil[["raw_dir"]] <- param_fil$s3_dir
 } 
-param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate", "als_date", "quad_origin")] <- NULL
+param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate", "als_date", "quad_origin", "missing_diam_method")] <- NULL
 
 L3_quad <- quad_summ %>% 
   dplyr::select(

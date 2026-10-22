@@ -1,6 +1,6 @@
 # Prepare example data for GEO-TREES Tree Inventory workflow example
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-22
 
 # Run from ./vignettes/worked_example/data-raw/ 
 # Optionally provide the directory of processed Amacayacu data as an argument
@@ -28,6 +28,7 @@ pt_cols <- read.csv("../../../templates/pt_cols.csv")
 taxon_cols <- read.csv("../../../templates/taxon_cols.csv")
 height_cols <- read.csv("../../../templates/height_cols.csv")
 wd_cols <- read.csv("../../../templates/wd_cols.csv")
+subplot_cols <- read.csv("../../../templates/subplot_cols.csv")
 
 stem_col_class <- setNames(stem_cols$class, stem_cols$column_name)
 plot_col_class <- setNames(plot_cols$class, plot_cols$column_name)
@@ -150,6 +151,23 @@ wd_syn <- wd %>%
     wood_density_sd_gcm3,
     wood_density_n)
 
+# Create field subplot bounds table
+# Field subplots are 20x20 m cells, with IDs of a letter for the column along
+# the X axis, from "A", and a number for the row along the Y axis, from 1
+sub_id <- unique(stem_fil$subplot_id[!is.na(stem_fil$subplot_id) & 
+  stem_fil$subplot_id != ""])
+subplot_anon <- data.frame(
+  site_id = "Site1",
+  plot_id = "Plot1",
+  subplot_id = sub_id,
+  x_rel_min_m = (match(sub("[0-9]+$", "", sub_id), LETTERS) - 1) * 20,
+  y_rel_min_m = (as.integer(sub("^[A-Z]+", "", sub_id)) - 1) * 20) %>%
+  mutate(
+    x_rel_max_m = x_rel_min_m + 20,
+    y_rel_max_m = y_rel_min_m + 20) %>%
+  arrange(x_rel_min_m, y_rel_min_m) %>%
+  dplyr::select(all_of(subplot_cols$column_name))
+
 # Check output dataframes
 colCheck(stem_fil, stem_cols)
 colCheck(plot_anon, plot_cols)
@@ -157,6 +175,7 @@ colCheck(pt_anon, pt_cols)
 colCheck(taxa_clean, taxon_cols)
 colCheck(wd_syn, wd_cols)
 colCheck(hd_syn, height_cols)
+colCheck(subplot_anon, subplot_cols)
     
 valCheck(
   plot = plot_anon,
@@ -164,7 +183,8 @@ valCheck(
   pt = pt_anon,
   taxon = taxa_clean,
   height = hd_syn,
-  wd = wd_syn)
+  wd = wd_syn,
+  subplot = subplot_anon)
 
 # Write files
 write.csv(stem_fil, "./data/stem.csv", row.names = FALSE)
@@ -173,6 +193,7 @@ write.csv(pt_anon, "./data/pt.csv", row.names = FALSE)
 write.csv(taxa_clean, "./data/taxa.csv", row.names = FALSE)
 write.csv(wd_syn, "./data/wd.csv", row.names = FALSE)
 write.csv(hd_syn, "./data/hd.csv", row.names = FALSE)
+write.csv(subplot_anon, "./data/subplot.csv", row.names = FALSE)
 write_yaml(param_anon, "./data/param.yaml")
 
 # Copy WFO cache

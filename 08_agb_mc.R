@@ -1,6 +1,6 @@
 # Estimate AGB and its uncertainty in quadrats
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-21
+# Last updated: 2026-10-22
 
 # Errors in diameter, wood density, height and the allometric model are
 # propagated to each stem with BIOMASS::AGBmonteCarlo(), then simulations are
@@ -19,11 +19,18 @@
 # Stems below the minimum diameter threshold of the plot are included in
 # error propagation, but not in quadrat AGB density.
 #
-# Trees where no stems have coordinates are assigned to a random quadrat in
-# their plot in each simulation, with probability proportional to quadrat
-# area. This adds
-# the uncertainty in their location to the quadrat AGBD estimates, while
-# keeping their AGB in the plot.
+# Trees where no stems have coordinates are placed at a random location in
+# each simulation, within their field subplot if its position is known, 
+# otherwise within their plot, with BIOMASS::subplot_summary(tree_bounds = ).
+# This adds the uncertainty in their location to the quadrat AGBD estimates.
+# See `unmapped_method` in param.yaml.
+#
+# Stems without a diameter measurement have their diameter imputed in each
+# simulation by BIOMASS::AGBmonteCarlo(), from the simulated diameters of the
+# other trees in the same Monte Carlo chunk, i.e. the same plot, or the same
+# group of quadrats for very large plots. This adds the uncertainty in their
+# size to the quadrat AGBD estimates. See `missing_diam_method` in 
+# param.yaml.
 #
 # Diameter measurement error is set by `diam_error` in param.yaml. With
 # "field", a diameter measurement error model is estimated from repeat
@@ -77,7 +84,9 @@ stem_fil <- left_join(stem_fil, treeEquiv(stem_fil, tree_include),
 stem_fil <- stem_fil %>%
   group_by(tree_key) %>%
   mutate(
-    tree_mapped = any(!is.na(x_rel_m) & !is.na(y_rel_m)),
+    # Stems with coordinates, including stems given the mean coordinates of
+    # the other stems of their tree in ./07_quad.R
+    tree_mapped = any(record_id %in% stem_pt$record_id),
     quadrat_id = first(na.omit(quadrat_id)),
     # In a strip of the plot left out of the quadrat grid, see ./07_quad.R
     grid_excl = any(grid_excl %in% TRUE)) %>%
@@ -272,19 +281,32 @@ tree <- left_join(tree, quad_chunk, by = c("plot_id", "quadrat_id"))
 tree_split <- split(tree, list(tree$plot_id, tree$mc_chunk), drop = TRUE)
 
 # Run AGB Monte Carlo error propagation on each chunk
+# Missing diameters are imputed from the other trees in the same chunk, i.e.
+# the same plot, or the same group of quadrats for very large plots
 tree_simu_list <- lapply(seq_along(tree_split), function(i) {
   x <- tree_split[[i]]
   message(i, " / ", length(tree_split), " - ", x$plot_id[1],
     " (", nrow(x), " trees)")
 
+  # Trees without a diameter can't be imputed if no trees in the chunk have a
+  # diameter, so they are not included in AGB density
+  n_tree <- nrow(x)
+  if (all(is.na(x$diam_eq_cm))) {
+    warning(n_tree, " trees without a diameter in plot ", x$plot_id[1], 
+      " could not be imputed, as no trees in the plot have a diameter. They ",
+      "are not included in AGB density", call. = FALSE)
+    return(matrix(NA_real_, nrow = n_tree, ncol = nsim))
+  }
+
   # AGBmonteCarlo() fails with a single tree, so duplicate the row and keep
   # the first. Each row of `AGB_simu` is simulated independently
-  n_tree <- nrow(x)
   if (n_tree == 1) {
     x <- x[c(1, 1), ]
   }
 
-  out <- AGBmonteCarlo(
+  # AGBmonteCarlo() warns where missing diameters are imputed. Stems with 
+  # imputed diameters are summarised below
+  out <- withCallingHandlers(AGBmonteCarlo(
     D = x$diam_eq_cm,
     WD = x$meanWD,
     errWD = x$sdWD,
@@ -295,8 +317,12 @@ tree_simu_list <- lapply(seq_along(tree_split), function(i) {
     Dpropag = diam_error,
     n = nsim,
     Carbon = FALSE,
-    Dlim = NULL)
-
+    Dlim = NULL),
+    warning = function(w) {
+      if (grepl("NA values in D", conditionMessage(w))) {
+        invokeRestart("muffleWarning")
+      }
+    })
   out$AGB_simu[seq_len(n_tree), , drop = FALSE]
 })
 
@@ -316,19 +342,39 @@ in_agbd <- stem_fil$record_id %in% record_agbd
 
 # Calculate mean and standard deviation of stem AGB
 # Stems used to estimate quadrat AGB density are those in a quadrat, and
-# stems of trees without coordinates if they are assigned to random quadrats
+# stems of trees without coordinates if they are placed at random. Stems
+# without a diameter which could not be imputed are not included
 agb_Mg_mean <- rowMeans(agb_simu, na.rm = TRUE)
+# Trees without a diameter
+tree_imp <- tree$tree_key[is.na(tree$diam_eq_cm)]
 stem_agb_mc <- data.frame(
   record_id = stem_fil$record_id,
   agb_Mg_mean = agb_Mg_mean,
   agb_Mg_sd = sqrt(rowSums((agb_simu - agb_Mg_mean)^2, na.rm = TRUE) /
     (rowSums(!is.na(agb_simu)) - 1)),
   quadrat_id_tree = stem_fil$quadrat_id,
-  in_quadrat_calc = in_agbd & ((!unmapped & !is.na(stem_fil$quadrat_id)) |
+  diam_imputed = stem_fil$tree_key %in% tree_imp & is.finite(agb_Mg_mean),
+  in_quadrat_calc = in_agbd & is.finite(agb_Mg_mean) & 
+    ((!unmapped & !is.na(stem_fil$quadrat_id)) |
     (unmapped & param$unmapped_method == "random")))
 
 # Write stem-level data to file
 write.csv(stem_agb_mc, file.path(outdir, "stem_agb_mc.csv"), row.names = FALSE)
+
+# Write stems with imputed diameters to file, to check raw data
+unlink(file.path(report_dir, "diam_imputed.csv"))
+if (any(stem_agb_mc$diam_imputed)) {
+  diam_imputed <- stem_fil %>%
+    filter(record_id %in% stem_agb_mc$record_id[stem_agb_mc$diam_imputed]) %>%
+    mutate(agb_Mg_mean = agb_Mg_mean[match(record_id, stem_agb_mc$record_id)]) %>%
+    dplyr::select(record_id, plot_id, tree_id, stem_id, taxon_name, code, 
+      agb_Mg_mean) %>%
+    arrange(plot_id, tree_id, stem_id)
+  msgTable(count(diam_imputed, plot_id, name = "n_stem"), paste0(
+    nrow(diam_imputed), " stems without a diameter, imputed from the other ",
+    "trees in the same plot:"))
+  write.csv(diam_imputed, file.path(report_dir, "diam_imputed.csv"), row.names = FALSE)
+}
 
 # Format quadrat corner points
 quad_pt_clean <- quad_pt %>%
@@ -350,18 +396,154 @@ quad_area <- quad_pt_clean %>%
       rbind(cbind(x_proj, y_proj), cbind(x_proj, y_proj)[1, ]))))) / 10000,
     .groups = "drop")
 
-# Write trees without coordinates to file, to check raw data
-tree_unmapped <- stem_fil[unmapped, ] %>%
-  mutate(agb_Mg_mean = agb_Mg_mean[unmapped]) %>%
+# Location of trees where no stems have coordinates, as bounds in the 
+# relative coordinate system of the plot, from, in order of preference:
+#   1. the bounds of the field subplot of the tree, in `subplot.csv`
+#   2. the extent of the stems with coordinates in the same field subplot, if
+#        there are at least `subplot_min_stem` of them, within the plot
+#   3. the extent of the plot corners
+subplot_min_stem <- 10
+plot_ext <- plot_pt %>%
+  filter(corner %in% TRUE, !is.na(x_rel_m), !is.na(y_rel_m)) %>%
+  group_by(plot_id) %>%
+  summarise(
+    px_min = min(x_rel_m), px_max = max(x_rel_m),
+    py_min = min(y_rel_m), py_max = max(y_rel_m),
+    .groups = "drop")
+sub_ext <- stem %>%
+  filter(!is.na(subplot_id), subplot_id != "", !is.na(x_rel_m), !is.na(y_rel_m)) %>%
+  group_by(plot_id, subplot_id) %>%
+  summarise(
+    n_stem_mapped = n(),
+    sx_min = min(x_rel_m), sx_max = max(x_rel_m),
+    sy_min = min(y_rel_m), sy_max = max(y_rel_m),
+    .groups = "drop") %>%
+  filter(n_stem_mapped >= subplot_min_stem)
+if (!is.null(subplot)) {
+  sub_tab <- dplyr::select(subplot, plot_id, subplot_id,
+    tx_min = x_rel_min_m, tx_max = x_rel_max_m, 
+    ty_min = y_rel_min_m, ty_max = y_rel_max_m)
+} else {
+  sub_tab <- data.frame(plot_id = character(0), subplot_id = character(0),
+    tx_min = numeric(0), tx_max = numeric(0), 
+    ty_min = numeric(0), ty_max = numeric(0))
+}
+
+# One row per tree where no stems have coordinates, with the field subplot
+# of its first stem with a subplot, and the sum of the simulated AGB of its 
+# stems
+tree_un <- stem_fil %>%
+  mutate(row = row_number()) %>%
+  filter(unmapped, in_agbd) %>%
   group_by(plot_id, tree_id, tree_key) %>%
   summarise(
     stem_id = paste(stem_id, collapse = ", "),
     n_stem = n(),
+    subplot_id = first(na.omit(ifelse(subplot_id == "", NA, subplot_id))),
     diam_eq_cm = first(diam_eq_cm),
-    agb_Mg_mean = sum(agb_Mg_mean),
+    rows = list(row),
     .groups = "drop") %>%
-  dplyr::select(-tree_key)
+  left_join(., sub_tab, by = c("plot_id", "subplot_id")) %>%
+  left_join(., sub_ext, by = c("plot_id", "subplot_id")) %>%
+  left_join(., plot_ext, by = "plot_id") %>%
+  mutate(
+    location = case_when(
+      !is.na(tx_min) ~ "field subplot, from subplot table",
+      !is.na(sx_min) ~ "field subplot, from stems with coordinates",
+      TRUE ~ "plot"),
+    x_min = case_when(!is.na(tx_min) ~ tx_min, !is.na(sx_min) ~ pmax(sx_min, px_min), TRUE ~ px_min),
+    x_max = case_when(!is.na(tx_max) ~ tx_max, !is.na(sx_max) ~ pmin(sx_max, px_max), TRUE ~ px_max),
+    y_min = case_when(!is.na(ty_min) ~ ty_min, !is.na(sy_min) ~ pmax(sy_min, py_min), TRUE ~ py_min),
+    y_max = case_when(!is.na(ty_max) ~ ty_max, !is.na(sy_max) ~ pmin(sy_max, py_max), TRUE ~ py_max))
+tree_un_simu <- do.call(rbind, lapply(tree_un$rows, function(r) {
+  colSums(agb_simu[r, , drop = FALSE])
+}))
+if (is.null(tree_un_simu)) {
+  tree_un_simu <- matrix(numeric(0), nrow = 0, ncol = nsim)
+}
+tree_un$agb_Mg_mean <- rowMeans(tree_un_simu, na.rm = TRUE)
+
+# Write trees without coordinates to file, to check raw data
+tree_unmapped <- tree_un %>%
+  dplyr::select(plot_id, tree_id, stem_id, n_stem, diam_eq_cm, agb_Mg_mean,
+    subplot_id, location, x_min, x_max, y_min, y_max)
 write.csv(tree_unmapped, file.path(report_dir, "tree_unmapped.csv"), row.names = FALSE)
+if (nrow(tree_un) > 0) {
+  msgTable(tree_un %>% 
+    group_by(location) %>%
+    summarise(n_tree = n(), agb_Mg = sum(agb_Mg_mean, na.rm = TRUE), .groups = "drop") %>%
+    # Percentage of the AGB of all stems used to estimate AGB
+    mutate(pct_agb = round(100 * agb_Mg / sum(stem_agb_mc$agb_Mg_mean, na.rm = TRUE), 2)),
+    paste0(nrow(tree_un), " trees without coordinates, ", 
+      if (param$unmapped_method == "random") "placed at random within:" else 
+        "not included in AGB density (`unmapped_method` is \"exclude\"):"))
+}
+
+# Summarise trees without coordinates in each field subplot from the subplot
+# table, as AGB per hectare of the subplot, to compare with quadrat AGB
+# density
+unlink(file.path(report_dir, "08_subplot_unmapped_map.png"))
+tree_un_sub <- filter(tree_un, location == "field subplot, from subplot table")
+if (!is.null(subplot) && nrow(tree_un_sub) > 0) {
+  sub_un <- subplot %>%
+    mutate(plot_id = as.character(plot_id)) %>%
+    filter(plot_id %in% tree_un_sub$plot_id) %>%
+    left_join(., tree_un_sub %>%
+      group_by(plot_id, subplot_id) %>%
+      summarise(n_tree = n(), agb_Mg = sum(agb_Mg_mean, na.rm = TRUE),
+        .groups = "drop"),
+      by = c("plot_id", "subplot_id")) %>%
+    mutate(
+      n_tree = ifelse(is.na(n_tree), 0L, n_tree),
+      agb_Mg = ifelse(is.na(agb_Mg), 0, agb_Mg),
+      area_ha = (x_rel_max_m - x_rel_min_m) * (y_rel_max_m - y_rel_min_m) / 10000,
+      agbd_Mg_ha = agb_Mg / area_ha,
+      x_mid = (x_rel_min_m + x_rel_max_m) / 2,
+      y_mid = (y_rel_min_m + y_rel_max_m) / 2)
+  msgTable(sub_un %>%
+    filter(n_tree > 0) %>%
+    arrange(desc(agbd_Mg_ha)) %>%
+    transmute(plot_id, subplot_id, n_tree, agb_Mg, area_ha, agbd_Mg_ha),
+    paste0("Field subplots with the most AGB in trees without coordinates ",
+      "(Mg/ha of the subplot):"), max_rows = 10)
+
+  # Figure of the AGB of trees without coordinates in each field subplot.
+  # Labels are light on the darkest fills
+  n_plot_un <- length(unique(sub_un$plot_id))
+  un_lim <- c(0, max(c(sub_un$agbd_Mg_ha, 1e-6)))
+  sub_un$label_colour <- ifelse(sub_un$agbd_Mg_ha < 0.6 * un_lim[2],
+    fig_pal$ink, fig_pal$surface)
+  p_sub_un <- ggplot(sub_un) +
+    geom_blank(data = squareExtent(
+      data.frame(plot_id = rep(sub_un$plot_id, 2),
+        x = c(sub_un$x_rel_min_m, sub_un$x_rel_max_m),
+        y = c(sub_un$y_rel_min_m, sub_un$y_rel_max_m)), "x", "y", "plot_id"),
+      aes(x = x, y = y)) +
+    geom_rect(aes(xmin = x_rel_min_m, xmax = x_rel_max_m, ymin = y_rel_min_m,
+      ymax = y_rel_max_m, fill = agbd_Mg_ha),
+      colour = fig_pal$surface, linewidth = 0.3) +
+    scale_fill_gradientn("AGB of trees without coordinates (Mg/ha)",
+      colours = fig_pal$seq2, limits = un_lim, guide = colourBar()) +
+    geom_text(data = filter(sub_un, n_tree > 0),
+      aes(x = x_mid, y = y_mid, label = n_tree, colour = label_colour),
+      size = 3.2) +
+    scale_colour_identity() +
+    facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_un),
+      scales = "free") +
+    labs(
+      title = "Trees without coordinates in each field subplot",
+      subtitle = paste0("Field subplots from the subplot table, labelled with ",
+        "the number of trees without coordinates, which are placed at random ",
+        "within their subplot. Simulated mean AGB per hectare of the subplot. ",
+        "Subplots without labels have no trees without coordinates. ",
+        "Trees without a field subplot are not shown"),
+      x = "X (m)",
+      y = "Y (m)") +
+    themeMap() +
+    theme(aspect.ratio = 1)
+  saveFig(p_sub_un, file.path(report_dir, "08_subplot_unmapped_map.png"),
+    n_panel = n_plot_un)
+}
 
 # Aggregate simulations to quadrats
 # subplot_summary() is run separately for each plot, as it assigns the wrong
@@ -369,24 +551,34 @@ write.csv(tree_unmapped, file.path(report_dir, "tree_unmapped.csv"), row.names =
 # numbers of quadrats
 # Plots with no stems used to estimate AGB, e.g. plots with no trees above
 # the minimum diameter threshold, have quadrats with zero AGB density
+# Trees without coordinates are placed at random within their bounds in each
+# simulation, see `tree_bounds` in BIOMASS::subplot_summary(). Placements 
+# outside the quadrat grid are not included in that simulation
 plot_vec <- unique(quad_pt_clean$plot_ID)
+bound_cols <- c("x_min", "x_max", "y_min", "y_max")
 
 quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
   quads <- quad_area[quad_area$plot_ID == x, ]
 
-  # Stems with coordinates
+  # Stems with coordinates, and trees without coordinates
   sel <- stem_fil$plot_id == x & !unmapped & in_agbd
-  if (any(sel)) {
+  sel_un <- if (param$unmapped_method == "random") which(tree_un$plot_id == x) else integer(0)
+  if (any(sel) || length(sel_un) > 0) {
+    tree_data <- data.frame(
+      plot_ID = x,
+      subplot_ID = c(stem_fil$quadrat_id[sel], rep(NA_character_, length(sel_un))))
+    tree_data[bound_cols] <- rbind(
+      matrix(NA_real_, nrow = sum(sel), ncol = 4),
+      as.matrix(tree_un[sel_un, bound_cols]))
     subplots <- list(
       sub_corner_coord = quad_pt_clean[quad_pt_clean$plot_ID == x, ],
-      tree_data = data.frame(
-        plot_ID = x,
-        subplot_ID = stem_fil$quadrat_id[sel]))
+      tree_data = tree_data)
 
-    ss <- subplot_summary(
+    ss <- suppressMessages(subplot_summary(
       subplots = subplots,
-      AGB_simu = agb_simu[sel, , drop = FALSE],
-      draw_plot = FALSE)
+      AGB_simu = rbind(agb_simu[sel, , drop = FALSE], tree_un_simu[sel_un, , drop = FALSE]),
+      draw_plot = FALSE,
+      tree_bounds = if (length(sel_un) > 0) bound_cols else NULL))
 
     out <- as.data.frame(ss$long_AGB_simu) %>%
       dplyr::select(
@@ -397,34 +589,6 @@ quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
     out <- expand.grid(quadrat_id = quads$subplot_ID, sim = seq_len(nsim),
       stringsAsFactors = FALSE)
     out$agbd_Mg_ha <- 0
-  }
-
-  # Trees where no stems have coordinates, assigned to a random quadrat in
-  # each simulation
-  # If `unmapped_method` is "exclude", they are not included in AGB density
-  sel_un <- stem_fil$plot_id == x & unmapped & in_agbd
-  if (param$unmapped_method == "random" && any(sel_un)) {
-    agb_un <- agb_simu[sel_un, , drop = FALSE]
-    # Stems of the same tree are assigned to the same quadrat
-    tree_un <- stem_fil$tree_key[sel_un]
-    tree_un_id <- unique(tree_un)
-    quad_idx <- matrix(
-      sample(nrow(quads), length(tree_un_id) * ncol(agb_un), replace = TRUE,
-        prob = quads$area_ha),
-      nrow = length(tree_un_id))[match(tree_un, tree_un_id), , drop = FALSE]
-    # One row per quadrat, one column per simulation. matrix() keeps this
-    # shape for plots with a single quadrat, where vapply() returns a vector
-    agb_quad <- matrix(vapply(seq_len(ncol(agb_un)), function(j) {
-      tapply(agb_un[, j], factor(quad_idx[, j], levels = seq_len(nrow(quads))), sum, default = 0)
-    }, numeric(nrow(quads))), nrow = nrow(quads))
-    agbd_quad <- agb_quad / quads$area_ha
-
-    i <- cbind(match(out$quadrat_id, quads$subplot_ID), out$sim)
-    out$agbd_Mg_ha <- out$agbd_Mg_ha + agbd_quad[i]
-
-    message(x, ": ", length(tree_un_id), " trees without coordinates (",
-      round(100 * sum(rowMeans(agb_un)) / sum(rowMeans(agb_simu[stem_fil$plot_id == x, , drop = FALSE]))),
-      "% of AGB) assigned to quadrats at random")
   }
 
   out$plot_id <- x

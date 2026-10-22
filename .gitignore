@@ -14,6 +14,7 @@ drawio/*.png
 # Ignore cache files for vignettes
 vignettes/worked_example/worked_example_cache/
 vignettes/worked_example/worked_example_files/
+vignettes/worked_example/out
 
 # macOS system files
 .DS_Store

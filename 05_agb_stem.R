@@ -16,7 +16,8 @@
 
 # Stems which form multi-stemmed trees, as in ./06_record_fil.R. If
 # `multi_stem_method` is "stem", AGB is estimated for each stem separately
-record_agbd <- agbdFilter(stem, plot, recordFilter(stem, plot),
+record_agbd <- agbdFilter(stem, plot, 
+  recordFilter(stem, plot, missing_diam = param$missing_diam_method == "impute"),
   diam_min_cm = param$agbd_diam_min_cm,
   include_broken = param$include_broken)
 tree_include <- if (param$multi_stem_method == "equivalent") record_agbd else character(0)
@@ -46,19 +47,24 @@ if (any(tree$n_taxa > 1)) {
 }
 
 # Estimate tree-level AGB
-# computeAGB() returns a vector of tree AGB in Mg
+# computeAGB() returns a vector of tree AGB in Mg. Stems without a diameter,
+# see `missing_diam_method` in param.yaml, have no AGB estimate here. Their 
+# diameters are imputed in ./08_agb_mc.R
+muffleNA <- function(w) {
+  if (grepl("NA values in D", conditionMessage(w))) invokeRestart("muffleWarning")
+}
 if (param$height_method == "regional") {
   tree <- left_join(tree, plot_cent, by = "plot_id")
   stopifnot(all(!is.na(tree$X)))
-  tree$agb_Mg <- computeAGB(
+  tree$agb_Mg <- withCallingHandlers(computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
-    coord = as.matrix(tree[, c("X", "Y")]))
+    coord = as.matrix(tree[, c("X", "Y")])), warning = muffleNA)
 } else if (param$height_method == "field") {
-  tree$agb_Mg <- computeAGB(
+  tree$agb_Mg <- withCallingHandlers(computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
-    H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H)
+    H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H), warning = muffleNA)
 }
 
 # Share tree AGB among stems

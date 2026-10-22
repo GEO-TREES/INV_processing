@@ -18,7 +18,11 @@ stem_summ <- stem %>%
     # Used to estimate AGB, and AGB density. Stems outside the quadrat grid
     # are not used to estimate AGB density
     in_agb_calc = record_id %in% record_fil,
-    in_quadrat_calc = in_quadrat_calc %in% TRUE) %>%
+    in_quadrat_calc = in_quadrat_calc %in% TRUE,
+    # Diameter imputed in ./08_agb_mc.R, and coordinates from the mean of the 
+    # other stems of the tree in ./07_quad.R
+    diam_imputed = diam_imputed %in% TRUE,
+    xy_from_tree = xy_from_tree %in% TRUE) %>%
   dplyr::select(-quadrat_id_tree) %>%
   st_as_sf(., coords = c("x_utm", "y_utm"), crs = st_crs(stem_pt),
     na.fail = FALSE, remove = FALSE)

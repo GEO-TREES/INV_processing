@@ -107,8 +107,12 @@ n_sim <- length(unique(quad_agb_simu$sim))
 if (is.null(stem_outside)) {
   stem_outside <- data.frame(plot_id = character(0), action = character(0))
 }
+if (is.null(subplot_check)) {
+  subplot_check <- data.frame(plot_id = character(0), n_stem_outside = integer(0))
+}
 if (is.null(tree_unmapped)) {
-  tree_unmapped <- data.frame(plot_id = character(0), agb_Mg_mean = numeric(0))
+  tree_unmapped <- data.frame(plot_id = character(0), agb_Mg_mean = numeric(0),
+    location = character(0))
 }
 
 # Plot meta-data
@@ -145,10 +149,12 @@ stem_agbd <- stem_df %>%
 
 # Large stems, to report large stems measured above the default POM
 large_pom_cm <- min(large_diam_cm)
-large_pom <- stem_agbd$diam_cm >= large_pom_cm
+large_pom <- stem_agbd$diam_cm >= large_pom_cm & !is.na(stem_agbd$diam_cm)
 
 # Trees used to estimate AGB density. Multi-stemmed trees use their
-# equivalent diameter, as in ./05_agb_stem.R
+# equivalent diameter, as in ./05_agb_stem.R. Trees without a diameter, 
+# imputed in ./08_agb_mc.R, have no diameter or AGB here, so they are not 
+# counted in values which depend on tree size
 tree_include <- if (param$multi_stem_method == "equivalent") stem_agbd$record_id else character(0)
 tree_agbd <- stem_agbd %>%
   left_join(., treeEquiv(stem_agbd, tree_include)[, c("record_id", "tree_key", "diam_eq_cm")],
@@ -194,8 +200,8 @@ stem_plot <- stem_agbd %>%
     n_stem = n(),
     ba_m2 = sum(ba_m2, na.rm = TRUE),
     pct_stem_pom_raised = 100 * mean(pom_raised),
-    "pct_stem_ge{large_pom_cm}_pom_raised" := if (any(diam_cm >= large_pom_cm)) {
-      100 * mean(pom_raised[diam_cm >= large_pom_cm])
+    "pct_stem_ge{large_pom_cm}_pom_raised" := if (any(diam_cm >= large_pom_cm, na.rm = TRUE)) {
+      100 * mean(pom_raised[which(diam_cm >= large_pom_cm)])
     } else {
       NA_real_
     },
@@ -215,7 +221,7 @@ tree_plot <- tree_agbd %>%
       summarise(
         diam = d,
         n_tree_ge = sum(diam_eq_cm >= d, na.rm = TRUE),
-        pct_agb_ge = 100 * sum(agb_Mg[diam_eq_cm >= d]) / sum(agb_Mg),
+        pct_agb_ge = 100 * sum(agb_Mg[which(diam_eq_cm >= d)]) / sum(agb_Mg),
         .groups = "drop")
   })) %>%
     pivot_wider(names_from = diam, values_from = c(n_tree_ge, pct_agb_ge),
@@ -233,6 +239,13 @@ outside_plot <- stem_outside %>%
   summarise(
     n_stem_outside_assigned = sum(action != "excluded"),
     n_stem_outside_excluded = sum(action == "excluded"),
+    .groups = "drop")
+
+subplot_plot <- subplot_check %>%
+  group_by(plot_id) %>%
+  summarise(
+    n_subplot = n(),
+    n_stem_outside_subplot = sum(n_stem_outside),
     .groups = "drop")
 
 unmapped_plot <- tree_unmapped %>%
@@ -256,6 +269,7 @@ plot_summ <- plot_meta %>%
     agbd_Mg_ha_mc_ci2.5, agbd_Mg_ha_mc_ci97.5, agbd_cv_pct = cv_pct,
     agbd_diff_pct = diff_pct), by = "plot_id") %>%
   left_join(., outside_plot, by = "plot_id") %>%
+  left_join(., subplot_plot, by = "plot_id") %>%
   left_join(., unmapped_plot, by = "plot_id") %>%
   left_join(., agb_plot, by = "plot_id") %>%
   mutate(
@@ -542,13 +556,13 @@ site_summ <- bind_rows(
   bind_rows(lapply(large_diam_cm, function(d) {
     bind_rows(
       sRow("Large trees", paste0("Trees >= ", d, " cm diameter"),
-        round(sum(tree_agbd$diam_eq_cm >= d) / sum(plot_meta$area_ha_nominal), 2),
+        round(sum(tree_agbd$diam_eq_cm >= d, na.rm = TRUE) / sum(plot_meta$area_ha_nominal), 2),
         "trees/ha"),
       sRow("Large trees", paste0("AGB in trees >= ", d, " cm diameter"),
-        round(100 * sum(tree_agbd$agb_Mg[tree_agbd$diam_eq_cm >= d]) /
+        round(100 * sum(tree_agbd$agb_Mg[which(tree_agbd$diam_eq_cm >= d)]) /
           sum(tree_agbd$agb_Mg), 1), "% of AGB"))
   })),
-  sRow("Large trees", "Largest tree diameter", round(max(tree_agbd$diam_eq_cm), 1), "cm"),
+  sRow("Large trees", "Largest tree diameter", round(maxNA(tree_agbd$diam_eq_cm), 1), "cm"),
   sRow("Large trees", "Largest tree AGB", round(max(tree_agbd$agb_Mg), 1), "Mg"),
 
   # Data quality
@@ -574,7 +588,19 @@ site_summ <- bind_rows(
     sum(stem_outside$action != "excluded"), "stems"),
   sRow("Data quality", "Stems outside the quadrat grid, excluded",
     sum(stem_outside$action == "excluded"), "stems"),
+  sRow("Data quality", "Field subplots with bounds", 
+    if (nrow(subplot_check) > 0) nrow(subplot_check), "subplots"),
+  sRow("Data quality", "Stems outside the bounds of their field subplot",
+    if (nrow(subplot_check) > 0) sum(subplot_check$n_stem_outside), "stems"),
+  sRow("Data quality", "Stems without a diameter, imputed", 
+    sum(stem_agbd$diam_imputed %in% TRUE), "stems"),
+  sRow("Data quality", "Stems without coordinates, given the mean coordinates of their tree",
+    sum(stem_agbd$xy_from_tree %in% TRUE), "stems"),
   sRow("Data quality", "Trees without coordinates", nrow(tree_unmapped), "trees"),
+  bind_rows(lapply(sort(unique(tree_unmapped$location)), function(l) {
+    sRow("Data quality", paste0("Trees without coordinates, located within ", l),
+      sum(tree_unmapped$location == l), "trees")
+  })),
   sRow("Data quality", "AGB in trees without coordinates",
     round(100 * sum(tree_unmapped$agb_Mg_mean, na.rm = TRUE) /
       sum(stem_df$agb_Mg[stem_df$in_agb_calc %in% TRUE], na.rm = TRUE), 1), "% of AGB"),
@@ -597,10 +623,24 @@ site_summ <- bind_rows(
 # Processing choices
 choice <- bind_rows(
   cRow("Stem selection", "Stems used to estimate AGB", NA, NA,
-    paste0("Stems which are alive, standing, have a diameter measurement, and ",
-      "are not broken below the POM or missing. Where a stem was measured more ",
-      "than once, the measurement at the highest POM, then the latest date, ",
-      "then the largest diameter, is used")),
+    paste0("Stems which are alive, standing, ", 
+      if (param$missing_diam_method == "exclude") "have a diameter measurement, ",
+      "and are not broken below the POM or missing. Where a stem was measured ",
+      "more than once, the measurement with a diameter, at the highest POM, ",
+      "then the latest date, then the largest diameter, is used")),
+  cRow("Stem selection", "Stems without a diameter", "missing_diam_method", 
+    param$missing_diam_method,
+    if (param$missing_diam_method == "impute") {
+      paste0("Stems without a diameter measurement are assumed to be at or ",
+        "above the minimum diameter. Their diameter is imputed in each ",
+        "simulation with BIOMASS::AGBmonteCarlo(), from the simulated ",
+        "diameters of the other trees in the same plot used to estimate AGB, ",
+        "which can include trees below the minimum diameter for AGBD. Their ",
+        "size adds to the quadrat AGBD uncertainty. ",
+        sum(stem_agbd$diam_imputed %in% TRUE), " stems were imputed")
+    } else {
+      "Stems without a diameter measurement are excluded"
+    }),
   cRow("Stem selection", "Minimum diameter", "agbd_diam_min_cm", param$agbd_diam_min_cm,
     paste0("Stems below the larger of this and the measurement threshold of ",
       "the plot (", paste(sort(unique(plot_meta$diam_min_agbd_cm)), collapse = ", "),
@@ -668,14 +708,21 @@ choice <- bind_rows(
       paste0("Trees whose stem centroid is outside the quadrat grid are ",
         "excluded from AGB density")
     }),
+  cRow("Plot geometry", "Stems without coordinates", NA, NA,
+    paste0("Stems without coordinates in trees where other stems have ",
+      "coordinates are given the mean coordinates of the other stems of ",
+      "the tree")),
   cRow("Plot geometry", "Trees without coordinates", "unmapped_method", param$unmapped_method,
     if (param$unmapped_method == "random") {
-      paste0("Trees without coordinates are assigned to a random quadrat of ",
-        "their plot in each simulation, with probability proportional to ",
-        "quadrat area, so their AGB is kept in the plot and their location ",
-        "adds to the quadrat AGBD uncertainty")
+      paste0("Trees where no stems have coordinates are placed at a random ",
+        "location in each simulation with BIOMASS::subplot_summary(), within ",
+        "their field subplot where its position is known, from the subplot ",
+        "table supplied by the site or from the extent of the stems with ",
+        "coordinates in the same subplot, otherwise within their plot. ",
+        "Placements outside the quadrat grid are not included in that ",
+        "simulation. Their location adds to the quadrat AGBD uncertainty")
     } else {
-      "Trees without coordinates are excluded from AGB density"
+      "Trees where no stems have coordinates are excluded from AGB density"
     }),
   cRow("AGB density", "Plot area", NA, NA,
     paste0("AGB density is estimated over the area of the fitted quadrat grid. ",
@@ -757,6 +804,10 @@ fig_index <- bind_rows(
   fRow("07_stem_map.png", "Plot inventory", paste0("Stem locations in each ",
     "plot, with ", quad_txt, ", in plot coordinates. Stems outside the plot, ",
     "and stems in strips left out of the quadrat grid, are highlighted")),
+  fRow("07_subplot_map.png", "Plot inventory", paste0("Field subplots in ",
+    "each plot, from the subplot table, filled by the percentage of stems ",
+    "with coordinates outside the bounds of their subplot. Stems outside are ",
+    "shown in red. Axis ranges differ between plots")),
   fRow("06_diam_hist.png", "Stem size distribution", 
     "Diameter of stems used to estimate AGB density"),
   fRow("04_height_diam.png", "Stem size distribution", 
@@ -796,6 +847,11 @@ fig_index <- bind_rows(
   fRow("10_quad_agbd_cv.png", "AGB density uncertainty", 
     paste0("Coefficient of variation of quadrat AGBD against quadrat AGBD, ",
       "from ", n_sim, " simulations")),
+  fRow("08_subplot_unmapped_map.png", "AGB density uncertainty", paste0(
+    "AGB of trees without coordinates in each field subplot, per hectare of ",
+    "the subplot, labelled with the number of trees. These trees are placed ",
+    "at random within their subplot in each simulation. Axis ranges differ ",
+    "between plots")),
   fRow("08_diam_error.png", "AGB density uncertainty", paste0("Differences ",
     "between repeat diameter measurements, with the fitted measurement error ",
     "model"))) %>%

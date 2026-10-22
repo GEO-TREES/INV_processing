@@ -1,11 +1,31 @@
 # Split plots into quadrats
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-21
+# Last updated: 2026-10-22
 
 # Plot polygons and quadrats are fitted from GNSS measurements of plot
 # corners, using the method in `polygon_method`. Uncertainty in the corner
 # coordinates is not propagated. This needs repeated GNSS measurements of
 # each corner, to estimate `sd_coord` for BIOMASS::divide_plot()
+
+# Stems without coordinates in trees where other stems have coordinates are
+# given the mean coordinates of the other stems of the tree. Trees are 
+# identified by `tree_id` within each plot, whether or not their AGB is 
+# estimated from their equivalent diameter, see `multi_stem_method`
+stem <- stem %>%
+  mutate(tree_grp = ifelse(is.na(tree_id) | tree_id == "",
+    paste0("record::", record_id), paste(plot_id, tree_id, sep = "::"))) %>%
+  group_by(tree_grp) %>%
+  mutate(
+    xy_ok = !is.na(x_rel_m) & !is.na(y_rel_m),
+    xy_from_tree = !xy_ok & any(xy_ok),
+    x_rel_m = ifelse(xy_from_tree, mean(x_rel_m[xy_ok]), x_rel_m),
+    y_rel_m = ifelse(xy_from_tree, mean(y_rel_m[xy_ok]), y_rel_m)) %>%
+  ungroup() %>%
+  dplyr::select(-tree_grp, -xy_ok)
+if (any(stem$xy_from_tree)) {
+  message(sum(stem$xy_from_tree), " stem records without coordinates were given the ",
+    "mean coordinates of the other stems of their tree")
+}
 
 # Select only relevant columns from stems dataframe
 # Filter to only plots with spatial coordinates
@@ -259,16 +279,19 @@ if (nrow(stem_sel) > 0) {
       y_utm = y_proj) %>%
     filter(!is.na(x_proj), !is.na(y_proj)) %>%
     st_as_sf(., coords = c("x_proj", "y_proj"), crs = crs_site) %>%
+    mutate(xy_from_tree = stem$xy_from_tree[match(record_id, stem$record_id)]) %>%
     dplyr::select(
       record_id,
       quadrat_id = subplot_ID,
       grid_excl,
+      xy_from_tree,
       x_utm, y_utm)
 } else {
   stem_pt <- st_sf(
     record_id = integer(0),
     quadrat_id = character(0),
     grid_excl = logical(0),
+    xy_from_tree = logical(0),
     x_utm = numeric(0),
     y_utm = numeric(0),
     geometry = st_sfc(crs = crs_site))
@@ -450,7 +473,7 @@ if (nrow(stem_sel) > 0) {
       y_min = min(y_rel), y_max = max(y_rel),
       .groups = "drop")
 
-  stem_xy <- stem_sel %>%
+  stem_map_rel <- stem_sel %>%
     mutate(plot_id = as.character(plot_id)) %>%
     left_join(., dplyr::select(stem_outside, record_id, action), 
       by = "record_id") %>%
@@ -467,9 +490,9 @@ if (nrow(stem_sel) > 0) {
     "In plot, left out of quadrat grid" = fig_pal$line_muted,
     "Outside grid, assigned to nearest quadrat" = fig_pal$warn,
     "Outside grid, excluded" = fig_pal$problem)
-  stem_type <- stem_type[names(stem_type) %in% stem_xy$type]
+  stem_type <- stem_type[names(stem_type) %in% stem_map_rel$type]
   stem_in_plot <- c("Stem, in quadrat grid", "In plot, left out of quadrat grid")
-  n_plot_stem <- length(unique(stem_xy$plot_id))
+  n_plot_stem <- length(unique(stem_map_rel$plot_id))
 
   # Stems far outside the quadrat grid, e.g. with coordinate errors, are
   # shown at the edge of the map, so that plots are large enough to see
@@ -478,7 +501,7 @@ if (nrow(stem_sel) > 0) {
   map_margin <- 0.1 * max(diff(map_x), diff(map_y))
   map_x <- map_x + c(-1, 1) * map_margin
   map_y <- map_y + c(-1, 1) * map_margin
-  stem_xy <- stem_xy %>%
+  stem_map_rel <- stem_map_rel %>%
     mutate(
       edge = ifelse(x_rel_m < map_x[1] | x_rel_m > map_x[2] | 
         y_rel_m < map_y[1] | y_rel_m > map_y[2], 
@@ -490,14 +513,14 @@ if (nrow(stem_sel) > 0) {
         map_y[2] - 0.25 * map_margin))
 
   p_stem <- ggplot() +
-    geom_rect(data = filter(quad_rel, plot_id %in% stem_xy$plot_id),
+    geom_rect(data = filter(quad_rel, plot_id %in% stem_map_rel$plot_id),
       aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max),
       fill = NA, colour = fig_pal$line_muted, linewidth = 0.3) +
     geom_rect(data = filter(mutate(plot_ext, plot_id = as.character(plot_ID)), 
-      plot_id %in% stem_xy$plot_id),
+      plot_id %in% stem_map_rel$plot_id),
       aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max),
       fill = NA, colour = fig_pal$ink, linewidth = 0.4) +
-    geom_point(data = filter(stem_xy, type %in% stem_in_plot),
+    geom_point(data = filter(stem_map_rel, type %in% stem_in_plot),
       aes(x = x_rel_m, y = y_rel_m, colour = type), 
       size = 0.8, alpha = 0.7, shape = 16) +
     scale_colour_manual(NULL, values = stem_type, breaks = names(stem_type)) +
@@ -505,13 +528,13 @@ if (nrow(stem_sel) > 0) {
       override.aes = list(size = 2, alpha = 1, shape = 16)))
   # Stems outside the plot, only if there are any, as an empty layer gives a
   # warning from the shape scale
-  if (any(!stem_xy$type %in% stem_in_plot)) {
+  if (any(!stem_map_rel$type %in% stem_in_plot)) {
     p_stem <- p_stem +
-      geom_point(data = filter(stem_xy, !type %in% stem_in_plot),
+      geom_point(data = filter(stem_map_rel, !type %in% stem_in_plot),
         aes(x = x_rel_m, y = y_rel_m, colour = type, shape = edge), size = 2.4) +
       scale_shape_manual(NULL, values = c("Within map" = 16,
         "Beyond map edge, shown at edge" = 17),
-        breaks = intersect("Beyond map edge, shown at edge", stem_xy$edge)) +
+        breaks = intersect("Beyond map edge, shown at edge", stem_map_rel$edge)) +
       guides(shape = guide_legend(order = 2,
         override.aes = list(size = 2, colour = fig_pal$ink_muted)))
   }
@@ -524,4 +547,195 @@ if (nrow(stem_sel) > 0) {
       y = "Y (m)") +
     themeMap()
   saveFig(p_stem, file.path(report_dir, "07_stem_map.png"), n_panel = n_plot_stem)
+}
+
+# Field subplots
+# Where the site supplies the bounds of field subplots, in `subplot.csv`,
+# stems are checked against the bounds of their field subplot. Stems outside
+# them are written to a check file, as either the coordinates or the field
+# subplot of the stem may be wrong. The bounds are also used to place trees
+# without coordinates, see ./08_agb_mc.R
+unlink(file.path(report_dir, c("stem_outside_subplot.csv", "07_subplot_map.png")))
+unlink(file.path(outdir, "subplot_check.csv"))
+if (!is.null(subplot)) {
+  subplot <- mutate(subplot, plot_id = as.character(plot_id))
+
+  # Stems with a field subplot. Stems given the coordinates of their tree are
+  # not checked
+  stem_sub <- stem %>%
+    filter(!is.na(subplot_id), subplot_id != "") %>%
+    mutate(plot_id = as.character(plot_id)) %>%
+    left_join(., dplyr::select(subplot, plot_id, subplot_id, x_rel_min_m, 
+      x_rel_max_m, y_rel_min_m, y_rel_max_m), by = c("plot_id", "subplot_id")) %>%
+    mutate(
+      mapped = !is.na(x_rel_m) & !is.na(y_rel_m) & !xy_from_tree,
+      in_table = !is.na(x_rel_min_m),
+      # Distance from the stem to the nearest edge of its field subplot
+      dist_m = sqrt(
+        pmax(x_rel_min_m - x_rel_m, 0, x_rel_m - x_rel_max_m)^2 +
+        pmax(y_rel_min_m - y_rel_m, 0, y_rel_m - y_rel_max_m)^2),
+      inside = mapped & in_table & dist_m == 0)
+
+  # Stems outside the bounds of their field subplot, with the field subplot
+  # whose bounds contain them, if any
+  stem_outside_sub <- filter(stem_sub, mapped, !inside)
+  stem_outside_sub$subplot_id_contain <- mapply(function(p, x, y) {
+    i <- which(subplot$plot_id == p & 
+      x >= subplot$x_rel_min_m & x <= subplot$x_rel_max_m &
+      y >= subplot$y_rel_min_m & y <= subplot$y_rel_max_m)
+    if (length(i) == 0) NA_character_ else subplot$subplot_id[i[1]]
+  }, stem_outside_sub$plot_id, stem_outside_sub$x_rel_m, 
+    stem_outside_sub$y_rel_m, USE.NAMES = FALSE)
+  stem_outside_sub <- stem_outside_sub %>%
+    transmute(record_id, plot_id, tree_id, stem_id, subplot_id, x_rel_m, 
+      y_rel_m, diam_cm, code, x_rel_min_m, x_rel_max_m, y_rel_min_m, 
+      y_rel_max_m, dist_m = round(dist_m, 2), 
+      subplot_id_contain = as.character(subplot_id_contain),
+      issue = ifelse(in_table, "outside subplot bounds", 
+        "subplot not in subplot table")) %>%
+    arrange(plotFactor(plot_id), desc(dist_m))
+
+  # Write stems outside the bounds of their field subplot to file, to check 
+  # raw data
+  write.csv(stem_outside_sub, file.path(report_dir, "stem_outside_subplot.csv"),
+    row.names = FALSE)
+  if (nrow(stem_outside_sub) > 0) {
+    message(sum(stem_outside_sub$issue == "outside subplot bounds"), 
+      " stems with coordinates outside the bounds of their field subplot, and ",
+      sum(stem_outside_sub$issue != "outside subplot bounds"), 
+      " stems in field subplots not in the subplot table. See ",
+      file.path(report_dir, "stem_outside_subplot.csv"))
+  }
+
+  # Summarise each field subplot. Stems without coordinates are those of 
+  # trees where no stems have coordinates
+  subplot_check <- subplot %>%
+    dplyr::select(plot_id, subplot_id, x_rel_min_m, x_rel_max_m, y_rel_min_m,
+      y_rel_max_m) %>%
+    left_join(., stem_sub %>%
+      group_by(plot_id, subplot_id) %>%
+      summarise(
+        n_stem_mapped = sum(mapped),
+        n_stem_outside = sum(mapped & !inside),
+        n_stem_unmapped = sum(is.na(x_rel_m) | is.na(y_rel_m)),
+        .groups = "drop"),
+      by = c("plot_id", "subplot_id")) %>%
+    mutate(
+      across(starts_with("n_stem"), ~ifelse(is.na(.x), 0L, .x)),
+      dim_x_m = x_rel_max_m - x_rel_min_m,
+      dim_y_m = y_rel_max_m - y_rel_min_m,
+      pct_in = round(100 * (1 - n_stem_outside / n_stem_mapped), 1)) %>%
+    arrange(plotFactor(plot_id), suppressWarnings(as.numeric(subplot_id)), 
+      subplot_id)
+  write.csv(subplot_check, file.path(outdir, "subplot_check.csv"), 
+    row.names = FALSE)
+
+  subplot_plot <- subplot_check %>%
+    group_by(plot_id) %>%
+    summarise(
+      n_subplot = n(),
+      subplot_dim_m = paste(unique(paste(dim_x_m, "x", dim_y_m)), 
+        collapse = ", "),
+      pct_in_min = suppressWarnings(min(pct_in, na.rm = TRUE)),
+      n_stem_mapped = sum(n_stem_mapped),
+      n_stem_outside = sum(n_stem_outside),
+      pct_in = round(100 * (1 - n_stem_outside / n_stem_mapped), 1),
+      n_stem_unmapped = sum(n_stem_unmapped),
+      .groups = "drop") %>%
+    mutate(pct_in_min = ifelse(is.infinite(pct_in_min), NA, pct_in_min)) %>%
+    arrange(plotFactor(plot_id))
+  msgTable(subplot_plot, paste0("Field subplots, from the subplot table. ",
+    "pct_in is the percentage of stems with coordinates within the bounds of ",
+    "their subplot, and pct_in_min the lowest of any subplot in the plot:"))
+  subplot_low <- filter(subplot_check, pct_in < 90)
+  if (nrow(subplot_low) > 0) {
+    msgTable(dplyr::select(subplot_low, plot_id, subplot_id, x_rel_min_m, 
+      x_rel_max_m, y_rel_min_m, y_rel_max_m, n_stem_mapped, pct_in), 
+      "Field subplots where fewer than 90% of stems are within the bounds:")
+  }
+
+  # Figure of field subplots in each plot, filled by the percentage of stems
+  # outside their bounds, with stems outside joined to the nearest edge of
+  # their subplot. Stems far outside the subplots of their plot, e.g. with 
+  # coordinate errors, are shown at the edge of the map
+  sub_fig <- subplot_check %>%
+    filter(n_stem_mapped > 0) %>%
+    mutate(pct_out = 100 - pct_in)
+  if (nrow(sub_fig) > 0) {
+    sub_fig <- filter(subplot_check, plot_id %in% sub_fig$plot_id) %>%
+      mutate(
+        pct_out = 100 - pct_in,
+        x_mid = (x_rel_min_m + x_rel_max_m) / 2,
+        y_mid = (y_rel_min_m + y_rel_max_m) / 2)
+    # Map extent includes the plot corners, as the subplot table may not
+    # cover the whole plot
+    sub_ext <- bind_rows(
+      dplyr::select(sub_fig, plot_id, x_rel_min_m, x_rel_max_m, y_rel_min_m, 
+        y_rel_max_m),
+      corner_rel %>%
+        filter(plot_id %in% sub_fig$plot_id) %>%
+        transmute(plot_id = as.character(plot_id), x_rel_min_m = x_rel_m, 
+          x_rel_max_m = x_rel_m, y_rel_min_m = y_rel_m, 
+          y_rel_max_m = y_rel_m)) %>%
+      group_by(plot_id) %>%
+      summarise(
+        x0 = min(x_rel_min_m), x1 = max(x_rel_max_m),
+        y0 = min(y_rel_min_m), y1 = max(y_rel_max_m),
+        .groups = "drop") %>%
+      mutate(m = 0.1 * pmax(x1 - x0, y1 - y0))
+    sub_extent <- with(sub_ext, data.frame(
+      plot_id = rep(plot_id, 2),
+      x = c(x0 - m, x1 + m),
+      y = c(y0 - m, y1 + m)))
+    out_fig <- stem_outside_sub %>%
+      filter(issue == "outside subplot bounds", plot_id %in% sub_fig$plot_id) %>%
+      left_join(., sub_ext, by = "plot_id") %>%
+      mutate(
+        x_rel_m = pmin(pmax(x_rel_m, x0 - 0.75 * m), x1 + 0.75 * m),
+        y_rel_m = pmin(pmax(y_rel_m, y0 - 0.75 * m), y1 + 0.75 * m),
+        x_edge = pmin(pmax(x_rel_m, x_rel_min_m), x_rel_max_m),
+        y_edge = pmin(pmax(y_rel_m, y_rel_min_m), y_rel_max_m))
+    n_plot_sub <- nrow(sub_ext)
+    # Labels are light on the darkest fills
+    pct_out_lim <- c(0, max(c(sub_fig$pct_out, 1), na.rm = TRUE))
+    sub_fig$label_colour <- ifelse(sub_fig$pct_out %in% NA | 
+      sub_fig$pct_out < 0.6 * pct_out_lim[2], fig_pal$ink, fig_pal$surface)
+    # Labels are smaller in plots with many subplots, so that they fit
+    sub_label_size <- min(3.2, 32 / sqrt(max(table(sub_fig$plot_id))))
+
+    p_sub <- ggplot() +
+      geom_blank(data = squareExtent(sub_extent, "x", "y", "plot_id"),
+        aes(x = x, y = y)) +
+      geom_rect(data = sub_fig,
+        aes(xmin = x_rel_min_m, xmax = x_rel_max_m, ymin = y_rel_min_m, 
+          ymax = y_rel_max_m, fill = pct_out),
+        colour = fig_pal$surface, linewidth = 0.3) +
+      scale_fill_gradientn("Stems outside the bounds of their subplot (%)",
+        colours = fig_pal$seq, limits = pct_out_lim, na.value = fig_pal$grid,
+        guide = colourBar()) +
+      geom_segment(data = out_fig, 
+        aes(x = x_rel_m, y = y_rel_m, xend = x_edge, yend = y_edge),
+        colour = fig_pal$problem, linewidth = 0.3, alpha = 0.6) +
+      geom_point(data = out_fig, aes(x = x_rel_m, y = y_rel_m), 
+        colour = fig_pal$problem, size = 0.9, shape = 16) +
+      geom_text(data = sub_fig, 
+        aes(x = x_mid, y = y_mid, label = subplot_id, colour = label_colour),
+        size = sub_label_size) +
+      scale_colour_identity() +
+      facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_sub),
+        scales = "free") +
+      labs(
+        title = "Field subplots",
+        subtitle = paste0("Field subplots from the subplot table, labelled ",
+          "with their ID. Stems with coordinates outside the bounds of their ",
+          "subplot are shown in red, joined to the nearest edge of their ",
+          "subplot. Stems far outside are shown at the edge of the map. ",
+          "Subplots without stems with coordinates are grey"),
+        x = "X (m)",
+        y = "Y (m)") +
+      themeMap() +
+      theme(aspect.ratio = 1)
+    saveFig(p_sub, file.path(report_dir, "07_subplot_map.png"), 
+      n_panel = n_plot_sub)
+  }
 }

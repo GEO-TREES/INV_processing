@@ -547,6 +547,59 @@ dupValCheck <- function(x, stem = NULL, cols = NULL) {
   }
 }
 
+#' Check field subplot bounds table values
+#'
+#' Runs various checks on the values in field subplot bounds table columns
+#'
+#' @param x dataframe containing field subplot bounds, see 
+#'     ./templates/subplot_cols.csv
+#' @param cols optional column spec table, used to check minimum and maximum
+#'     values
+#'
+subplotValCheck <- function(x, cols = NULL) {
+  # Only one site ID per site
+  if (length(unique(x$site_id)) > 1) {
+    stop("`site_id` must be the same for all plots within a site")
+  }
+
+  # Plot and subplot IDs must identify each subplot
+  if (any(is.na(x$plot_id) | x$plot_id == "" | 
+    is.na(x$subplot_id) | x$subplot_id == "")) {
+    stop("`plot_id` and `subplot_id` must not be NA in 'subplot'")
+  }
+  if (any(duplicated(x[, c("plot_id", "subplot_id")]))) {
+    stop("Each combination of `plot_id` and `subplot_id` must be unique in 'subplot'")
+  }
+
+  # Bounds must be complete, and enclose an area
+  bound_cols <- c("x_rel_min_m", "x_rel_max_m", "y_rel_min_m", "y_rel_max_m")
+  if (any(is.na(x[, bound_cols]))) {
+    stop("Subplot bounds must not be NA in 'subplot'")
+  }
+  bad <- x$x_rel_max_m <= x$x_rel_min_m | x$y_rel_max_m <= x$y_rel_min_m
+  if (any(bad)) {
+    stop(sum(bad), " subplots in 'subplot' have a maximum X or Y coordinate ",
+      "which is not larger than the minimum")
+  }
+
+  # Values within ranges defined in spec table
+  rangeCheck(x, cols, "subplot")
+
+  # Subplots in the same plot should not overlap
+  n_overlap <- sum(vapply(split(x, x$plot_id), function(y) {
+    if (nrow(y) < 2) return(0L)
+    ov <- outer(y$x_rel_min_m, y$x_rel_max_m, "<") & 
+      outer(y$x_rel_max_m, y$x_rel_min_m, ">") &
+      outer(y$y_rel_min_m, y$y_rel_max_m, "<") & 
+      outer(y$y_rel_max_m, y$y_rel_min_m, ">")
+    sum(ov[upper.tri(ov)])
+  }, integer(1)))
+  if (n_overlap > 0) {
+    warning(n_overlap, " pairs of subplots in 'subplot' overlap within a plot",
+      call. = FALSE)
+  }
+}
+
 #' Check values across data objects
 #' 
 #' Runs various checks on values across plot, stem, pt and taxon objects
@@ -558,19 +611,21 @@ dupValCheck <- function(x, stem = NULL, cols = NULL) {
 #' @param height height-diameter measurements table
 #' @param wd wood density table
 #' @param dup repeat diameter measurements table
+#' @param subplot field subplot bounds table
 #' @param cols optional named list of column spec tables, with names
-#'     `plot`, `stem`, `pt`, `height`, `dup`. If NULL, objects named
-#'     `plot_cols`, `stem_cols`, `pt_cols`, `height_cols`, `stem_dup_cols` are
-#'     used if they exist where `valCheck()` is called from
+#'     `plot`, `stem`, `pt`, `height`, `dup`, `subplot`. If NULL, objects 
+#'     named `plot_cols`, `stem_cols`, `pt_cols`, `height_cols`, 
+#'     `stem_dup_cols`, `subplot_cols` are used if they exist where 
+#'     `valCheck()` is called from
 #'
 valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL, 
-  height = NULL, wd = NULL, dup = NULL, cols = NULL) { 
+  height = NULL, wd = NULL, dup = NULL, subplot = NULL, cols = NULL) { 
 
   # Find column spec tables
   if (is.null(cols)) {
     env <- parent.frame()
     cols <- lapply(c(plot = "plot", stem = "stem", pt = "pt", height = "height",
-      dup = "stem_dup"), 
+      dup = "stem_dup", subplot = "subplot"), 
       function(y) get0(paste0(y, "_cols"), envir = env))
   }
 
@@ -603,8 +658,12 @@ valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL,
     dupValCheck(dup, stem, cols$dup)
   }
 
+  if (!is.null(subplot)) {
+    subplotValCheck(subplot, cols$subplot)
+  }
+
   # All tables must have the same site ID
-  site_ids <- unique(unlist(lapply(list(plot, stem, pt, taxon, height, wd, dup), 
+  site_ids <- unique(unlist(lapply(list(plot, stem, pt, taxon, height, wd, dup, subplot), 
     function(y) y$site_id)))
   if (length(site_ids) > 1) {
     stop("`site_id` differs among tables: ", paste(site_ids, collapse = ", "))
@@ -656,6 +715,60 @@ valCheck <- function(plot = NULL, stem = NULL, pt = NULL, taxon = NULL,
     if (any(out, na.rm = TRUE)) {
       warning(sum(out, na.rm = TRUE), 
         " stems are more than 10% outside the extent of their plot corners")
+    }
+  }
+
+  # Run tests to match the subplot table to other tables
+  if (!is.null(subplot) && !is.null(plot)) {
+    # All plots in subplot must be in plot
+    if (!all(subplot$plot_id %in% plot$plot_id)) {
+      stop("Some plots in 'subplot' are missing from 'plot'")
+    }
+  }
+
+  if (!is.null(subplot) && !is.null(stem)) {
+    # Field subplots of stems should be in subplot, in plots which have
+    # subplots in subplot
+    s <- stem[!is.na(stem$subplot_id) & stem$subplot_id != "" & 
+      stem$plot_id %in% subplot$plot_id, ]
+    miss <- unique(paste(s$plot_id, s$subplot_id))[
+      !unique(paste(s$plot_id, s$subplot_id)) %in% 
+        paste(subplot$plot_id, subplot$subplot_id)]
+    if (length(miss) > 0) {
+      warning(length(miss), " field subplots in 'stem' are missing from ",
+        "'subplot': ", paste(utils::head(miss, 5), collapse = ", "),
+        if (length(miss) > 5) ", ...", call. = FALSE)
+    }
+    # Plots with field subplots in 'stem' but not in subplot
+    plot_miss <- setdiff(unique(stem$plot_id[!is.na(stem$subplot_id) & 
+      stem$subplot_id != ""]), subplot$plot_id)
+    if (length(plot_miss) > 0) {
+      warning(length(plot_miss), " plots with field subplots in 'stem' are ",
+        "missing from 'subplot': ", paste(plot_miss, collapse = ", "),
+        call. = FALSE)
+    }
+  }
+
+  if (!is.null(subplot) && !is.null(pt)) {
+    # Subplots should be within the extent of the plot corners, with 1% 
+    # tolerance
+    corner <- pt[pt$corner %in% TRUE & !is.na(pt$x_rel_m) & !is.na(pt$y_rel_m), ]
+    ext <- do.call(rbind, lapply(split(corner, corner$plot_id), function(y) {
+      data.frame(
+        plot_id = y$plot_id[1],
+        x_min = min(y$x_rel_m), x_max = max(y$x_rel_m),
+        y_min = min(y$y_rel_m), y_max = max(y$y_rel_m))
+    }))
+    e <- ext[match(subplot$plot_id, ext$plot_id), ]
+    tol_x <- (e$x_max - e$x_min) * 0.01
+    tol_y <- (e$y_max - e$y_min) * 0.01
+    out <- subplot$x_rel_min_m < e$x_min - tol_x | 
+      subplot$x_rel_max_m > e$x_max + tol_x |
+      subplot$y_rel_min_m < e$y_min - tol_y | 
+      subplot$y_rel_max_m > e$y_max + tol_y
+    if (any(out, na.rm = TRUE)) {
+      warning(sum(out, na.rm = TRUE), " subplots in 'subplot' extend outside ",
+        "the extent of their plot corners", call. = FALSE)
     }
   }
 
@@ -725,23 +838,25 @@ s3Download <- function(client, bucket, prefix, dest) {
 
 #' Select stem measurements used to estimate AGB
 #'
-#' Selects stems which are alive, standing, have a diameter measurement, and
-#' are not broken below the POM or missing. Where a stem was measured more
-#' than once, e.g. at different POMs, the measurement with the highest POM,
-#' latest date, and largest diameter is used. Stems without coordinates, and
-#' stems below the minimum diameter threshold of the plot, are included. See
-#' `agbdFilter()` for stems used to estimate AGB density, and to form
-#' multi-stemmed trees.
+#' Selects stems which are alive, standing, and are not broken below the POM
+#' or missing. Where a stem was measured more than once, e.g. at different 
+#' POMs, the measurement with a diameter, the highest POM, latest date, and 
+#' largest diameter is used. Stems without coordinates, and stems below the
+#' minimum diameter threshold of the plot, are included. See `agbdFilter()`
+#' for stems used to estimate AGB density, and to form multi-stemmed trees.
 #'
 #' @param stem stem measurement table, see ./templates/stem_cols.csv
 #' @param plot plot meta-data table, see ./templates/plot_cols.csv
+#' @param missing_diam logical, if TRUE stems without a diameter measurement
+#'     are included, and their diameters are imputed during AGB error 
+#'     propagation in ./08_agb_mc.R. See `missing_diam_method` in param.yaml
 #'
 #' @return character vector of `record_id` values
 #'
-recordFilter <- function(stem, plot) {
+recordFilter <- function(stem, plot, missing_diam = FALSE) {
   stem %>%
     filter(
-      !is.na(diam_cm),
+      !is.na(diam_cm) | missing_diam,
       grepl("A", code),
       grepl("S", code),
       !grepl("T", code),
@@ -752,7 +867,7 @@ recordFilter <- function(stem, plot) {
       paste0("record_", record_id), stem_id)) %>%
     group_by(site_id, plot_id, tree_id, stem_key) %>%
     slice_max(
-      order_by = tibble(pom_m, measurement_date, diam_cm),
+      order_by = tibble(!is.na(diam_cm), pom_m, measurement_date, diam_cm),
       n = 1,
       with_ties = FALSE) %>%
     ungroup() %>%
@@ -766,7 +881,9 @@ recordFilter <- function(stem, plot) {
 #' diameter threshold, and optionally excludes stems broken above the POM.
 #' Other stems have their own AGB estimates, but are not part of multi-stemmed
 #' trees, and are not included in AGB density, so that AGB density matches the
-#' sampling of the plot.
+#' sampling of the plot. Stems without a diameter measurement, if included by
+#' `recordFilter()`, are assumed to be at or above the threshold, as they were
+#' recorded in the census.
 #'
 #' @param stem stem measurement table, see ./templates/stem_cols.csv
 #' @param plot plot meta-data table, see ./templates/plot_cols.csv
@@ -783,7 +900,7 @@ agbdFilter <- function(stem, plot, record_fil, diam_min_cm = 0,
   diam_min <- plot$meas_diam_min_cm[match(stem$plot_id, plot$plot_id)]
   diam_min <- pmax(diam_min, diam_min_cm)
   keep <- as.character(stem$record_id) %in% as.character(record_fil) &
-    !is.na(stem$diam_cm) & !is.na(diam_min) & stem$diam_cm >= diam_min
+    !is.na(diam_min) & (is.na(stem$diam_cm) | stem$diam_cm >= diam_min)
   if (!include_broken) {
     keep <- keep & !grepl("B", stem$code)
   }

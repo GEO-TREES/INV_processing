@@ -45,6 +45,22 @@ test_that("agbdFilter() excludes stems broken above the POM if requested", {
     c("1", "4", "5", "6"))
 })
 
+test_that("recordFilter() optionally keeps stems without a diameter", {
+  stem_na <- rbind(stem, data.frame(record_id = 8:10, site_id = "S1", 
+    plot_id = "P1", tree_id = c("7", "8", "8"), stem_id = c("7", "8", "8"), 
+    pom_m = 1.3, measurement_date = c(2024.5, 2024.5, 2024.6), 
+    diam_cm = c(NA, 14, NA), code = c("ABS", "AS", "AS")))
+  # Without a diameter: excluded by default
+  expect_setequal(recordFilter(stem_na, plot), as.character(c(1:6, 9)))
+  # Included, but a repeat record with a diameter is preferred
+  expect_setequal(recordFilter(stem_na, plot, missing_diam = TRUE), 
+    as.character(c(1:6, 8, 9)))
+  # Stems without a diameter are assumed to be above the threshold
+  record_fil <- recordFilter(stem_na, plot, missing_diam = TRUE)
+  expect_true("8" %in% agbdFilter(stem_na, plot, record_fil))
+  expect_false("8" %in% agbdFilter(stem_na, plot, record_fil, include_broken = FALSE))
+})
+
 test_that("treeEquiv() combines only included stems into trees", {
   te <- treeEquiv(stem, c("5", "6"))
   te <- te[match(c("5", "6"), te$record_id), ]

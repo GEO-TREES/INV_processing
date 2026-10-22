@@ -75,6 +75,7 @@ Required packages:
 #| message: false
 #| results: hide
 library(dplyr)  # Dataframe manipulation
+library(tidyr)  # Reshape dataframes, e.g. pivot_wider()
 library(sf)  # Spatial data 
 library(BIOMASS)  # AGB estimation, H:D allometry, 
 library(yaml)  # read_yaml() - Read YAML files with parameters
@@ -101,6 +102,10 @@ Set data input and output directories:
 ```{r}
 indir <- "./data-raw/data"
 outdir <- "./out"
+
+# Directory for files to check raw data and the results of each step, and
+# tables and figures for site reports, as in the automated workflow
+report_dir <- file.path(outdir, "report")
 ```
 
 ## Create L0 data
@@ -161,7 +166,8 @@ There should be one `param.yaml` file for each version of the processed data.
 * `unmapped_method` -- How trees without stem coordinates are treated, either `"random"` (assigned to a random quadrat in their plot in each Monte Carlo simulation) or `"exclude"` (excluded from AGB density)
 * `diam_error` -- Diameter measurement error propagated to AGB, either `"chave2004"` (Chave et al. 2004), `"field"` (estimated from repeat diameter measurements in `stem_dup.csv` with `BIOMASS::fitDiamError()`), `"none"`, or a number giving the standard deviation of diameter measurement error in cm
 * `quad_origin` -- Optional, alignment of the quadrat grid in each plot: `"centre"` (default) centres the grid in the plot, `"corner"` starts it at the origin corner of the plot, and `[x, y]` starts it x and y m from the origin corner. Where the plot dimensions are not a multiple of the quadrat dimensions, strips of the plot outside the grid are left out
-* `als_date` -- Optional, date of the airborne lidar acquisition matched to the plot data, `"YYYY-MM-DD"`, `"YYYY-MM"` or `"YYYY"`, used to report the time between the ALS acquisition and the census in `12_report.R`
+* `missing_diam_method` -- Optional, how live stems without a diameter measurement are treated: `"impute"` (default) imputes their diameter in each Monte Carlo simulation from the other trees in the same plot, see [Missing measurements], or `"exclude"` excludes them
+* `als_date` -- Optional, date of the airborne lidar acquisition matched to the plot data, `"YYYY-MM-DD"`, `"YYYY-MM"` or `"YYYY"`, used to report the time between the ALS acquisition and the census 
 * `rocrate` -- Information on who ran the workflow, used in the RO-Crate meta-data files which accompany each data product:
   * `author_name` -- e.g. `"John L. Godlee"`
   * `author_email` -- e.g. `"GodleeJ@si.edu"`
@@ -209,6 +215,20 @@ param_name_vec <- c(
   "rocrate"
 )
 
+# Define optional parameter names
+# `als_date` is the date of the airborne lidar acquisition matched to the
+# plot data, YYYY-MM-DD, YYYY-MM or YYYY, used in 12_report.R
+# `quad_origin` is the alignment of the quadrat grid in each plot, see
+# ./07_quad.R: "centre" (default), "corner", or an offset [x, y] in metres
+# from the origin corner of each plot
+# `missing_diam_method` is how live stems without a diameter measurement are
+# treated, see ./08_agb_mc.R: "impute" (default) or "exclude"
+param_optional_vec <- c(
+  "als_date",
+  "quad_origin",
+  "missing_diam_method"
+)
+
 # Define RO-Crate parameter names, `author_orcid` is optional
 rocrate_name_vec <- c(
   "author_name",
@@ -232,6 +252,11 @@ if (length(rocrate_missing) > 0) {
   stop("Missing `rocrate` parameters: ", paste(rocrate_missing, collapse = ", "))
 }
 
+param_extra <- setdiff(names(param), c(param_name_vec, param_optional_vec))
+if (length(param_extra) > 0) {
+  warning("Unrecognised parameters: ", paste(param_extra, collapse = ", "))
+}
+
 # Check parameter values
 param_choices <- list(
   height_method = c("regional", "field"),
@@ -247,9 +272,69 @@ for (i in names(param_choices)) {
   }
 }
 
-# Optional parameters
+if (length(param$quad_dim) != 2 || !is.numeric(param$quad_dim)) {
+  stop("`quad_dim` must be two numbers, e.g. [50, 50]")
+}
+
+if (length(param$raw_version) != 1 || !grepl("^[A-Za-z0-9-]+$", param$raw_version)) {
+  stop("`raw_version` must be a single version string, e.g. \"v1\", ",
+    "without underscores or dots")
+}
+
+if (length(param$outside_max_dist_m) != 1 || !is.numeric(param$outside_max_dist_m) ||
+  param$outside_max_dist_m < 0) {
+  stop("`outside_max_dist_m` must be a number >= 0")
+}
+
+if (length(param$corner_outlier_dist_m) != 1 || !is.numeric(param$corner_outlier_dist_m) ||
+  param$corner_outlier_dist_m <= 0) {
+  stop("`corner_outlier_dist_m` must be a number > 0")
+}
+
+if (length(param$quad_grid_tol) != 1 || !is.numeric(param$quad_grid_tol) ||
+  param$quad_grid_tol < 0 || param$quad_grid_tol >= 1) {
+  stop("`quad_grid_tol` must be a number >= 0 and < 1")
+}
+
+if (length(param$agbd_diam_min_cm) != 1 || !is.numeric(param$agbd_diam_min_cm) ||
+  param$agbd_diam_min_cm < 0) {
+  stop("`agbd_diam_min_cm` must be a number >= 0")
+}
+
+if (length(param$include_broken) != 1 || !is.logical(param$include_broken) ||
+  is.na(param$include_broken)) {
+  stop("`include_broken` must be true or false")
+}
+
+if (length(param$diam_error) != 1 ||
+  !(param$diam_error %in% c("chave2004", "field", "none") ||
+    (is.numeric(param$diam_error) && param$diam_error > 0))) {
+  stop("`diam_error` must be \"chave2004\", \"field\", \"none\", or a ",
+    "number > 0, the standard deviation of diameter measurement error in cm")
+}
+
 if (is.null(param$quad_origin)) {
   param$quad_origin <- "centre"
+}
+if (is.null(param$missing_diam_method)) {
+  param$missing_diam_method <- "impute"
+}
+if (!identical(param$missing_diam_method, "impute") && 
+  !identical(param$missing_diam_method, "exclude")) {
+  stop("`missing_diam_method` must be one of: impute, exclude")
+}
+if (!(identical(param$quad_origin, "centre") || identical(param$quad_origin, "corner") ||
+  (is.numeric(param$quad_origin) && length(param$quad_origin) == 2 && 
+    all(param$quad_origin >= 0)))) {
+  stop("`quad_origin` must be \"centre\", \"corner\", or two numbers >= 0, ",
+    "the offset of the quadrat grid from the origin corner of each plot in m, e.g. [10, 10]")
+}
+
+if (!is.null(param$als_date)) {
+  param$als_date <- as.character(param$als_date)
+  if (length(param$als_date) != 1 || is.na(decDate(param$als_date))) {
+    stop("`als_date` must be a single date: YYYY-MM-DD, YYYY-MM or YYYY")
+  }
 }
 
 # Print parameters
@@ -338,7 +423,10 @@ L0 <- list(
   wd = read.csv(file.path(indir, "wd.csv"), colClasses = colClass("wd")),
 
   # Import additional height-diameter measurements (optional)
-  height = read.csv(file.path(indir, "hd.csv"), colClasses = colClass("height"))
+  height = read.csv(file.path(indir, "hd.csv"), colClasses = colClass("height")),
+
+  # Import field subplot bounds (optional)
+  subplot = read.csv(file.path(indir, "subplot.csv"), colClasses = colClass("subplot"))
 )
 ```
 
@@ -476,8 +564,9 @@ It returns an error for values which would cause the processing to fail, or
 which are impossible, e.g. negative stem diameters, plot IDs which don't match
 between tables, or values outside the ranges given in the template files in
 `./templates/`. It returns a warning for values which are probably wrong, but
-which may be legitimate, e.g. stems mapped far outside the plot, or stems
-without a `stem_id`.
+which may be legitimate, e.g. stems mapped far outside the plot, stems
+without a `stem_id`, or field subplots which overlap, or which extend outside
+the plot.
 
 ```{r}
 # Check values in L0 data
@@ -487,7 +576,30 @@ valCheck(
   pt = L0$pt,
   taxon = L0$taxa,
   height = L0$height,
-  wd = L0$wd)
+  wd = L0$wd,
+  subplot = L0$subplot)
+```
+
+The example data have a diameter and coordinates for every stem. To show how
+missing measurements are handled, see [Missing measurements], we remove the
+diameter of 10 live stems, the coordinates of one stem in each of 10
+multi-stemmed trees, and the coordinates of all stems of 20 trees. This is
+for illustration only, and is not part of the processing workflow.
+
+```{r}
+# Remove some measurements, to illustrate how missing measurements are handled
+set.seed(1)
+live <- which(grepl("A", L0$stem$code) & grepl("S", L0$stem$code) & 
+  !grepl("T|M", L0$stem$code))
+L0$stem$diam_cm[sample(live, 10)] <- NA
+
+tree_key_eg <- paste(L0$stem$plot_id, L0$stem$tree_id)
+multi <- intersect(live, which(tree_key_eg %in% tree_key_eg[duplicated(tree_key_eg)]))
+multi_one <- multi[!duplicated(tree_key_eg[multi])]
+xy_na <- c(
+  sample(multi_one, min(10, length(multi_one))),
+  which(tree_key_eg %in% sample(unique(tree_key_eg[live]), 20)))
+L0$stem[xy_na, c("x_rel_m", "y_rel_m")] <- NA
 ```
 
 ## Correct taxonomy 
@@ -584,6 +696,15 @@ for (i in seq_along(taxon_chunks)) {
   saveWFOCache(wfo_path, rm_empty = !taxa_interactive)
 }
 stem_taxa_all <- bind_rows(taxa_list)
+
+# Fill the family of names without a matched family, e.g. stems identified
+# only to family, from the optional taxon table, so that wood density can be
+# estimated at family level
+if (!is.null(L0$taxa)) {
+  taxon_family <- trimws(L0$taxa$taxon_family[match(stem_taxa_all$nameOriginal, L0$taxa$taxon_name)])
+  family_fill <- is.na(stem_taxa_all$familyAccepted) & !is.na(taxon_family) & taxon_family != ""
+  stem_taxa_all$familyAccepted[family_fill] <- taxon_family[family_fill]
+}
 ```
 
 ```{r}
@@ -623,6 +744,32 @@ taxa_review <- stem_taxa_all %>%
   arrange(is.na(nameAccepted), desc(n_stem))
 
 kable(head(taxa_review, 10))
+```
+
+We also summarise the outcome of name matching by the number of stems
+affected, to check whether names which could not be matched affect many
+stems. In the automated workflow this table is written to
+`02_taxa/taxa_outcome.csv`, and used in the site report.
+
+```{r}
+#| tab-cap: "Outcome of taxonomic name matching, by number of names and stems."
+# Summarise matching outcomes by number of stems
+taxa_outcome <- stem_taxa_all %>%
+  filter(!is.na(nameOriginal), nameOriginal != "") %>%
+  mutate(
+    n_stem = as.vector(table(L0$stem$taxon_name)[nameOriginal]),
+    outcome = case_when(
+      !is.na(nameAccepted) & nameStd(nameOriginal) == nameStd(nameAccepted) ~ "matched, unchanged",
+      !is.na(nameAccepted) ~ "matched, changed",
+      !is.na(familyAccepted) ~ "family only",
+      TRUE ~ "not matched"),
+    outcome = factor(outcome, levels = c("matched, unchanged",
+      "matched, changed", "family only", "not matched"))) %>%
+  group_by(outcome, .drop = FALSE) %>%
+  summarise(n_name = n(), n_stem = sum(n_stem, na.rm = TRUE), .groups = "drop") %>%
+  mutate(pct_stem = round(100 * n_stem / sum(n_stem), 1))
+
+kable(taxa_outcome)
 ```
 
 ## Estimate stem wood density
@@ -729,6 +876,49 @@ stem_wd_all <- cbind(record_id = taxa_all$record_id, wd_all)
 kable(head(stem_wd_all))
 ```
 
+We summarise the taxonomic level at which wood density was estimated for
+each stem. Estimates from the plot mean are used where a stem has no matched
+genus or family. Many stems estimated at the family level or from the plot
+mean may indicate problems with taxonomic names.
+
+```{r}
+#| tab-cap: "Wood density (g cm-3) by taxonomic level of the estimate."
+# Summarise the taxonomic level of wood density estimates
+wd_check <- stem_wd_all %>%
+  mutate(level = ifelse(levelWD %in% c("species", "genus", "family", "dataset"),
+    levelWD, "plot mean")) %>%
+  mutate(level = factor(level, 
+    levels = intersect(c("species", "genus", "family", "plot mean", "dataset"), level)))
+
+wd_level <- wd_check %>%
+  group_by(level) %>%
+  summarise(
+    n_stem = n(),
+    meanWD_mean = mean(meanWD, na.rm = TRUE),
+    meanWD_min = min(meanWD, na.rm = TRUE),
+    meanWD_max = max(meanWD, na.rm = TRUE),
+    .groups = "drop") %>%
+  mutate(pct_stem = round(100 * n_stem / sum(n_stem), 1), .after = n_stem)
+
+kable(wd_level, digits = 3)
+```
+
+```{r}
+#| fig-cap: "Wood density estimates at each taxonomic level of the estimate, for stems used to estimate AGB density. Y-axis scales differ between levels."
+#| fig-width: 8
+#| fig-height: 7
+# Figure of wood density at each taxonomic level of the estimate, for stems
+# used to estimate AGB density, see `agbdFilter()` in func.R
+record_agbd <- agbdFilter(L0$stem, L0$plot, 
+  recordFilter(L0$stem, L0$plot, missing_diam = param$missing_diam_method == "impute"),
+  diam_min_cm = param$agbd_diam_min_cm,
+  include_broken = param$include_broken)
+wd_fig <- filter(wd_check, as.character(record_id) %in% record_agbd)
+wdLevelPlot(wd_fig$meanWD, wd_fig$level) +
+  labs(
+    title = "Wood density estimates by taxonomic level")
+```
+
 ## Estimate stem height
 
 `04_height.R`
@@ -803,19 +993,21 @@ height_mod <- modelHD(
   method = height_mod_best,
   bayesian = FALSE,
   useCache = FALSE,
-  drawGraph = TRUE)
+  drawGraph = FALSE)
 
 # Predict with best height diameter model
 height_est <- retrieveH(
   D = L0$stem$diam_cm,
   model = height_mod)
 
-# Create output dataframe
-stem_height_all <- L0$stem %>% 
-  mutate(
-    height_m_pred = height_est$H,
-    height_m_pred_rse = height_est$RSE) %>% 
-  dplyr::select(record_id, height_m_pred, height_m_pred_rse)
+# Create output dataframe, if `height_method` is "field"
+if (param$height_method == "field") {
+  stem_height_all <- L0$stem %>% 
+    mutate(
+      height_m_pred = height_est$H,
+      height_m_pred_rse = height_est$RSE) %>% 
+    dplyr::select(record_id, height_m_pred, height_m_pred_rse)
+}
 ```
 
 We choose the model with the lowest residual standard error (RSE). Note that
@@ -864,20 +1056,77 @@ height_pred$RSE <- rep(0.243, length(height_pred$H))
 s_cent$height_m_pred <- height_pred$H
 s_cent$height_m_pred_rse <- height_pred$RSE
 
-# Create output dataframe
-stem_height_all <- s_cent %>% 
-  dplyr::select(record_id, height_m_pred, height_m_pred_rse)
+# Create output dataframe, if `height_method` is "regional"
+if (param$height_method == "regional") {
+  stem_height_all <- s_cent %>% 
+    dplyr::select(record_id, height_m_pred, height_m_pred_rse)
+}
+```
+
+We summarise the predicted stem heights. Heights over 60 m are rare, and may
+indicate errors in stem diameter.
+
+```{r}
+#| tab-cap: "Summary of predicted stem height."
+# Summarise predicted heights
+height_check <- L0$stem %>%
+  dplyr::select(record_id, plot_id, diam_cm) %>%
+  inner_join(., stem_height_all, by = "record_id") %>%
+  filter(!is.na(diam_cm), !is.na(height_m_pred))
+
+height_summ <- height_check %>%
+  summarise(
+    n_stem = n(),
+    height_m_min = min(height_m_pred),
+    height_m_median = median(height_m_pred),
+    height_m_max = max(height_m_pred),
+    n_over_60m = sum(height_m_pred > 60))
+
+kable(height_summ, digits = 2)
 ```
 
 ```{r}
-#| fig-cap: "Predicted relationship between stem diameter and stem height using a regional diameter-height allometry, Equation 6a from @Chave2014."
-# Inspect predictions 
-ggplot(s_cent, aes(x = diam_cm, y = height_m_pred)) + 
-  geom_line() + 
-  theme_bw() + 
+#| fig-cap: "Stem height against diameter: measured heights, and predicted heights for stems used to estimate AGB density, drawn on top."
+#| fig-width: 8
+#| fig-height: 6
+# Figure of stem height against diameter, for stems used to estimate AGB
+# density, see `agbdFilter()` in func.R. Measured heights are from the
+# height table, or from the stem table if there is no height table. 
+# Predicted heights are drawn on top of measured heights
+height_pred_fig <- filter(height_check, as.character(record_id) %in% record_agbd)
+height_obs <- if (!is.null(L0$height)) {
+  filter(L0$height, !is.na(diam_cm), !is.na(height_m))
+} else {
+  filter(L0$stem, !is.na(diam_cm), !is.na(height_m))
+}
+p_height <- ggplot()
+if (nrow(height_obs) > 0) {
+  p_height <- p_height +
+    geom_point(data = height_obs, aes(x = diam_cm, y = height_m, colour = "Measured"),
+      size = 0.8, alpha = 0.5, shape = 16)
+}
+p_height <- p_height +
+  geom_point(data = height_pred_fig, aes(x = diam_cm, y = height_m_pred, 
+    colour = "Predicted"), size = 0.6, alpha = 0.3, shape = 16)
+if (param$height_method == "field") {
+  height_curve <- data.frame(diam_cm = seq(min(height_obs$diam_cm), 
+    max(height_obs$diam_cm), length.out = 200))
+  height_curve$height_m <- retrieveH(D = height_curve$diam_cm, model = height_mod)$H
+  p_height <- p_height +
+    geom_line(data = height_curve, aes(x = diam_cm, y = height_m, 
+      colour = "Fitted model"), linewidth = 0.7)
+}
+p_height +
+  scale_colour_manual(NULL, 
+    values = c("Measured" = fig_pal$series[2], "Predicted" = fig_pal$series[1], 
+      "Fitted model" = fig_pal$ink),
+    breaks = c("Measured", "Predicted", "Fitted model")) +
+  guides(colour = guide_legend(override.aes = list(alpha = 1, size = 2))) +
   labs(
-    x = "Stem diameter (cm)",
-    y = "Predicted stem height (m)")
+    title = "Stem height against diameter",
+    x = "Diameter (cm)", 
+    y = "Height (m)") +
+  themeFig()
 ```
 
 ## Estimate stem AGB 
@@ -924,7 +1173,8 @@ stem volume (`volume_m3`).
 ```{r}
 # Stems which form multi-stemmed trees. If `multi_stem_method` is "stem", AGB
 # is estimated for each stem separately
-record_agbd <- agbdFilter(L0$stem, L0$plot, recordFilter(L0$stem, L0$plot),
+record_agbd <- agbdFilter(L0$stem, L0$plot, 
+  recordFilter(L0$stem, L0$plot, missing_diam = param$missing_diam_method == "impute"),
   diam_min_cm = param$agbd_diam_min_cm,
   include_broken = param$include_broken)
 tree_include <- if (param$multi_stem_method == "equivalent") record_agbd else character(0)
@@ -954,18 +1204,24 @@ if (any(tree$n_taxa > 1)) {
 }
 
 # Estimate tree-level AGB
+# computeAGB() returns a vector of tree AGB in Mg. Stems without a diameter,
+# see `missing_diam_method` in param.yaml, have no AGB estimate here. Their 
+# diameters are imputed during AGB error propagation
+muffleNA <- function(w) {
+  if (grepl("NA values in D", conditionMessage(w))) invokeRestart("muffleWarning")
+}
 if (param$height_method == "regional") {
   tree <- left_join(tree, p_cent, by = "plot_id")
   stopifnot(all(!is.na(tree$X)))
-  tree$agb_Mg <- BIOMASS::computeAGB(
+  tree$agb_Mg <- withCallingHandlers(BIOMASS::computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
-    coord = as.matrix(tree[, c("X", "Y")]))
+    coord = as.matrix(tree[, c("X", "Y")])), warning = muffleNA)
 } else if (param$height_method == "field") {
-  tree$agb_Mg <- BIOMASS::computeAGB(
+  tree$agb_Mg <- withCallingHandlers(BIOMASS::computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
-    H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H)
+    H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H), warning = muffleNA)
 }
 
 # Share tree AGB among stems
@@ -992,15 +1248,103 @@ ggplot(stem_agb_all, aes(x = agb_Mg)) +
     y = "N stems")
 ```
 
+We summarise the AGB of stems used to estimate AGB density in each plot,
+using the nominal plot area, and list the trees with the largest AGB, which
+may indicate data errors, e.g. diameters in mm rather than cm. Quadrat-level
+AGB density, from the fitted plot polygons, is estimated in [Estimate
+quadrat AGBD and propagate error].
+
 ```{r}
-#| fig-cap: "Relationship between stem basal area and above-ground woody biomass (AGB) estimates."
-# Visualise relationship between basal area and AGB
-ggplot(stem_agb_all, aes(x = ba_m2, y = agb_Mg)) + 
-  geom_point(alpha = 0.5) + 
-  theme_bw() + 
+#| tab-cap: "AGB density in each plot, using nominal plot area."
+# Summarise AGB of stems used to estimate AGB density in each plot
+agb_plot <- L0$stem %>%
+  dplyr::select(record_id, plot_id) %>%
+  inner_join(., stem_agb_all, by = "record_id") %>%
+  filter(as.character(record_id) %in% record_agbd) %>%
+  group_by(plot_id) %>%
+  summarise(
+    n_stem = n(),
+    agb_Mg = sum(agb_Mg, na.rm = TRUE),
+    ba_m2 = sum(ba_m2, na.rm = TRUE),
+    .groups = "drop") %>%
+  # Plots with no stems used to estimate AGB density have zero AGB
+  right_join(., dplyr::select(L0$plot, plot_id, plot_length_m, plot_width_m), 
+    by = "plot_id") %>%
+  mutate(
+    across(c(n_stem, agb_Mg, ba_m2), ~ifelse(is.na(.x), 0, .x)),
+    area_ha = plot_length_m * plot_width_m / 10000,
+    agbd_Mg_ha = agb_Mg / area_ha,
+    ba_m2_ha = ba_m2 / area_ha) %>%
+  dplyr::select(plot_id, n_stem, area_ha, agb_Mg, agbd_Mg_ha, ba_m2_ha) %>%
+  arrange(desc(agbd_Mg_ha))
+
+kable(agb_plot, digits = 2)
+```
+
+```{r}
+#| tab-cap: "Trees with the largest AGB."
+# Largest trees, which may indicate data errors, e.g. diameter in mm not cm
+tree_large <- tree %>%
+  filter(!is.na(agb_Mg)) %>%
+  arrange(desc(agb_Mg)) %>%
+  head(10) %>%
+  dplyr::select(tree_key, plot_id, diam_eq_cm, meanWD, agb_Mg)
+
+kable(tree_large, digits = 3)
+```
+
+```{r}
+#| fig-cap: "Tree AGB against diameter, on log scales, using the equivalent diameter of multi-stemmed trees. Points far from the main cloud may be data errors."
+#| fig-width: 8
+#| fig-height: 6
+# Figure of tree AGB against equivalent diameter
+tree_check <- filter(tree, !is.na(agb_Mg), agb_Mg > 0, diam_eq_cm > 0)
+p_agb <- ggplot(tree_check, aes(x = diam_eq_cm, y = agb_Mg)) +
+  geom_point(colour = fig_pal$series[1], size = 0.6, alpha = 0.3, shape = 16) +
+  scale_x_log10() +
+  scale_y_log10() +
   labs(
-    x = expression("Basal area"~(m^2)),
-    y = "Above-ground woody biomass (Mg)")
+    title = "Tree AGB against diameter",
+    x = "Diameter (cm)",
+    y = "AGB (Mg)") +
+  themeFig()
+p_agb
+```
+
+```{r}
+#| fig-cap: "Share of AGB in each 10 cm diameter class, for trees used to estimate AGB density, using the equivalent diameter of multi-stemmed trees. Numbers above the bars are the number of trees in each class."
+#| fig-width: 8
+#| fig-height: 5
+# Figure of the share of AGB in each diameter class, for trees used to
+# estimate AGB density, all plots. Classes from `diam_class_max_cm` upwards
+# are combined
+diam_class_cm <- 10
+diam_class_max_cm <- 150
+tree_agbd <- tree %>%
+  filter(tree_key %in% stem_all$tree_key[as.character(stem_all$record_id) %in% record_agbd],
+    !is.na(agb_Mg))
+diam_class <- tree_agbd %>%
+  mutate(diam_class = pmin(floor(diam_eq_cm / diam_class_cm) * diam_class_cm, 
+    diam_class_max_cm)) %>%
+  group_by(diam_class) %>%
+  summarise(n_tree = n(), agb_Mg = sum(agb_Mg), .groups = "drop") %>%
+  mutate(
+    pct_agb = 100 * agb_Mg / sum(agb_Mg),
+    label = ifelse(diam_class == diam_class_max_cm, paste0(diam_class_max_cm, "+"),
+      paste0(diam_class, "-", diam_class + diam_class_cm)),
+    label = factor(label, levels = label))
+p_diam_class <- ggplot(diam_class, aes(x = label, y = pct_agb)) +
+  geom_col(fill = fig_pal$series[1], width = 0.8) +
+  geom_text(aes(label = format(n_tree, big.mark = ",", trim = TRUE)),
+    vjust = -0.4, size = 3, colour = fig_pal$ink_muted) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(
+    title = "Share of AGB by diameter class",
+    x = "Diameter class (cm)",
+    y = "Share of AGB (%)") +
+  themeFig() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p_diam_class
 ```
 
 ::: {.callout-warning title="TODO"}
@@ -1026,23 +1370,27 @@ density in each 50x50 m quadrat.
 
 We apply the following filters:
 
-* Remove stems with no diameter measurement. 
+* Remove stems with no diameter measurement, if `missing_diam_method` is `"exclude"`. 
 * Include only living stems.
 * Include only standing stems.
 * Remove stems that are broken below the diameter Point of Measurement (POM). Stems broken above the POM are included.
 * Remove "missing" stems. I.e. stems which were not measured during the census.
-* Where stems were measured multiple times at multiple POMs, choose the highest POM, latest measurement date, and largest diameter measurement. Stems without a `stem_id` cannot be matched across measurements, so each of their records is treated as a separate stem.
+* Where stems were measured multiple times at multiple POMs, choose the measurement with a diameter, then the highest POM, latest measurement date, and largest diameter measurement. Stems without a `stem_id` cannot be matched across measurements, so each of their records is treated as a separate stem.
 
 Stems with a diameter below the minimum diameter threshold of the plot have
 their own AGB estimates, but are not part of multi-stemmed trees, and are
 excluded when AGB is summed to estimate AGB density, so that AGB density
-matches the sampling of the plot.
+matches the sampling of the plot. Stems without a diameter are assumed to be
+at or above the threshold, as they were recorded in the census.
 
 ```{r}
 # Select stems used to estimate AGB, see `recordFilter()` in func.R
-# Stems without coordinates are kept, and are assigned to quadrats at random
-# during AGB error propagation
-record_fil <- recordFilter(L0$stem, L0$plot)
+# Stems without coordinates are kept, and are placed at random during AGB 
+# error propagation. If `missing_diam_method` is "impute", stems without a 
+# diameter are kept, and their diameters are imputed during AGB error 
+# propagation
+record_fil <- recordFilter(L0$stem, L0$plot, 
+  missing_diam = param$missing_diam_method == "impute")
 
 # Select stems used to estimate AGB density, see `agbdFilter()` in func.R
 # Stems below the minimum diameter threshold, the larger of
@@ -1053,9 +1401,78 @@ record_agbd <- agbdFilter(L0$stem, L0$plot, record_fil,
   include_broken = param$include_broken)
 ```
 
-::: {.callout-warning title="TODO"}
-Estimate missing AGB (missing diameter, missing coordinates) 
-:::
+We summarise why stem records are excluded from AGB estimates and AGB
+density. Each record is counted once, under the first reason which applies,
+in the order of the checks in `recordFilter()` and `agbdFilter()`. "AGB
+only" stems have AGB estimates, but are not included in AGB density.
+
+```{r}
+#| tab-cap: "Stem records used to estimate AGB and AGB density, and reasons for excluding records."
+# Summarise why stem records are excluded from AGB estimates and AGB density
+diam_min <- pmax(L0$plot$meas_diam_min_cm[match(L0$stem$plot_id, L0$plot$plot_id)],
+  param$agbd_diam_min_cm)
+record_status <- L0$stem %>%
+  mutate(
+    status = case_when(
+      as.character(record_id) %in% record_agbd & is.na(diam_cm) ~ 
+        "included in AGB density, diameter imputed",
+      as.character(record_id) %in% record_agbd ~ "included in AGB density",
+      is.na(code) | code == "" ~ "excluded: no code",
+      grepl("M", code) ~ "excluded: missing",
+      !grepl("A", code) ~ "excluded: dead",
+      !grepl("S", code) ~ "excluded: not standing",
+      grepl("T", code) ~ "excluded: broken below POM",
+      is.na(diam_cm) ~ "excluded: no diameter",
+      !as.character(record_id) %in% record_fil ~ "excluded: repeat measurement of stem",
+      !is.na(diam_min) & !is.na(diam_cm) & diam_cm < diam_min ~ 
+        "AGB only: below diameter threshold",
+      grepl("B", code) & !param$include_broken ~ "AGB only: broken above POM",
+      TRUE ~ "AGB only: other")) %>%
+  count(status, name = "n_record") %>%
+  mutate(pct_record = round(100 * n_record / sum(n_record), 1)) %>%
+  arrange(desc(grepl("^included", status)), desc(n_record))
+
+kable(record_status)
+```
+
+```{r}
+#| fig-cap: "Diameter of stems used to estimate AGB density, all plots, in 5 cm classes."
+#| fig-width: 8
+#| fig-height: 5
+# Figure of the diameter of stems used to estimate AGB density, all plots.
+# Stems without a diameter are not shown
+diam_hist_cm <- 5
+ggplot(filter(L0$stem, as.character(record_id) %in% record_agbd, !is.na(diam_cm)), 
+  aes(x = diam_cm)) +
+  geom_histogram(binwidth = diam_hist_cm, boundary = min(diam_min, na.rm = TRUE),
+    fill = fig_pal$series[1], colour = fig_pal$surface, linewidth = 0.2) +
+  labs(
+    title = "Stem diameter",
+    x = "Diameter (cm)", 
+    y = "Stems") +
+  themeFig()
+```
+
+### Missing measurements
+
+Ideally every live stem would have a diameter and coordinates. Rather than
+excluding stems with missing measurements, which would underestimate AGBD,
+the uncertainty in their size or location is propagated to quadrat AGBD:
+
+* Stems without a diameter, if `missing_diam_method` is `"impute"`, have
+  their diameter imputed in each Monte Carlo simulation by
+  `BIOMASS::AGBmonteCarlo()`, from the simulated diameter of a tree drawn at
+  random from the other trees in the same plot. Their height and AGB are estimated
+  from the imputed diameter. They have no AGB estimate in [Estimate stem
+  AGB].
+* Stems without coordinates in trees where other stems have coordinates are
+  given the mean coordinates of the other stems of the tree, see [Fit plot
+  spatial polygons].
+* Trees where no stems have coordinates, if `unmapped_method` is `"random"`,
+  are placed at a random location within their field subplot, if its
+  position is known, otherwise within their plot, in each simulation, by
+  `BIOMASS::subplot_summary()`, see [Estimate quadrat AGBD and propagate
+  error].
 
 ## Fit plot spatial polygons
 
@@ -1135,14 +1552,35 @@ if (length(unique(pt_fit$crs_epsg)) > 1) {
 }
 ```
 
+Stems without coordinates in trees where other stems have coordinates are
+given the mean coordinates of the other stems of the tree:
+
+```{r}
+# Stems without coordinates in trees where other stems have coordinates are
+# given the mean coordinates of the other stems of the tree. Trees are 
+# identified by `tree_id` within each plot
+stem_xy <- L0$stem %>%
+  mutate(tree_grp = ifelse(is.na(tree_id) | tree_id == "",
+    paste0("record::", record_id), paste(plot_id, tree_id, sep = "::"))) %>%
+  group_by(tree_grp) %>%
+  mutate(
+    xy_ok = !is.na(x_rel_m) & !is.na(y_rel_m),
+    xy_from_tree = !xy_ok & any(xy_ok),
+    x_rel_m = ifelse(xy_from_tree, mean(x_rel_m[xy_ok]), x_rel_m),
+    y_rel_m = ifelse(xy_from_tree, mean(y_rel_m[xy_ok]), y_rel_m)) %>%
+  ungroup() %>%
+  dplyr::select(-tree_grp, -xy_ok)
+sum(stem_xy$xy_from_tree)
+```
+
 ```{r}
 # Select only relevant columns from stems dataframe
 # Filter to only plots with spatial coordinates
 # Multi-stemmed trees are assigned to the quadrat containing the centroid of
 # their stems, so `x_quad` and `y_quad` are used to assign quadrats, while
 # stem locations are kept
-stem_sel <- L0$stem %>%
-  left_join(., treeEquiv(L0$stem, tree_include)[, c("record_id", "tree_key")],
+stem_sel <- stem_xy %>%
+  left_join(., treeEquiv(stem_xy, tree_include)[, c("record_id", "tree_key")],
     by = "record_id") %>%
   dplyr::select(record_id, plot_id, tree_key, x_rel_m, y_rel_m) %>%
   filter(
@@ -1158,7 +1596,6 @@ stem_sel <- L0$stem %>%
 ```
 
 ```{r}
-#| fig-cap: "Fitted plot polygon and stem coordinates transformed to local UTM coordinate reference system."
 # Extract plot corners
 plot_check <- BIOMASS::plotPolygonFit(
   point_data = pt_fit,
@@ -1177,7 +1614,7 @@ plot_check <- BIOMASS::plotPolygonFit(
   shapefile = NULL,
   prop_tree = NULL,
   threshold_tree = NULL, 
-  draw_plot = TRUE,
+  draw_plot = FALSE,
   ask = FALSE)
 ```
 
@@ -1332,6 +1769,14 @@ if (nrow(stem_sel) > 0) {
   # Mark stems in strips left out of the quadrat grid
   grid_excl_idx <- out_idx[stem_outside$action == "excluded, in plot outside quadrat grid"]
   plot_divide$tree_data$grid_excl[grid_excl_idx] <- TRUE
+  stem_outside <- filter(stem_outside, action != "excluded, in plot outside quadrat grid")
+
+  # Stems outside the quadrat grid, to check raw data
+  stem_outside <- stem_xy %>%
+    dplyr::select(record_id, plot_id, tree_id, stem_id, x_rel_m, y_rel_m,
+      diam_cm, code) %>%
+    inner_join(., stem_outside, by = "record_id") %>%
+    arrange(desc(dist_m))
 }
 
 # Create plot polygons 
@@ -1375,16 +1820,19 @@ if (nrow(stem_sel) > 0) {
       y_utm = y_proj) %>%
     filter(!is.na(x_proj), !is.na(y_proj)) %>%
     st_as_sf(., coords = c("x_proj", "y_proj"), crs = crs_site) %>%
+    mutate(xy_from_tree = stem_xy$xy_from_tree[match(record_id, stem_xy$record_id)]) %>%
     dplyr::select(
       record_id,
       quadrat_id = subplot_ID,
       grid_excl,
+      xy_from_tree,
       x_utm, y_utm)
 } else {
   stem_pt <- st_sf(
     record_id = integer(0),
     quadrat_id = character(0),
     grid_excl = logical(0),
+    xy_from_tree = logical(0),
     x_utm = numeric(0),
     y_utm = numeric(0),
     geometry = st_sfc(crs = crs_site))
@@ -1396,15 +1844,435 @@ if (nrow(stem_sel) > 0) {
 kable(head(quad_poly))
 ```
 
+We summarise the fitted plot polygons. The area of the fitted polygon should
+be close to the area defined by the relative coordinates of the plot corners.
+A large difference suggests errors in the corner coordinates.
+`grid_excl_pct` is the percentage of the plot area left out of the quadrat
+grid. In the automated workflow this table is written to
+`07_quad/plot_poly_check.csv`.
+
 ```{r}
-#| fig-cap: "Map of the fitted plot polygon (blue polygon), quadrats (red polygons), and a sample of 100 stems coloured by their quadrat ID."
-# Visualise the plot polygon, quadrat polygon, and stems assigned to quadrats
-ggplot() + 
-  geom_sf(data = plot_poly, colour = "blue", fill = NA, linewidth = 2) + 
-  geom_sf(data = quad_poly, colour = "red", fill = NA) + 
-  geom_sf(data = stem_pt %>% slice_sample(n = 100), aes(colour = quadrat_id)) + 
-  theme_bw() + 
-  theme(legend.position = "none")
+#| tab-cap: "Fitted plot polygons, compared to the area defined by the relative coordinates of the plot corners."
+# Summarise plot polygons. The area of the fitted polygon should be close to
+# the area defined by the relative coordinates of the plot corners. A large
+# difference suggests errors in the corner coordinates. `grid_excl_pct` is 
+# the percentage of the plot area left out of the quadrat grid
+corner_rel <- pt_fit %>%
+  filter(corner %in% TRUE) %>%
+  distinct(plot_id, x_rel_m, y_rel_m)
+area_rel <- vapply(split(corner_rel, corner_rel$plot_id), function(x) {
+  as.numeric(st_area(st_convex_hull(st_multipoint(
+    as.matrix(x[, c("x_rel_m", "y_rel_m")]))))) / 10000
+}, numeric(1))
+
+outliers <- if (is.null(plot_check$outliers)) {
+  data.frame(plot_ID = character(0), x_proj = numeric(0), y_proj = numeric(0))
+} else {
+  plot_check$outliers
+}
+
+poly_check <- data.frame(
+  plot_id = as.character(plot_poly$plot_id),
+  area_ha_poly = as.numeric(st_area(plot_poly)) / 10000) %>%
+  mutate(
+    area_ha_rel = unname(area_rel[plot_id]),
+    area_diff_pct = round(100 * (area_ha_poly - area_ha_rel) / area_ha_rel, 1),
+    n_gnss = as.vector(table(pt_fit$plot_id)[plot_id]),
+    n_gnss_outlier = as.vector(table(factor(outliers$plot_ID, levels = plot_id))),
+    n_quadrat = as.vector(table(factor(quad_poly$plot_id, levels = plot_id))),
+    area_ha_quad = as.vector(tapply(as.numeric(st_area(quad_poly)) / 10000,
+      factor(quad_poly$plot_id, levels = plot_id), sum)),
+    grid_excl_pct = round(100 * (1 - area_ha_quad / area_ha_poly), 1)) %>%
+  arrange(plotFactor(plot_id))
+if (nrow(stem_sel) > 0) {
+  stem_grid_excl <- stem_sel$plot_id[stem_sel$record_id %in% 
+    plot_divide$tree_data$record_id[plot_divide$tree_data$grid_excl]]
+  poly_check <- poly_check %>%
+    mutate(
+      n_stem_mapped = as.vector(table(factor(stem_sel$plot_id, levels = plot_id))),
+      n_stem_outside = as.vector(table(factor(stem_outside$plot_id, levels = plot_id))),
+      n_stem_grid_excl = as.vector(table(factor(stem_grid_excl, levels = plot_id))))
+}
+
+if (any(abs(poly_check$area_diff_pct) > 5, na.rm = TRUE)) {
+  warning("Fitted polygon area differs from the area defined by the plot ",
+    "corners by more than 5% in plots: ", 
+    paste(poly_check$plot_id[abs(poly_check$area_diff_pct) > 5], collapse = ", "),
+    ". Check plot corner coordinates, see ", 
+    file.path(report_dir, "07_plot_poly.png"), call. = FALSE)
+}
+
+kable(poly_check)
+```
+
+Stems outside the quadrat grid are written to `report/stem_outside.csv` by
+the automated workflow, so that raw data can be corrected if needed.
+
+```{r}
+#| tab-cap: "Stems outside the quadrat grid, with their distance to the nearest quadrat, and whether they were assigned to it or excluded."
+kable(head(stem_outside, 10))
+```
+
+```{r}
+#| fig-cap: "Fitted plot polygons, outlines of the GNSS corners, quadrats, and GNSS points, including outliers removed during polygon fitting."
+#| fig-width: 8
+#| fig-height: 8
+# Figure of plot polygons, quadrats and GNSS points. Coordinates are 
+# relative to the south-west corner of the bounding box of each plot, so that
+# plots can be shown side by side at the same scale
+plot_xy <- polyCoords(plot_poly, "plot_id")
+quad_xy <- polyCoords(quad_poly, "plot_id")
+plot_origin <- plot_xy %>%
+  group_by(plot_id) %>%
+  summarise(x0 = min(X), y0 = min(Y), .groups = "drop")
+
+gnss_xy <- pt_fit %>%
+  filter(!is.na(rover_easting_utm_m), !is.na(rover_northing_utm_m)) %>%
+  transmute(
+    plot_id = as.character(plot_id), 
+    X = rover_easting_utm_m, 
+    Y = rover_northing_utm_m,
+    type = ifelse(corner %in% TRUE, "GNSS point, corner", "GNSS point, other"))
+outlier_xy <- transmute(outliers, plot_id = as.character(plot_ID), X = x_proj, 
+  Y = y_proj, type = "Outlier, removed")
+pt_xy <- bind_rows(gnss_xy, outlier_xy)
+
+# Outline of the GNSS corners of each plot, from the mean of repeated
+# measurements of each corner, ordered around the plot
+corner_raw <- pt_fit %>%
+  filter(corner %in% TRUE, !is.na(rover_easting_utm_m), 
+    !is.na(rover_northing_utm_m)) %>%
+  mutate(plot_id = as.character(plot_id)) %>%
+  group_by(plot_id, x_rel_m, y_rel_m) %>%
+  summarise(X = mean(rover_easting_utm_m), Y = mean(rover_northing_utm_m), 
+    .groups = "drop") %>%
+  group_by(plot_id) %>%
+  filter(n() >= 3) %>%
+  mutate(angle = atan2(y_rel_m - mean(y_rel_m), x_rel_m - mean(x_rel_m))) %>%
+  ungroup() %>%
+  arrange(plot_id, angle) %>%
+  mutate(group = plot_id)
+
+pt_type <- c(
+  "GNSS point, corner" = fig_pal$series[1], 
+  "GNSS point, other" = fig_pal$series[2],
+  "Outlier, removed" = fig_pal$problem)
+pt_type <- pt_type[names(pt_type) %in% pt_xy$type]
+
+p_poly <- ggplot() +
+  # Wider than the fitted polygon, so that it is visible where they overlap
+  geom_polygon(data = localXY(corner_raw, "X", "Y", "plot_id", plot_origin),
+    aes(x = X, y = Y, group = group), 
+    fill = NA, colour = fig_pal$series[1], linewidth = 1.4) +
+  geom_polygon(data = localXY(quad_xy, "X", "Y", "plot_id", plot_origin),
+    aes(x = X, y = Y, group = group), 
+    fill = NA, colour = fig_pal$line_muted, linewidth = 0.3) +
+  geom_polygon(data = localXY(plot_xy, "X", "Y", "plot_id", plot_origin),
+    aes(x = X, y = Y, group = group), 
+    fill = NA, colour = fig_pal$ink, linewidth = 0.5) +
+  geom_point(data = localXY(pt_xy, "X", "Y", "plot_id", plot_origin),
+    aes(x = X, y = Y, colour = type, shape = type), size = 3.5, stroke = 1.2) +
+  scale_colour_manual(NULL, values = pt_type, breaks = names(pt_type)) +
+  scale_shape_manual(NULL, values = c("GNSS point, corner" = 16, 
+    "GNSS point, other" = 16, "Outlier, removed" = 4)[names(pt_type)],
+    breaks = names(pt_type)) +
+  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(nrow(plot_origin))) +
+  coord_equal() +
+  labs(
+    title = "Plot polygons, quadrats and GNSS points",
+    x = "Easting (m)",
+    y = "Northing (m)") +
+  themeMap()
+p_poly
+```
+
+```{r}
+#| fig-cap: "Stem locations within the quadrat grid of each plot, with plot outlines, highlighting stems outside the plot, and stems in strips left out of the quadrat grid."
+#| fig-width: 8
+#| fig-height: 8
+# Figure of stem locations within the quadrat grid, in plot coordinates
+if (nrow(stem_sel) > 0) {
+  quad_rel <- plot_divide$sub_corner_coord %>%
+    group_by(plot_id = as.character(plot_ID), subplot_ID) %>%
+    summarise(
+      x_min = min(x_rel), x_max = max(x_rel),
+      y_min = min(y_rel), y_max = max(y_rel),
+      .groups = "drop")
+
+  stem_map_rel <- stem_sel %>%
+    mutate(plot_id = as.character(plot_id)) %>%
+    left_join(., dplyr::select(stem_outside, record_id, action), 
+      by = "record_id") %>%
+    left_join(., dplyr::select(plot_divide$tree_data, record_id, grid_excl),
+      by = "record_id") %>%
+    mutate(type = case_when(
+      grid_excl %in% TRUE ~ "In plot, left out of quadrat grid",
+      is.na(action) ~ "Stem, in quadrat grid",
+      action == "excluded" ~ "Outside grid, excluded",
+      TRUE ~ "Outside grid, assigned to nearest quadrat"))
+
+  stem_type <- c(
+    "Stem, in quadrat grid" = fig_pal$series[1],
+    "In plot, left out of quadrat grid" = fig_pal$line_muted,
+    "Outside grid, assigned to nearest quadrat" = fig_pal$warn,
+    "Outside grid, excluded" = fig_pal$problem)
+  stem_type <- stem_type[names(stem_type) %in% stem_map_rel$type]
+  stem_in_plot <- c("Stem, in quadrat grid", "In plot, left out of quadrat grid")
+  n_plot_stem <- length(unique(stem_map_rel$plot_id))
+
+  # Stems far outside the quadrat grid, e.g. with coordinate errors, are
+  # shown at the edge of the map, so that plots are large enough to see
+  map_x <- range(c(quad_rel$x_min, quad_rel$x_max, plot_ext$x_min, plot_ext$x_max))
+  map_y <- range(c(quad_rel$y_min, quad_rel$y_max, plot_ext$y_min, plot_ext$y_max))
+  map_margin <- 0.1 * max(diff(map_x), diff(map_y))
+  map_x <- map_x + c(-1, 1) * map_margin
+  map_y <- map_y + c(-1, 1) * map_margin
+  stem_map_rel <- stem_map_rel %>%
+    mutate(
+      edge = ifelse(x_rel_m < map_x[1] | x_rel_m > map_x[2] | 
+        y_rel_m < map_y[1] | y_rel_m > map_y[2], 
+        "Beyond map edge, shown at edge", "Within map"),
+      # Inset from the edge, so that points are not clipped
+      x_rel_m = pmin(pmax(x_rel_m, map_x[1] + 0.25 * map_margin), 
+        map_x[2] - 0.25 * map_margin),
+      y_rel_m = pmin(pmax(y_rel_m, map_y[1] + 0.25 * map_margin), 
+        map_y[2] - 0.25 * map_margin))
+
+  p_stem <- ggplot() +
+    geom_rect(data = filter(quad_rel, plot_id %in% stem_map_rel$plot_id),
+      aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max),
+      fill = NA, colour = fig_pal$line_muted, linewidth = 0.3) +
+    geom_rect(data = filter(mutate(plot_ext, plot_id = as.character(plot_ID)), 
+      plot_id %in% stem_map_rel$plot_id),
+      aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max),
+      fill = NA, colour = fig_pal$ink, linewidth = 0.4) +
+    geom_point(data = filter(stem_map_rel, type %in% stem_in_plot),
+      aes(x = x_rel_m, y = y_rel_m, colour = type), 
+      size = 0.8, alpha = 0.7, shape = 16) +
+    scale_colour_manual(NULL, values = stem_type, breaks = names(stem_type)) +
+    guides(colour = guide_legend(order = 1,
+      override.aes = list(size = 2, alpha = 1, shape = 16)))
+  # Stems outside the plot, only if there are any, as an empty layer gives a
+  # warning from the shape scale
+  if (any(!stem_map_rel$type %in% stem_in_plot)) {
+    p_stem <- p_stem +
+      geom_point(data = filter(stem_map_rel, !type %in% stem_in_plot),
+        aes(x = x_rel_m, y = y_rel_m, colour = type, shape = edge), size = 2.4) +
+      scale_shape_manual(NULL, values = c("Within map" = 16,
+        "Beyond map edge, shown at edge" = 17),
+        breaks = intersect("Beyond map edge, shown at edge", stem_map_rel$edge)) +
+      guides(shape = guide_legend(order = 2,
+        override.aes = list(size = 2, colour = fig_pal$ink_muted)))
+  }
+  p_stem <- p_stem +
+    facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_stem)) +
+    coord_equal(xlim = map_x, ylim = map_y, expand = FALSE) +
+    labs(
+      title = "Stem locations and quadrats",
+      x = "X (m)",
+      y = "Y (m)") +
+    themeMap()
+  print(p_stem)
+}
+```
+
+Where the site supplies the bounds of field subplots, in the optional subplot
+table, stems are checked against the bounds of their field subplot. Stems
+outside them are written to `report/stem_outside_subplot.csv` by the
+automated workflow, as either the coordinates or the field subplot of the
+stem may be wrong. The bounds are also used to place trees without
+coordinates, see [Estimate quadrat AGBD and propagate error]. The field
+subplots of the example data are 20x20 m.
+
+```{r}
+subplot <- mutate(L0$subplot, plot_id = as.character(plot_id))
+
+# Stems with a field subplot. Stems given the coordinates of their tree are
+# not checked
+stem_sub <- stem_xy %>%
+  filter(!is.na(subplot_id), subplot_id != "") %>%
+  mutate(plot_id = as.character(plot_id)) %>%
+  left_join(., dplyr::select(subplot, plot_id, subplot_id, x_rel_min_m, 
+    x_rel_max_m, y_rel_min_m, y_rel_max_m), by = c("plot_id", "subplot_id")) %>%
+  mutate(
+    mapped = !is.na(x_rel_m) & !is.na(y_rel_m) & !xy_from_tree,
+    in_table = !is.na(x_rel_min_m),
+    # Distance from the stem to the nearest edge of its field subplot
+    dist_m = sqrt(
+      pmax(x_rel_min_m - x_rel_m, 0, x_rel_m - x_rel_max_m)^2 +
+      pmax(y_rel_min_m - y_rel_m, 0, y_rel_m - y_rel_max_m)^2),
+    inside = mapped & in_table & dist_m == 0)
+
+# Stems outside the bounds of their field subplot, with the field subplot
+# whose bounds contain them, if any
+stem_outside_sub <- filter(stem_sub, mapped, !inside)
+stem_outside_sub$subplot_id_contain <- mapply(function(p, x, y) {
+  i <- which(subplot$plot_id == p & 
+    x >= subplot$x_rel_min_m & x <= subplot$x_rel_max_m &
+    y >= subplot$y_rel_min_m & y <= subplot$y_rel_max_m)
+  if (length(i) == 0) NA_character_ else subplot$subplot_id[i[1]]
+}, stem_outside_sub$plot_id, stem_outside_sub$x_rel_m, 
+  stem_outside_sub$y_rel_m, USE.NAMES = FALSE)
+stem_outside_sub <- stem_outside_sub %>%
+  transmute(record_id, plot_id, tree_id, stem_id, subplot_id, x_rel_m, 
+    y_rel_m, diam_cm, code, x_rel_min_m, x_rel_max_m, y_rel_min_m, 
+    y_rel_max_m, dist_m = round(dist_m, 2), 
+    subplot_id_contain = as.character(subplot_id_contain),
+    issue = ifelse(in_table, "outside subplot bounds", 
+      "subplot not in subplot table")) %>%
+  arrange(plotFactor(plot_id), desc(dist_m))
+
+if (nrow(stem_outside_sub) > 0) {
+  message(sum(stem_outside_sub$issue == "outside subplot bounds"), 
+    " stems with coordinates outside the bounds of their field subplot, and ",
+    sum(stem_outside_sub$issue != "outside subplot bounds"), 
+    " stems in field subplots not in the subplot table. See ",
+    file.path(report_dir, "stem_outside_subplot.csv"))
+}
+```
+
+```{r}
+#| tab-cap: "Stems with coordinates outside the bounds of their field subplot, with their distance to the nearest edge of the subplot, and the field subplot whose bounds contain them, if any."
+kable(head(stem_outside_sub, 10))
+```
+
+We summarise each field subplot, and each plot. `pct_in` is the percentage
+of stems with coordinates within the bounds of their subplot, and
+`pct_in_min` the lowest of any subplot in the plot. In the automated
+workflow the summary of each field subplot is written to
+`07_quad/subplot_check.csv`.
+
+```{r}
+# Summarise each field subplot. Stems without coordinates are those of 
+# trees where no stems have coordinates
+subplot_check <- subplot %>%
+  dplyr::select(plot_id, subplot_id, x_rel_min_m, x_rel_max_m, y_rel_min_m,
+    y_rel_max_m) %>%
+  left_join(., stem_sub %>%
+    group_by(plot_id, subplot_id) %>%
+    summarise(
+      n_stem_mapped = sum(mapped),
+      n_stem_outside = sum(mapped & !inside),
+      n_stem_unmapped = sum(is.na(x_rel_m) | is.na(y_rel_m)),
+      .groups = "drop"),
+    by = c("plot_id", "subplot_id")) %>%
+  mutate(
+    across(starts_with("n_stem"), ~ifelse(is.na(.x), 0L, .x)),
+    dim_x_m = x_rel_max_m - x_rel_min_m,
+    dim_y_m = y_rel_max_m - y_rel_min_m,
+    pct_in = round(100 * (1 - n_stem_outside / n_stem_mapped), 1)) %>%
+  arrange(plotFactor(plot_id), suppressWarnings(as.numeric(subplot_id)), 
+    subplot_id)
+```
+
+```{r}
+#| tab-cap: "Field subplots in each plot, from the subplot table."
+subplot_plot <- subplot_check %>%
+  group_by(plot_id) %>%
+  summarise(
+    n_subplot = n(),
+    subplot_dim_m = paste(unique(paste(dim_x_m, "x", dim_y_m)), 
+      collapse = ", "),
+    pct_in_min = suppressWarnings(min(pct_in, na.rm = TRUE)),
+    n_stem_mapped = sum(n_stem_mapped),
+    n_stem_outside = sum(n_stem_outside),
+    pct_in = round(100 * (1 - n_stem_outside / n_stem_mapped), 1),
+    n_stem_unmapped = sum(n_stem_unmapped),
+    .groups = "drop") %>%
+  mutate(pct_in_min = ifelse(is.infinite(pct_in_min), NA, pct_in_min)) %>%
+  arrange(plotFactor(plot_id))
+
+kable(subplot_plot)
+```
+
+```{r}
+#| tab-cap: "Field subplots where fewer than 90% of stems are within the bounds."
+kable(dplyr::select(filter(subplot_check, pct_in < 90), plot_id, subplot_id,
+  x_rel_min_m, x_rel_max_m, y_rel_min_m, y_rel_max_m, n_stem_mapped, pct_in))
+```
+
+```{r}
+#| fig-cap: "Field subplots in each plot, labelled with their ID and filled by the percentage of stems with coordinates outside their bounds. Stems outside their subplot are shown in red, joined to the nearest edge of their subplot. Stems far outside are shown at the edge of the map. Subplots without stems with coordinates are grey."
+#| fig-width: 8
+#| fig-height: 8
+# Figure of field subplots in each plot, filled by the percentage of stems
+# outside their bounds, with stems outside joined to the nearest edge of
+# their subplot. Stems far outside the subplots of their plot, e.g. with 
+# coordinate errors, are shown at the edge of the map
+sub_fig <- subplot_check %>%
+  filter(n_stem_mapped > 0) %>%
+  mutate(pct_out = 100 - pct_in)
+if (nrow(sub_fig) > 0) {
+  sub_fig <- filter(subplot_check, plot_id %in% sub_fig$plot_id) %>%
+    mutate(
+      pct_out = 100 - pct_in,
+      x_mid = (x_rel_min_m + x_rel_max_m) / 2,
+      y_mid = (y_rel_min_m + y_rel_max_m) / 2)
+  # Map extent includes the plot corners, as the subplot table may not
+  # cover the whole plot
+  sub_ext <- bind_rows(
+    dplyr::select(sub_fig, plot_id, x_rel_min_m, x_rel_max_m, y_rel_min_m, 
+      y_rel_max_m),
+    corner_rel %>%
+      filter(plot_id %in% sub_fig$plot_id) %>%
+      transmute(plot_id = as.character(plot_id), x_rel_min_m = x_rel_m, 
+        x_rel_max_m = x_rel_m, y_rel_min_m = y_rel_m, 
+        y_rel_max_m = y_rel_m)) %>%
+    group_by(plot_id) %>%
+    summarise(
+      x0 = min(x_rel_min_m), x1 = max(x_rel_max_m),
+      y0 = min(y_rel_min_m), y1 = max(y_rel_max_m),
+      .groups = "drop") %>%
+    mutate(m = 0.1 * pmax(x1 - x0, y1 - y0))
+  sub_extent <- with(sub_ext, data.frame(
+    plot_id = rep(plot_id, 2),
+    x = c(x0 - m, x1 + m),
+    y = c(y0 - m, y1 + m)))
+  out_fig <- stem_outside_sub %>%
+    filter(issue == "outside subplot bounds", plot_id %in% sub_fig$plot_id) %>%
+    left_join(., sub_ext, by = "plot_id") %>%
+    mutate(
+      x_rel_m = pmin(pmax(x_rel_m, x0 - 0.75 * m), x1 + 0.75 * m),
+      y_rel_m = pmin(pmax(y_rel_m, y0 - 0.75 * m), y1 + 0.75 * m),
+      x_edge = pmin(pmax(x_rel_m, x_rel_min_m), x_rel_max_m),
+      y_edge = pmin(pmax(y_rel_m, y_rel_min_m), y_rel_max_m))
+  n_plot_sub <- nrow(sub_ext)
+  # Labels are light on the darkest fills
+  pct_out_lim <- c(0, max(c(sub_fig$pct_out, 1), na.rm = TRUE))
+  sub_fig$label_colour <- ifelse(sub_fig$pct_out %in% NA | 
+    sub_fig$pct_out < 0.6 * pct_out_lim[2], fig_pal$ink, fig_pal$surface)
+  # Labels are smaller in plots with many subplots, so that they fit
+  sub_label_size <- min(3.2, 32 / sqrt(max(table(sub_fig$plot_id))))
+
+  p_sub <- ggplot() +
+    geom_blank(data = squareExtent(sub_extent, "x", "y", "plot_id"),
+      aes(x = x, y = y)) +
+    geom_rect(data = sub_fig,
+      aes(xmin = x_rel_min_m, xmax = x_rel_max_m, ymin = y_rel_min_m, 
+        ymax = y_rel_max_m, fill = pct_out),
+      colour = fig_pal$surface, linewidth = 0.3) +
+    scale_fill_gradientn("Stems outside the bounds of their subplot (%)",
+      colours = fig_pal$seq, limits = pct_out_lim, na.value = fig_pal$grid,
+      guide = colourBar()) +
+    geom_segment(data = out_fig, 
+      aes(x = x_rel_m, y = y_rel_m, xend = x_edge, yend = y_edge),
+      colour = fig_pal$problem, linewidth = 0.3, alpha = 0.6) +
+    geom_point(data = out_fig, aes(x = x_rel_m, y = y_rel_m), 
+      colour = fig_pal$problem, size = 0.9, shape = 16) +
+    geom_text(data = sub_fig, 
+      aes(x = x_mid, y = y_mid, label = subplot_id, colour = label_colour),
+      size = sub_label_size) +
+    scale_colour_identity() +
+    facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_sub),
+      scales = "free") +
+    labs(
+      title = "Field subplots",
+      x = "X (m)",
+      y = "Y (m)") +
+    themeMap() +
+    theme(aspect.ratio = 1)
+  print(p_sub)
+}
 ```
 
 ## Estimate quadrat AGBD and propagate error
@@ -1442,14 +2310,23 @@ a stem-level uncertainty estimate.
 different numbers of quadrats and a quadrat contains no stems,
 `subplot_summary()` can assign AGBD = 0 to quadrats which contain stems.
 
-Ideally all stems would have coordinates. Stems without coordinates in a
-tree where other stems have coordinates are assigned to the quadrat of the
-tree. Trees where no stems have coordinates are assigned to a random quadrat
-in their plot in each simulation, with probability proportional to quadrat
-area. This keeps their AGB in the plot,
-and adds the uncertainty in their location to the quadrat AGBD estimates. A
-plot where no stems have coordinates gives a similar AGBD in every quadrat,
-with a wider confidence interval.
+Stems without a diameter have their diameter imputed in each simulation by
+`AGBmonteCarlo()`, from the simulated diameters of the other trees in the
+same call, i.e. the same plot, which can include trees below the minimum
+diameter threshold for AGBD. For very large plots, split into groups of
+quadrats, the trees in the same group of quadrats are used.
+
+Trees where no stems have coordinates are placed at a random location in each
+simulation by `subplot_summary()`, within bounds given by `tree_bounds`, and
+their AGB is added to the quadrat containing that location. The bounds are
+those of the field subplot of the tree, from the optional subplot table, or,
+if the site does not supply it, from the extent of the stems with coordinates
+in the same field subplot, if there are at least 10 of them, otherwise those
+of the plot. Placements in strips of the plot left out of the quadrat grid
+are not included in that simulation. This adds the uncertainty in their
+location to the quadrat AGBD estimates. A plot where no stems have
+coordinates gives a similar AGBD in every quadrat, with a wider confidence
+interval.
 
 A random seed is set so that the results are reproducible.
 
@@ -1493,7 +2370,9 @@ stem_fil <- left_join(stem_fil, treeEquiv(stem_fil, tree_include),
 stem_fil <- stem_fil %>%
   group_by(tree_key) %>%
   mutate(
-    tree_mapped = any(!is.na(x_rel_m) & !is.na(y_rel_m)),
+    # Stems with coordinates, including stems given the mean coordinates of
+    # the other stems of their tree
+    tree_mapped = any(record_id %in% stem_pt$record_id),
     quadrat_id = first(na.omit(quadrat_id)),
     # In a strip of the plot left out of the quadrat grid
     grid_excl = any(grid_excl %in% TRUE)) %>%
@@ -1542,17 +2421,25 @@ value of `diam_error` directly.
 diam_error <- if (identical(param$diam_error, "none")) NULL else param$diam_error
 
 # Run AGB Monte Carlo error propagation on each chunk
+# Missing diameters are imputed from the other trees in the same chunk
 tree_simu_list <- lapply(seq_along(tree_split), function(i) {
   x <- tree_split[[i]]
 
+  # Trees without a diameter can't be imputed if no trees in the chunk have a
+  # diameter, so they are not included in AGB density
+  n_tree <- nrow(x)
+  if (all(is.na(x$diam_eq_cm))) {
+    return(matrix(NA_real_, nrow = n_tree, ncol = nsim))
+  }
+
   # AGBmonteCarlo() fails with a single tree, so duplicate the row and keep
   # the first. Each row of `AGB_simu` is simulated independently
-  n_tree <- nrow(x)
   if (n_tree == 1) {
     x <- x[c(1, 1), ]
   }
 
-  out <- AGBmonteCarlo(
+  # AGBmonteCarlo() warns where missing diameters are imputed
+  out <- withCallingHandlers(AGBmonteCarlo(
     D = x$diam_eq_cm,
     WD = x$meanWD,
     errWD = x$sdWD,
@@ -1563,7 +2450,12 @@ tree_simu_list <- lapply(seq_along(tree_split), function(i) {
     Dpropag = diam_error,
     n = nsim,
     Carbon = FALSE,
-    Dlim = NULL)
+    Dlim = NULL),
+    warning = function(w) {
+      if (grepl("NA values in D", conditionMessage(w))) {
+        invokeRestart("muffleWarning")
+      }
+    })
 
   out$AGB_simu[seq_len(n_tree), , drop = FALSE]
 })
@@ -1584,16 +2476,36 @@ in_agbd <- stem_fil$record_id %in% record_agbd
 
 # Calculate mean and standard deviation of stem AGB
 # Stems used to estimate quadrat AGB density are those in a quadrat, and 
-# stems of trees without coordinates if they are assigned to random quadrats
+# stems of trees without coordinates if they are placed at random. Stems
+# without a diameter which could not be imputed are not included
 agb_Mg_mean <- rowMeans(agb_simu, na.rm = TRUE)
+# Trees without a diameter
+tree_imp <- tree$tree_key[is.na(tree$diam_eq_cm)]
 stem_agb_mc <- data.frame(
   record_id = stem_fil$record_id,
   agb_Mg_mean = agb_Mg_mean,
   agb_Mg_sd = sqrt(rowSums((agb_simu - agb_Mg_mean)^2, na.rm = TRUE) / 
     (rowSums(!is.na(agb_simu)) - 1)),
   quadrat_id_tree = stem_fil$quadrat_id,
-  in_quadrat_calc = in_agbd & ((!unmapped & !is.na(stem_fil$quadrat_id)) |
+  diam_imputed = stem_fil$tree_key %in% tree_imp & is.finite(agb_Mg_mean),
+  in_quadrat_calc = in_agbd & is.finite(agb_Mg_mean) &
+    ((!unmapped & !is.na(stem_fil$quadrat_id)) |
     (unmapped & param$unmapped_method == "random")))
+```
+
+Stems with imputed diameters are written to `report/diam_imputed.csv` by the
+automated workflow, to check raw data.
+
+```{r}
+#| tab-cap: "Stems without a diameter, imputed from the other trees in the same plot."
+diam_imputed <- stem_fil %>%
+  filter(record_id %in% stem_agb_mc$record_id[stem_agb_mc$diam_imputed]) %>%
+  mutate(agb_Mg_mean = agb_Mg_mean[match(record_id, stem_agb_mc$record_id)]) %>%
+  dplyr::select(record_id, plot_id, tree_id, stem_id, taxon_name, code, 
+    agb_Mg_mean) %>%
+  arrange(plot_id, tree_id, stem_id)
+
+kable(diam_imputed, digits = 3)
 ```
 
 Then we aggregate the simulations to quadrats:
@@ -1619,27 +2531,104 @@ quad_area <- quad_pt_clean %>%
       rbind(cbind(x_proj, y_proj), cbind(x_proj, y_proj)[1, ]))))) / 10000,
     .groups = "drop")
 
+# Location of trees where no stems have coordinates, as bounds in the 
+# relative coordinate system of the plot, from, in order of preference:
+#   1. the bounds of the field subplot of the tree, in the optional subplot 
+#        table
+#   2. the extent of the stems with coordinates in the same field subplot, if
+#        there are at least `subplot_min_stem` of them, within the plot
+#   3. the extent of the plot corners
+subplot_min_stem <- 10
+plot_ext <- L0$pt %>%
+  filter(corner %in% TRUE, !is.na(x_rel_m), !is.na(y_rel_m)) %>%
+  group_by(plot_id) %>%
+  summarise(
+    px_min = min(x_rel_m), px_max = max(x_rel_m),
+    py_min = min(y_rel_m), py_max = max(y_rel_m),
+    .groups = "drop")
+sub_ext <- L0$stem %>%
+  filter(!is.na(subplot_id), subplot_id != "", !is.na(x_rel_m), !is.na(y_rel_m)) %>%
+  group_by(plot_id, subplot_id) %>%
+  summarise(
+    n_stem_mapped = n(),
+    sx_min = min(x_rel_m), sx_max = max(x_rel_m),
+    sy_min = min(y_rel_m), sy_max = max(y_rel_m),
+    .groups = "drop") %>%
+  filter(n_stem_mapped >= subplot_min_stem)
+if (!is.null(L0$subplot)) {
+  sub_tab <- dplyr::select(L0$subplot, plot_id, subplot_id,
+    tx_min = x_rel_min_m, tx_max = x_rel_max_m, 
+    ty_min = y_rel_min_m, ty_max = y_rel_max_m)
+} else {
+  sub_tab <- data.frame(plot_id = character(0), subplot_id = character(0),
+    tx_min = numeric(0), tx_max = numeric(0), 
+    ty_min = numeric(0), ty_max = numeric(0))
+}
+
+# One row per tree where no stems have coordinates, with the field subplot
+# of its first stem with a subplot, and the sum of the simulated AGB of its 
+# stems
+tree_un <- stem_fil %>%
+  mutate(row = row_number()) %>%
+  filter(unmapped, in_agbd) %>%
+  group_by(plot_id, tree_id, tree_key) %>%
+  summarise(
+    stem_id = paste(stem_id, collapse = ", "),
+    n_stem = n(),
+    subplot_id = first(na.omit(ifelse(subplot_id == "", NA, subplot_id))),
+    diam_eq_cm = first(diam_eq_cm),
+    rows = list(row),
+    .groups = "drop") %>%
+  left_join(., sub_tab, by = c("plot_id", "subplot_id")) %>%
+  left_join(., sub_ext, by = c("plot_id", "subplot_id")) %>%
+  left_join(., plot_ext, by = "plot_id") %>%
+  mutate(
+    location = case_when(
+      !is.na(tx_min) ~ "field subplot, from subplot table",
+      !is.na(sx_min) ~ "field subplot, from stems with coordinates",
+      TRUE ~ "plot"),
+    x_min = case_when(!is.na(tx_min) ~ tx_min, !is.na(sx_min) ~ pmax(sx_min, px_min), TRUE ~ px_min),
+    x_max = case_when(!is.na(tx_max) ~ tx_max, !is.na(sx_max) ~ pmin(sx_max, px_max), TRUE ~ px_max),
+    y_min = case_when(!is.na(ty_min) ~ ty_min, !is.na(sy_min) ~ pmax(sy_min, py_min), TRUE ~ py_min),
+    y_max = case_when(!is.na(ty_max) ~ ty_max, !is.na(sy_max) ~ pmin(sy_max, py_max), TRUE ~ py_max))
+tree_un_simu <- do.call(rbind, lapply(tree_un$rows, function(r) {
+  colSums(agb_simu[r, , drop = FALSE])
+}))
+if (is.null(tree_un_simu)) {
+  tree_un_simu <- matrix(numeric(0), nrow = 0, ncol = nsim)
+}
+tree_un$agb_Mg_mean <- rowMeans(tree_un_simu, na.rm = TRUE)
+
 # Aggregate simulations to quadrats, separately for each plot
 # Plots with no stems used to estimate AGB, e.g. plots with no trees above
 # the minimum diameter threshold, have quadrats with zero AGB density
+# Trees without coordinates are placed at random within their bounds in each
+# simulation, see `tree_bounds` in BIOMASS::subplot_summary()
 plot_vec <- unique(quad_pt_clean$plot_ID)
+bound_cols <- c("x_min", "x_max", "y_min", "y_max")
 
 quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
   quads <- quad_area[quad_area$plot_ID == x, ]
 
-  # Stems with coordinates
+  # Stems with coordinates, and trees without coordinates
   sel <- stem_fil$plot_id == x & !unmapped & in_agbd
-  if (any(sel)) {
+  sel_un <- if (param$unmapped_method == "random") which(tree_un$plot_id == x) else integer(0)
+  if (any(sel) || length(sel_un) > 0) {
+    tree_data <- data.frame(
+      plot_ID = x,
+      subplot_ID = c(stem_fil$quadrat_id[sel], rep(NA_character_, length(sel_un))))
+    tree_data[bound_cols] <- rbind(
+      matrix(NA_real_, nrow = sum(sel), ncol = 4),
+      as.matrix(tree_un[sel_un, bound_cols]))
     subplots <- list(
       sub_corner_coord = quad_pt_clean[quad_pt_clean$plot_ID == x, ],
-      tree_data = data.frame(
-        plot_ID = x,
-        subplot_ID = stem_fil$quadrat_id[sel]))
+      tree_data = tree_data)
 
     ss <- suppressMessages(BIOMASS::subplot_summary(
       subplots = subplots,
-      AGB_simu = agb_simu[sel, , drop = FALSE],
-      draw_plot = FALSE))
+      AGB_simu = rbind(agb_simu[sel, , drop = FALSE], tree_un_simu[sel_un, , drop = FALSE]),
+      draw_plot = FALSE,
+      tree_bounds = if (length(sel_un) > 0) bound_cols else NULL))
 
     out <- as.data.frame(ss$long_AGB_simu) %>%
       dplyr::select(
@@ -1652,33 +2641,96 @@ quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
     out$agbd_Mg_ha <- 0
   }
 
-  # Trees where no stems have coordinates, assigned to a random quadrat in
-  # each simulation
-  # If `unmapped_method` is "exclude", they are not included in AGB density
-  sel_un <- stem_fil$plot_id == x & unmapped & in_agbd
-  if (param$unmapped_method == "random" && any(sel_un)) {
-    agb_un <- agb_simu[sel_un, , drop = FALSE]
-    # Stems of the same tree are assigned to the same quadrat
-    tree_un <- stem_fil$tree_key[sel_un]
-    tree_un_id <- unique(tree_un)
-    quad_idx <- matrix(
-      sample(nrow(quads), length(tree_un_id) * ncol(agb_un), replace = TRUE,
-        prob = quads$area_ha),
-      nrow = length(tree_un_id))[match(tree_un, tree_un_id), , drop = FALSE]
-    # One row per quadrat, one column per simulation. matrix() keeps this
-    # shape for plots with a single quadrat, where vapply() returns a vector
-    agb_quad <- matrix(vapply(seq_len(ncol(agb_un)), function(j) {
-      tapply(agb_un[, j], factor(quad_idx[, j], levels = seq_len(nrow(quads))), sum, default = 0)
-    }, numeric(nrow(quads))), nrow = nrow(quads))
-    agbd_quad <- agb_quad / quads$area_ha
-
-    i <- cbind(match(out$quadrat_id, quads$subplot_ID), out$sim)
-    out$agbd_Mg_ha <- out$agbd_Mg_ha + agbd_quad[i]
-  }
-
   out$plot_id <- x
   out
 }))
+```
+
+Trees without coordinates are written to `report/tree_unmapped.csv` by the
+automated workflow, with the bounds they are placed within, and where the
+bounds come from (`location`). We summarise them by location, and by field
+subplot, as AGB per hectare of the subplot, to compare with quadrat AGB
+density.
+
+```{r}
+#| tab-cap: "Trees without coordinates, by where they are placed at random. pct_agb is the percentage of the AGB of all stems used to estimate AGB."
+tree_unmapped <- tree_un %>%
+  dplyr::select(plot_id, tree_id, stem_id, n_stem, diam_eq_cm, agb_Mg_mean,
+    subplot_id, location, x_min, x_max, y_min, y_max)
+
+kable(tree_un %>% 
+  group_by(location) %>%
+  summarise(n_tree = n(), agb_Mg = sum(agb_Mg_mean, na.rm = TRUE), .groups = "drop") %>%
+  mutate(pct_agb = round(100 * agb_Mg / sum(stem_agb_mc$agb_Mg_mean, na.rm = TRUE), 2)),
+  digits = 3)
+```
+
+```{r}
+#| fig-cap: "Simulated mean AGB of trees without coordinates in each field subplot, per hectare of the subplot, labelled with the number of trees. These trees are placed at random within their subplot in each simulation. Subplots without labels have no trees without coordinates. Trees without a field subplot are not shown."
+#| fig-width: 8
+#| fig-height: 8
+# Summarise trees without coordinates in each field subplot from the subplot
+# table, as AGB per hectare of the subplot, to compare with quadrat AGB
+# density
+tree_un_sub <- filter(tree_un, location == "field subplot, from subplot table")
+if (!is.null(L0$subplot) && nrow(tree_un_sub) > 0) {
+  sub_un <- L0$subplot %>%
+    mutate(plot_id = as.character(plot_id)) %>%
+    filter(plot_id %in% tree_un_sub$plot_id) %>%
+    left_join(., tree_un_sub %>%
+      group_by(plot_id, subplot_id) %>%
+      summarise(n_tree = n(), agb_Mg = sum(agb_Mg_mean, na.rm = TRUE),
+        .groups = "drop"),
+      by = c("plot_id", "subplot_id")) %>%
+    mutate(
+      n_tree = ifelse(is.na(n_tree), 0L, n_tree),
+      agb_Mg = ifelse(is.na(agb_Mg), 0, agb_Mg),
+      area_ha = (x_rel_max_m - x_rel_min_m) * (y_rel_max_m - y_rel_min_m) / 10000,
+      agbd_Mg_ha = agb_Mg / area_ha,
+      x_mid = (x_rel_min_m + x_rel_max_m) / 2,
+      y_mid = (y_rel_min_m + y_rel_max_m) / 2)
+
+  # Figure of the AGB of trees without coordinates in each field subplot.
+  # Labels are light on the darkest fills
+  n_plot_un <- length(unique(sub_un$plot_id))
+  un_lim <- c(0, max(c(sub_un$agbd_Mg_ha, 1e-6)))
+  sub_un$label_colour <- ifelse(sub_un$agbd_Mg_ha < 0.6 * un_lim[2],
+    fig_pal$ink, fig_pal$surface)
+  p_sub_un <- ggplot(sub_un) +
+    geom_blank(data = squareExtent(
+      data.frame(plot_id = rep(sub_un$plot_id, 2),
+        x = c(sub_un$x_rel_min_m, sub_un$x_rel_max_m),
+        y = c(sub_un$y_rel_min_m, sub_un$y_rel_max_m)), "x", "y", "plot_id"),
+      aes(x = x, y = y)) +
+    geom_rect(aes(xmin = x_rel_min_m, xmax = x_rel_max_m, ymin = y_rel_min_m,
+      ymax = y_rel_max_m, fill = agbd_Mg_ha),
+      colour = fig_pal$surface, linewidth = 0.3) +
+    scale_fill_gradientn("AGB of trees without coordinates (Mg/ha)",
+      colours = fig_pal$seq2, limits = un_lim, guide = colourBar()) +
+    geom_text(data = filter(sub_un, n_tree > 0),
+      aes(x = x_mid, y = y_mid, label = n_tree, colour = label_colour),
+      size = 3.2) +
+    scale_colour_identity() +
+    facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_un),
+      scales = "free") +
+    labs(
+      title = "Trees without coordinates in each field subplot",
+      x = "X (m)",
+      y = "Y (m)") +
+    themeMap() +
+    theme(aspect.ratio = 1)
+  print(p_sub_un)
+}
+
+```
+
+```{r}
+#| tab-cap: "Field subplots with the most AGB in trees without coordinates (Mg/ha of the subplot)."
+#| eval: !expr exists("sub_un")
+kable(head(sub_un %>%
+  filter(n_tree > 0) %>%
+  arrange(desc(agbd_Mg_ha)) %>%
+  transmute(plot_id, subplot_id, n_tree, agb_Mg, area_ha, agbd_Mg_ha), 10), digits = 3)
 ```
 
 Finally extract relevant summary statistics from the AGBD error propagation:
@@ -1696,22 +2748,99 @@ quad_agb <- quad_agb_simu %>%
     .groups = "drop")
 ```
 
+We summarise plot-level AGB density and its uncertainty, from the
+area-weighted mean of quadrat AGB density in each simulation. This is
+compared to the sum of stem AGB from [Estimate stem AGB] over the same area.
+The two should be similar. Differences arise from stems excluded from
+quadrats, from trees without coordinates or diameters, and because
+measurement errors are not symmetric on the AGB scale.
+
 ```{r}
-#| fig-cap: "Interval plot showing the mean above-ground woody biomass density (AGBD) estimate for each quadrat, with 95% confidence interval."
-# Visualise the distribution of AGBD estimates among quadrats, with their 95% CI
-ggplot(quad_agb, aes(x = agbd_Mg_ha_mc_mean, y = reorder(quadrat_id, agbd_Mg_ha_mc_mean))) +
-  geom_vline(xintercept = 0, linetype = 2) + 
-  geom_point() + 
-  geom_errorbar(aes(xmin = agbd_Mg_ha_mc_ci2.5, xmax = agbd_Mg_ha_mc_ci97.5), orientation = "y") + 
-  theme_bw() + 
-  theme(
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    panel.grid.major.y = element_blank(),
-    panel.grid.minor.y = element_blank()) + 
+#| tab-cap: "Plot AGB density (Mg/ha) over the quadrat grid, from the simulations (mc), and the sum of stem AGB (stem_sum). diff_pct is the difference between them."
+# Summarise plot-level AGB density and its uncertainty, from the area-weighted
+# mean of quadrat AGB density in each simulation. This is compared to the sum
+# of stem AGB from ./05_agb_stem.R over the same area. The two should be 
+# similar. Differences arise from stems excluded from quadrats, and because
+# measurement errors are not symmetric on the AGB scale
+quad_area_join <- quad_area %>%
+  transmute(plot_id = as.character(plot_ID), quadrat_id = subplot_ID, area_ha)
+
+plot_agb_mc <- quad_agb_simu %>%
+  mutate(plot_id = as.character(plot_id)) %>%
+  inner_join(., quad_area_join, by = c("plot_id", "quadrat_id")) %>%
+  group_by(plot_id, sim) %>%
+  summarise(agbd_Mg_ha = sum(agbd_Mg_ha * area_ha) / sum(area_ha), 
+    .groups = "drop") %>%
+  group_by(plot_id) %>%
+  summarise(
+    agbd_Mg_ha_mc_mean = mean(agbd_Mg_ha),
+    agbd_Mg_ha_mc_sd = sd(agbd_Mg_ha),
+    agbd_Mg_ha_mc_ci2.5 = quantile(agbd_Mg_ha, 0.025),
+    agbd_Mg_ha_mc_ci97.5 = quantile(agbd_Mg_ha, 0.975),
+    .groups = "drop")
+
+# Stems in strips of the plot left out of the quadrat grid are excluded, as
+# the quadrat grid area does not include them
+plot_agb_det <- stem_fil %>%
+  filter(as.character(record_id) %in% record_agbd, !grid_excl) %>%
+  dplyr::select(record_id, plot_id) %>%
+  inner_join(., stem_agb_all, by = "record_id") %>%
+  mutate(plot_id = as.character(plot_id)) %>%
+  group_by(plot_id) %>%
+  summarise(agb_Mg = sum(agb_Mg, na.rm = TRUE), .groups = "drop") %>%
+  right_join(., quad_area_join %>% group_by(plot_id) %>% 
+    summarise(area_ha = sum(area_ha), n_quadrat = n(), .groups = "drop"),
+    by = "plot_id") %>%
+  mutate(
+    agb_Mg = ifelse(is.na(agb_Mg), 0, agb_Mg),
+    agbd_Mg_ha_stem_sum = agb_Mg / area_ha)
+
+plot_agb_check <- plot_agb_det %>%
+  dplyr::select(plot_id, n_quadrat, area_ha, agbd_Mg_ha_stem_sum) %>%
+  inner_join(., plot_agb_mc, by = "plot_id") %>%
+  mutate(
+    # Undefined for plots with zero AGB density
+    cv_pct = ifelse(agbd_Mg_ha_mc_mean > 0, 
+      round(100 * agbd_Mg_ha_mc_sd / agbd_Mg_ha_mc_mean, 1), NA_real_),
+    diff_pct = ifelse(agbd_Mg_ha_stem_sum > 0, 
+      round(100 * (agbd_Mg_ha_mc_mean - agbd_Mg_ha_stem_sum) / 
+        agbd_Mg_ha_stem_sum, 1), NA_real_)) %>%
+  arrange(desc(agbd_Mg_ha_mc_mean))
+
+if (any(abs(plot_agb_check$diff_pct) > 10, na.rm = TRUE)) {
+  warning("Simulated plot AGB density differs from the sum of stem AGB by ",
+    "more than 10% in plots: ", 
+    paste(plot_agb_check$plot_id[abs(plot_agb_check$diff_pct) > 10], collapse = ", "),
+    ". Check stems outside the quadrat grid, see ", 
+    file.path(report_dir, "stem_outside.csv"), call. = FALSE)
+}
+
+kable(plot_agb_check)
+```
+
+```{r}
+#| fig-cap: "Plot AGB density over the quadrat grid of each plot, from error propagation (simulated mean with 95% interval), and from the sum of stem AGB."
+#| fig-width: 8
+#| fig-height: 4
+# Figure of plot AGB density with 95% interval from simulations, and the 
+# sum of stem AGB
+plot_agb_fig <- plot_agb_check %>%
+  mutate(plot_id = factor(plot_id, levels = rev(levels(plotFactor(plot_id)))))
+p_plot_agb <- ggplot(plot_agb_fig, aes(y = plot_id)) +
+  geom_linerange(aes(xmin = agbd_Mg_ha_mc_ci2.5, xmax = agbd_Mg_ha_mc_ci97.5),
+    colour = fig_pal$series[1], linewidth = 0.8) +
+  geom_point(aes(x = agbd_Mg_ha_mc_mean, shape = "Simulated mean, 95% interval"),
+    colour = fig_pal$series[1], size = 2.4) +
+  geom_point(aes(x = agbd_Mg_ha_stem_sum, shape = "Sum of stem AGB"),
+    colour = fig_pal$ink, size = 2.4, stroke = 0.7) +
+  scale_shape_manual(NULL, values = c("Simulated mean, 95% interval" = 16, 
+    "Sum of stem AGB" = 1)) +
   labs(
-    x = expression("Above-ground woody biomass density"~(Mg~ha^-1)),
-    y = "Quadrat")
+    title = "Plot AGBD",
+    x = "AGBD (Mg/ha)",
+    y = "Plot") +
+  themeFig()
+p_plot_agb
 ```
 
 ```{r}
@@ -1761,7 +2890,11 @@ stem_summ <- L0$stem %>%
     # Used to estimate AGB, and AGB density. Stems outside the quadrat grid
     # are not used to estimate AGB density
     in_agb_calc = record_id %in% record_fil,
-    in_quadrat_calc = in_quadrat_calc %in% TRUE) %>%
+    in_quadrat_calc = in_quadrat_calc %in% TRUE,
+    # Diameter imputed, and coordinates from the mean of the other stems of 
+    # the tree
+    diam_imputed = diam_imputed %in% TRUE,
+    xy_from_tree = xy_from_tree %in% TRUE) %>%
   dplyr::select(-quadrat_id_tree) %>%
   st_as_sf(., coords = c("x_utm", "y_utm"), crs = st_crs(stem_pt),
     na.fail = FALSE, remove = FALSE)
@@ -1861,16 +2994,6 @@ kable(head(quad_summ, 10))
 ```
 
 ```{r}
-#| fig-cap: "Map of quadrats shaded by their above-ground woody biomass density (AGBD)."
-# Map quadrat AGBD
-ggplot() + 
-  geom_sf(data = quad_summ, aes(fill = agbd_Mg_ha_mc_mean)) + 
-  scale_fill_gradient(name = expression("Above-ground woody biomass"~(Mg~ha^-1)), low = "white", high = "red") + 
-  theme_bw() + 
-  theme(legend.position = "bottom")
-```
-
-```{r}
 #| fig-cap: "Relationship between the 95th percentile of stem diameter and above-ground woody biomass density (AGBD) of each quadrat."
 # Plot the relationship between maximum tree size and AGBD
 ggplot(quad_summ, aes(x = diam_cm_q95, y = agbd_Mg_ha_mc_mean)) + 
@@ -1879,6 +3002,273 @@ ggplot(quad_summ, aes(x = diam_cm_q95, y = agbd_Mg_ha_mc_mean)) +
   labs(
     x = "95th percentile of stem diameter (cm)",
     y = expression("Above-ground woody biomass density"~(Mg~ha^-1)))
+```
+
+We summarise quadrat AGB density, from error propagation and from the sum
+of stem AGB, and map it in each plot. The two estimates
+differ where trees without coordinates are placed at random, and because
+measurement errors are not symmetric on the AGB scale. In the automated
+workflow these figures are written to `report/` by `10_quad_summ.R`. It also
+writes versions across the whole site, for sites with several plots: maps of
+quadrat AGBD and stem AGB in longitude and latitude
+(`10_quad_agbd_map_site.png`, `10_stem_agb_map_site.png`), and quadrat AGBD
+with its 95% interval for all quadrats of the site
+(`10_quad_agbd_interval_site.png`). With a single plot in the example these
+repeat the figures of each plot, so they are not shown here.
+
+```{r}
+#| tab-cap: "Summary of quadrat AGB density (Mg/ha, simulated mean)."
+# Summarise quadrat AGB density, from error propagation (mc) and from the sum
+# of stem AGB. They differ where trees without coordinates are assigned to
+# quadrats at random, and because measurement errors are not symmetric on the
+# AGB scale
+quad_check <- st_drop_geometry(quad_summ) %>%
+  mutate(
+    cv_pct = 100 * agbd_Mg_ha_mc_sd / agbd_Mg_ha_mc_mean,
+    diff_pct = 100 * (agbd_Mg_ha_mc_mean - agb_Mg_sum_ha) / agb_Mg_sum_ha)
+
+quad_check_summ <- quad_check %>%
+  summarise(
+    n_quadrat = n(),
+    n_empty = sum(n_stem == 0, na.rm = TRUE),
+    area_ha_median = median(quadrat_area_ha),
+    agbd_min = min(agbd_Mg_ha_mc_mean, na.rm = TRUE),
+    agbd_median = median(agbd_Mg_ha_mc_mean, na.rm = TRUE),
+    agbd_max = max(agbd_Mg_ha_mc_mean, na.rm = TRUE),
+    cv_pct_median = median(cv_pct, na.rm = TRUE),
+    n_diff_over_10pct = sum(abs(diff_pct) > 10, na.rm = TRUE))
+
+kable(quad_check_summ, digits = 2)
+```
+
+```{r}
+#| tab-cap: "Quadrats where simulated AGB density differs from the sum of stem AGB by more than 10%."
+quad_diff <- quad_check %>%
+  filter(abs(diff_pct) > 10) %>%
+  arrange(desc(abs(diff_pct))) %>%
+  transmute(plot_id, quadrat_id, n_stem, agbd_Mg_ha_mc_mean, agb_Mg_sum_ha,
+    diff_pct = round(diff_pct, 1))
+
+kable(head(quad_diff, 10), digits = 2)
+```
+
+```{r}
+#| fig-cap: "Map of quadrat AGB density in each plot."
+#| fig-width: 8
+#| fig-height: 8
+# Colour scale of quadrat AGB density, the same in each figure. Histogram 
+# bins can be centred slightly outside the range of the data, so values 
+# outside the limits take the colour of the nearest limit
+agbd_lim <- range(quad_check$agbd_Mg_ha_mc_mean, na.rm = TRUE)
+agbd_fill <- scale_fill_gradientn("AGBD (Mg/ha)", colours = fig_pal$seq,
+  limits = agbd_lim, oob = scales::squish, guide = colourBar())
+agbd_colour <- scale_colour_gradientn("AGBD (Mg/ha)", colours = fig_pal$seq,
+  limits = agbd_lim, oob = scales::squish, guide = colourBar())
+
+# Figure of quadrat AGB density in each plot. Coordinates are relative to
+# the south-west corner of the bounding box of each plot
+quad_xy <- polyCoords(quad_summ, "plot_id") %>%
+  mutate(agbd = quad_check$agbd_Mg_ha_mc_mean[L2])
+n_plot_quad <- length(unique(quad_xy$plot_id))
+quad_xy_local <- localXY(quad_xy, "X", "Y", "plot_id")
+p_quad_map <- ggplot(quad_xy_local,
+  aes(x = X, y = Y, group = group, fill = agbd)) +
+  geom_blank(data = squareExtent(quad_xy_local, "X", "Y", "plot_id"),
+    aes(x = X, y = Y), inherit.aes = FALSE) +
+  geom_polygon(colour = fig_pal$surface, linewidth = 0.3) +
+  agbd_fill +
+  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_quad),
+    scales = "free") +
+  labs(
+    title = "Quadrat AGBD",
+    x = "Easting (m)",
+    y = "Northing (m)") +
+  themeMap() +
+  theme(aspect.ratio = 1)
+p_quad_map
+```
+
+```{r}
+#| fig-cap: "Quadrat AGB density from error propagation (simulated mean with 95% interval) against the sum of stem AGB. The dashed line shows 1:1. Quadrats whose 95% interval is above the 1:1 line are labelled."
+#| fig-width: 7.5
+#| fig-height: 8
+# Figure comparing quadrat AGB density from error propagation and from the
+# sum of stem AGB
+quad_lim <- range(c(quad_check$agb_Mg_sum_ha, quad_check$agbd_Mg_ha_mc_ci2.5,
+  quad_check$agbd_Mg_ha_mc_ci97.5), na.rm = TRUE)
+# Quadrats where the 95% interval is entirely above the 1:1 line, e.g. with
+# trees without coordinates assigned to them at random, are labelled
+quad_above <- filter(quad_check, agbd_Mg_ha_mc_ci2.5 > agb_Mg_sum_ha)
+p_quad_comp <- ggplot(quad_check, aes(x = agb_Mg_sum_ha, y = agbd_Mg_ha_mc_mean)) +
+  geom_abline(intercept = 0, slope = 1, colour = fig_pal$ink_muted, 
+    linewidth = 0.5, linetype = 2) +
+  geom_linerange(aes(ymin = agbd_Mg_ha_mc_ci2.5, ymax = agbd_Mg_ha_mc_ci97.5),
+    colour = fig_pal$series[1], alpha = 0.25, linewidth = 0.4) +
+  geom_point(colour = fig_pal$series[1], size = 1.2, alpha = 0.7, shape = 16) +
+  # Labels are moved apart so that they do not overlap
+  ggrepel::geom_text_repel(data = quad_above, aes(label = quadrat_id), 
+    size = 2.8, colour = fig_pal$ink_muted, segment.colour = fig_pal$line_muted,
+    min.segment.length = 0, max.overlaps = Inf, seed = 42) +
+  coord_equal(xlim = quad_lim, ylim = quad_lim) +
+  labs(
+    title = "Quadrat AGBD: simulated against sum of stem AGB",
+    x = "Sum of stem AGB (Mg/ha)",
+    y = "Simulated AGBD (Mg/ha)") +
+  themeFig()
+p_quad_comp
+```
+
+```{r}
+#| tab-cap: "Quadrats with the most uncertain AGB density (coefficient of variation, %)."
+# Quadrats with the most uncertain AGB density
+quad_cv <- quad_check %>%
+  filter(!is.na(cv_pct)) %>%
+  arrange(desc(cv_pct)) %>%
+  transmute(plot_id, quadrat_id, n_stem, agbd_Mg_ha_mc_mean, 
+    agbd_Mg_ha_mc_ci2.5, agbd_Mg_ha_mc_ci97.5, cv_pct = round(cv_pct, 1))
+
+kable(head(quad_cv, 10), digits = 2)
+```
+
+```{r}
+#| fig-cap: "Quadrat AGB density with its 95% interval from error propagation, quadrats ranked within each plot."
+#| fig-width: 8
+#| fig-height: 6
+# Figure of quadrat AGB density with 95% interval, quadrats ranked by AGB 
+# density within each plot
+quad_rank <- quad_check %>%
+  filter(!is.na(agbd_Mg_ha_mc_mean)) %>%
+  group_by(plot_id) %>%
+  mutate(rank = rank(agbd_Mg_ha_mc_mean, ties.method = "first")) %>%
+  ungroup()
+n_plot_rank <- length(unique(quad_rank$plot_id))
+# Lines and points are scaled to the width available for each quadrat in the
+# panel of the plot with the most quadrats, up to a maximum size for plots
+# with few quadrats
+quad_slot_mm <- 25.4 * (figWidth(n_plot_rank) - 1.4) / figCols(n_plot_rank) /
+  max(table(quad_rank$plot_id))
+p_quad_int <- ggplot(quad_rank, aes(x = rank)) +
+  geom_linerange(aes(ymin = agbd_Mg_ha_mc_ci2.5, ymax = agbd_Mg_ha_mc_ci97.5),
+    colour = fig_pal$seq[3], linewidth = min(2.2, max(0.2, 0.1 * quad_slot_mm))) +
+  geom_point(aes(y = agbd_Mg_ha_mc_mean), colour = fig_pal$seq[6],
+    size = min(4.5, max(0.3, 0.2 * quad_slot_mm))) +
+  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_rank), 
+    scales = "free_x") +
+  scale_y_continuous(limits = c(0, NA)) +
+  labs(
+    title = "Quadrat AGBD with 95% interval",
+    x = "Quadrats, ranked by AGBD",
+    y = "AGBD (Mg/ha)") +
+  themeFig() +
+  theme(
+    axis.text.x = element_blank(),
+    panel.grid.major.x = element_blank())
+p_quad_int
+```
+
+```{r}
+#| fig-cap: "Map of the coefficient of variation of quadrat AGB density in each plot."
+#| fig-width: 8
+#| fig-height: 8
+# Figure of the coefficient of variation of quadrat AGB density in each plot
+quad_xy_local$cv <- quad_check$cv_pct[quad_xy_local$L2]
+p_quad_cv_map <- ggplot(quad_xy_local,
+  aes(x = X, y = Y, group = group, fill = cv)) +
+  geom_blank(data = squareExtent(quad_xy_local, "X", "Y", "plot_id"),
+    aes(x = X, y = Y), inherit.aes = FALSE) +
+  geom_polygon(colour = fig_pal$surface, linewidth = 0.3) +
+  scale_fill_gradientn("Coefficient of variation of AGBD (%)", 
+    colours = fig_pal$seq2, guide = colourBar()) +
+  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_quad),
+    scales = "free") +
+  labs(
+    title = "Uncertainty in quadrat AGBD",
+    x = "Easting (m)",
+    y = "Northing (m)") +
+  themeMap() +
+  theme(aspect.ratio = 1)
+p_quad_cv_map
+```
+
+```{r}
+#| fig-cap: "Coefficient of variation against quadrat AGB density."
+#| fig-width: 8
+#| fig-height: 6
+# Figure of the coefficient of variation against quadrat AGB density
+p_quad_cv <- ggplot(filter(quad_check, !is.na(cv_pct)), 
+  aes(x = agbd_Mg_ha_mc_mean, y = cv_pct)) +
+  geom_point(colour = fig_pal$series[2], size = 1.6, alpha = 0.7, shape = 16) +
+  scale_y_continuous(limits = c(0, NA)) +
+  labs(
+    title = "Uncertainty against quadrat AGBD",
+    x = "Simulated AGBD (Mg/ha)",
+    y = "Coefficient of variation (%)") +
+  themeFig()
+p_quad_cv
+```
+
+```{r}
+#| fig-cap: "Distribution of quadrat AGB density, all plots."
+#| fig-width: 8
+#| fig-height: 5
+# Figure of the distribution of quadrat AGB density, all plots
+p_quad_hist <- ggplot(quad_check, aes(x = agbd_Mg_ha_mc_mean)) +
+  geom_histogram(aes(fill = after_stat(x)), bins = 25,
+    colour = fig_pal$surface, linewidth = 0.2) +
+  agbd_fill +
+  guides(fill = "none") +
+  labs(
+    title = "Quadrat AGBD",
+    x = "Quadrat AGBD (Mg/ha)", 
+    y = "Quadrats") +
+  themeFig()
+p_quad_hist
+```
+
+```{r}
+#| fig-cap: "Map of stem AGB in each plot, for stems used to estimate AGB density, with the quadrats, relative to the south-west of each plot."
+#| fig-width: 8
+#| fig-height: 8
+# Figures of stem AGB, for stems used to estimate AGB density, across the
+# site in longitude and latitude, and in each plot, relative to the 
+# south-west of the quadrat grid of each plot as in the map of quadrat AGB
+# density
+stem_map <- stem_summ %>%
+  filter(in_quadrat_calc %in% TRUE, !st_is_empty(.), !is.na(agb_Mg), agb_Mg > 0) %>%
+  mutate(plot_id = as.character(plot_id)) %>%
+  arrange(agb_Mg)
+# The lightest colour of the ramp is not used, so that stems with little AGB
+# stay visible
+stem_agb_colour <- scale_colour_gradientn("Stem AGB (Mg)", colours = fig_pal$seq2[-1],
+  trans = "log10", breaks = 10^(-3:3),
+  labels = function(x) format(x, drop0trailing = TRUE, scientific = FALSE, trim = TRUE),
+  guide = colourBar())
+
+quad_xy0 <- quad_xy %>%
+  group_by(plot_id) %>%
+  summarise(x0 = min(X), y0 = min(Y), .groups = "drop")
+stem_map_xy <- stem_map %>%
+  st_drop_geometry() %>%
+  filter(plot_id %in% quad_xy0$plot_id) %>%
+  localXY(., "x_utm", "y_utm", "plot_id", quad_xy0)
+p_stem_map <- ggplot() +
+  geom_blank(data = squareExtent(quad_xy_local, "X", "Y", "plot_id"),
+    aes(x = X, y = Y)) +
+  geom_polygon(data = quad_xy_local,
+    aes(x = X, y = Y, group = group),
+    fill = NA, colour = fig_pal$line_muted, linewidth = 0.3) +
+  geom_point(data = stem_map_xy, aes(x = x_utm, y = y_utm, colour = agb_Mg),
+    size = 1.2, shape = 16) +
+  stem_agb_colour +
+  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_quad),
+    scales = "free") +
+  labs(
+    title = "Stem AGB in each plot",
+    x = "Easting (m)",
+    y = "Northing (m)") +
+  themeMap() +
+  theme(aspect.ratio = 1)
+p_stem_map
 ```
 
 Then we can create the L1, L2 and L3 GEO-TREES tree inventory data products.
@@ -1992,7 +3382,7 @@ param_fil[["quad_dim"]] <- NULL
 if (param_fil$opt_s3) { 
   param_fil[["raw_dir"]] <- param_fil$s3_dir
 } 
-param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate", "als_date", "quad_origin")] <- NULL
+param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate", "als_date", "quad_origin", "missing_diam_method")] <- NULL
 
 L3_quad <- quad_summ %>% 
   dplyr::select(

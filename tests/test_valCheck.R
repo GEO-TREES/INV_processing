@@ -13,8 +13,9 @@ plot_cols <- read.csv(file.path(root, "templates/plot_cols.csv"))
 pt_cols <- read.csv(file.path(root, "templates/pt_cols.csv"))
 height_cols <- read.csv(file.path(root, "templates/height_cols.csv"))
 stem_dup_cols <- read.csv(file.path(root, "templates/stem_dup_cols.csv"))
+subplot_cols <- read.csv(file.path(root, "templates/subplot_cols.csv"))
 cols <- list(stem = stem_cols, plot = plot_cols, pt = pt_cols, height = height_cols,
-  dup = stem_dup_cols)
+  dup = stem_dup_cols, subplot = subplot_cols)
 
 # Create a small valid set of L0 tables, with columns from the templates
 emptyTable <- function(spec, n) {
@@ -52,6 +53,7 @@ makeL0 <- function() {
     "Julbernardia paniculata", "Burkea africana", "Brachystegia spiciformis")
   stem$x_rel_m <- c(10, 50, 90, 20, 60, 80)
   stem$y_rel_m <- c(10, 50, 90, 30, 40, 70)
+  stem$subplot_id <- c("1", "4", "4", "1", "2", "4")
   stem$diam_cm <- c(12.1, 35.4, 20.0, 15.2, 50.3, 11.0)
   stem$pom_m <- 1.3
   stem$code <- "AS"
@@ -94,13 +96,23 @@ makeL0 <- function() {
   dup$diam_cm <- c(12.3, 35.1, 15.2)
   dup$pom_m <- 1.3
 
+  # Four 50 x 50 m subplots in each plot
+  subplot <- suppressMessages(emptyTable(subplot_cols, 8))
+  subplot$site_id <- "Site1"
+  subplot$plot_id <- rep(c("P1", "P2"), each = 4)
+  subplot$subplot_id <- rep(c("1", "2", "3", "4"), 2)
+  subplot$x_rel_min_m <- rep(c(0, 50, 0, 50), 2)
+  subplot$x_rel_max_m <- subplot$x_rel_min_m + 50
+  subplot$y_rel_min_m <- rep(c(0, 0, 50, 50), 2)
+  subplot$y_rel_max_m <- subplot$y_rel_min_m + 50
+
   list(plot = plot, stem = stem, pt = pt, taxon = taxon, height = height, wd = wd,
-    dup = dup)
+    dup = dup, subplot = subplot)
 }
 
 runCheck <- function(l) {
   valCheck(plot = l$plot, stem = l$stem, pt = l$pt, taxon = l$taxon,
-    height = l$height, wd = l$wd, dup = l$dup, cols = cols)
+    height = l$height, wd = l$wd, dup = l$dup, subplot = l$subplot, cols = cols)
 }
 
 test_that("valid tables pass without errors or warnings", {
@@ -108,6 +120,7 @@ test_that("valid tables pass without errors or warnings", {
   expect_silent(colCheck(l$stem, stem_cols))
   expect_silent(colCheck(l$plot, plot_cols))
   expect_silent(colCheck(l$pt, pt_cols))
+  expect_silent(colCheck(l$subplot, subplot_cols))
   expect_silent(runCheck(l))
 })
 
@@ -278,6 +291,43 @@ test_that("repeat diameter measurement checks", {
 
   l <- makeL0(); l$dup$diam_cm[1] <- 2000
   expect_error(runCheck(l), "stem_dup\\$diam_cm` must be <= 1000")
+})
+
+test_that("field subplot bounds checks", {
+  l <- makeL0(); l$subplot$subplot_id[2] <- "1"
+  expect_error(runCheck(l), "must be unique in 'subplot'")
+
+  l <- makeL0(); l$subplot$subplot_id[2] <- NA
+  expect_error(runCheck(l), "must not be NA in 'subplot'")
+
+  l <- makeL0(); l$subplot$y_rel_max_m[1] <- NA
+  expect_error(runCheck(l), "bounds must not be NA")
+
+  l <- makeL0(); l$subplot$x_rel_max_m[1] <- 0
+  expect_error(runCheck(l), "1 subplots in 'subplot' have a maximum")
+
+  l <- makeL0(); l$subplot$x_rel_max_m[1] <- 60
+  expect_warning(runCheck(l), "1 pairs of subplots in 'subplot' overlap")
+
+  # Subplots sharing an edge do not overlap
+  l <- makeL0(); l$subplot <- l$subplot[l$subplot$plot_id == "P1", ]
+  l$stem <- l$stem[l$stem$plot_id == "P1", ]
+  expect_silent(valCheck(stem = l$stem, subplot = l$subplot, cols = cols))
+
+  l <- makeL0(); l$subplot$plot_id[1:4] <- "P3"
+  expect_error(runCheck(l), "plots in 'subplot' are missing from 'plot'")
+
+  l <- makeL0(); l$stem$subplot_id[1] <- "5"
+  expect_warning(runCheck(l), "1 field subplots in 'stem' are missing from 'subplot': P1 5")
+
+  l <- makeL0(); l$subplot <- l$subplot[l$subplot$plot_id == "P1", ]
+  expect_warning(runCheck(l), "1 plots with field subplots in 'stem' are missing from 'subplot': P2")
+
+  l <- makeL0(); l$subplot$x_rel_max_m[2] <- 110
+  expect_warning(runCheck(l), "1 subplots in 'subplot' extend outside")
+
+  l <- makeL0(); l$subplot$site_id <- "Site2"
+  expect_error(runCheck(l), "`site_id` differs among tables")
 })
 
 test_that("dupMatch() pairs repeat measurements with the closest POM and date", {

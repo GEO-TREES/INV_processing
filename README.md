@@ -25,6 +25,7 @@ and optionally:
 * `height.csv` - Stem diameter and height measurements, used to fit a local height-diameter model.
 * `wd.csv` - Local wood density measurements.
 * `stem_dup.csv` - Repeat diameter measurements of stems in `stem.csv`, matched to their original measurement by `plot_id` and `stem_id`, used to estimate diameter measurement error if `diam_error` is `"field"` in `param.yaml`. Repeat measurements should be made independently of the original measurements, at the same POM, soon after the original measurements, and cover the range of stem sizes, e.g. a random sample of stems across the site rather than all stems in one quadrat. Both measurements are assumed to have the same error. Several hundred pairs are needed to estimate the proportion of large errors.
+* `subplot.csv` - Bounds of field subplots in the relative coordinate system of each plot, one row per subplot, matched to stems by `plot_id` and `subplot_id`. Used to place stems without coordinates within their field subplot during AGB error propagation, see [Missing measurements](#missing-measurements).
 
 See `./templates/*` for guidance on which columns should be included in these files, and the valid values in each column. `colCheck()` and `valCheck()` in `./func.R` check these files against the templates.
 
@@ -87,7 +88,9 @@ Files to check raw data are written to `report/`, alongside the outputs of each 
 
 * `taxa_review.csv` - Taxonomic names which were changed or not matched, with the matching method and the number of stems affected.
 * `stem_outside.csv` - Stems outside the quadrat grid of their plot, with their distance to the nearest quadrat. Stems within `outside_max_dist_m` of a quadrat, set in `param.yaml`, are assigned to the nearest quadrat. Other stems are excluded from quadrat summaries. Stems inside the plot, in strips left out of the quadrat grid, are excluded but not listed.
-* `tree_unmapped.csv` - Trees where no stems have coordinates. If `unmapped_method` is `"random"`, these trees are assigned to quadrats at random during AGB error propagation. If it is `"exclude"`, they are not used to estimate AGB density.
+* `stem_outside_subplot.csv` - If the site supplies `subplot.csv`, stems with coordinates outside the bounds of their field subplot, with their distance to the nearest edge of the subplot, and the subplot whose bounds contain them, if any. Also lists stems in field subplots missing from `subplot.csv`. Either the coordinates or the field subplot of these stems may be wrong. A summary of each field subplot is written to `07_quad/subplot_check.csv`.
+* `tree_unmapped.csv` - Trees where no stems have coordinates, with the bounds they are placed within during AGB error propagation, and where the bounds come from (`location`), see [Missing measurements](#missing-measurements).
+* `diam_imputed.csv` - Stems without a diameter measurement, whose diameter is imputed during AGB error propagation, see [Missing measurements](#missing-measurements).
 * `diam_dup.csv` - If `diam_error` is `"field"`, repeat diameter measurements paired with their original measurements, with `prob_large`, the probability that the pair includes a large error, e.g. a data entry error. Pairs not used to estimate diameter measurement error are marked in `status`.
 
 Figures to check the results of each step are also written to `report/`:
@@ -100,6 +103,8 @@ Figures to check the results of each step are also written to `report/`:
 * `07_plot_poly.png` - Fitted plot polygons, outlines of the GNSS corners, quadrats, and GNSS points, including outliers removed during polygon fitting, in each plot.
 * `07_plot_location_site.png` - Plot locations across the site, in longitude and latitude, with the GNSS corners and fitted plot polygons.
 * `07_stem_map.png` - Stem locations within the quadrat grid of each plot, with plot outlines, highlighting stems outside the plot, and stems in strips left out of the quadrat grid.
+* `07_subplot_map.png` - If the site supplies `subplot.csv`, field subplots in each plot, labelled with their ID and filled by the percentage of stems with coordinates outside their bounds, with these stems joined to the nearest edge of their subplot. Axis ranges differ between plots, with equal x and y scales.
+* `08_subplot_unmapped_map.png` - If the site supplies `subplot.csv`, the AGB of trees without coordinates placed within each field subplot, per hectare of the subplot, labelled with the number of trees. Axis ranges differ between plots, with equal x and y scales.
 * `08_plot_agbd.png` - Plot AGB density over the quadrat grid, from error propagation with a 95% interval, and from the sum of stem AGB.
 * `08_diam_error.png` - If `diam_error` is `"field"`, differences between repeat diameter measurements, with the fitted measurement error model.
 * `10_quad_agbd_map.png` - Map of quadrat AGB density in each plot. Axis ranges differ between plots, with equal x and y scales.
@@ -113,6 +118,14 @@ Figures to check the results of each step are also written to `report/`:
 * `10_quad_agbd_cv.png` - Coefficient of variation against quadrat AGB density.
 
 Each step also prints summary tables to the console, e.g. the proportion of stems matched to a taxonomic name, the taxonomic level of wood density estimates, why stems are excluded from AGB estimates, the area of fitted plot polygons, and plot AGB density with its uncertainty. Warnings are given where results suggest errors in the raw data, e.g. if the area of a fitted plot polygon differs by more than 5% from the area defined by the relative coordinates of its corners. These summary tables are also written to the output directory of each step, e.g. `08_agb_mc/plot_agb.csv`, and are used by `./12_report.R`. `./zz_site.R` lists all files in `report/` at the end of a run.
+
+## Missing measurements
+
+Live stems without a diameter measurement, or without coordinates, are kept, and the uncertainty in their size or location is propagated to quadrat AGBD in `./08_agb_mc.R`, using `BIOMASS`:
+
+* Stems without a diameter, if the optional `missing_diam_method` in `param.yaml` is `"impute"` (default), are assumed to be at or above the minimum diameter threshold, as they were recorded in the census. In each simulation, `BIOMASS::AGBmonteCarlo()` replaces the diameter of each of these stems with a simulated diameter drawn at random from the other trees in the same plot used to estimate AGB, which can include trees below the minimum diameter threshold for AGB density. For very large plots, split into groups of quadrats, the pool is the group of quadrats. Their height and AGB are estimated from the imputed diameter. These stems have no deterministic AGB estimate in `./05_agb_stem.R`. With `"exclude"`, these stems are excluded.
+* Stems without coordinates in trees where other stems have coordinates are given the mean coordinates of the other stems of the tree in `./07_quad.R`.
+* Trees where no stems have coordinates, if `unmapped_method` is `"random"`, are placed at a random location in each simulation by `BIOMASS::subplot_summary(tree_bounds = )`, and their AGB is added to the quadrat containing that location. The location is drawn within the bounds of the field subplot of the tree (`subplot_id` in the stem table), from the optional `subplot.csv`, or, if the site does not supply it, from the extent of the stems with coordinates in the same field subplot, if there are at least 10 of them. Otherwise the location is drawn within the plot. Placements in strips of the plot left out of the quadrat grid are not included in that simulation. With `"exclude"`, these trees are excluded from AGB density.
 
 ## Taxonomic name matching
 

@@ -99,7 +99,8 @@ msgTable(wd_level, "Wood density (g cm-3) by taxonomic level of the estimate:")
 
 # Figure of wood density at each taxonomic level of the estimate, for stems
 # used to estimate AGB density, see `agbdFilter()` in ./func.R
-record_agbd <- agbdFilter(stem, plot, recordFilter(stem, plot),
+record_agbd <- agbdFilter(stem, plot, 
+  recordFilter(stem, plot, missing_diam = param$missing_diam_method == "impute"),
   diam_min_cm = param$agbd_diam_min_cm,
   include_broken = param$include_broken)
 wd_fig <- filter(wd_check, as.character(record_id) %in% record_agbd)

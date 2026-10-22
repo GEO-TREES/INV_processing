@@ -19,6 +19,7 @@ agbd_diam_min_cm: 0
 include_broken: true
 multi_stem_method: "equivalent"
 unmapped_method: "random"
+missing_diam_method: "impute"
 diam_error: "chave2004"
 rocrate:
   author_name: "John L. Godlee"

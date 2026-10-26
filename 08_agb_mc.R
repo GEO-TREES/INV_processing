@@ -1,6 +1,6 @@
 # Estimate AGB and its uncertainty in quadrats
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-22
+# Last updated: 2026-10-26
 
 # Errors in diameter, wood density, height and the allometric model are
 # propagated to each stem with BIOMASS::AGBmonteCarlo(), then simulations are
@@ -27,10 +27,10 @@
 #
 # Stems without a diameter measurement have their diameter imputed in each
 # simulation by BIOMASS::AGBmonteCarlo(), from the simulated diameters of the
-# other trees in the same Monte Carlo chunk, i.e. the same plot, or the same
-# group of quadrats for very large plots. This adds the uncertainty in their
-# size to the quadrat AGBD estimates. See `missing_diam_method` in 
-# param.yaml.
+# other trees in the same Monte Carlo chunk with the same AGB allometry, i.e.
+# the same plot, or the same group of quadrats for very large plots. This
+# adds the uncertainty in their size to the quadrat AGBD estimates. See
+# `missing_diam_method` in param.yaml.
 #
 # Diameter measurement error is set by `diam_error` in param.yaml. With
 # "field", a diameter measurement error model is estimated from repeat
@@ -39,6 +39,18 @@
 # Allometry matches that used in ./05_agb_stem.R:
 #   "regional" - Chave et al. (2014) Eq. 7, using bioclimatic variables at plot centre
 #   "field" - Chave et al. (2014) Eq. 4, using local height-diameter model
+#   "custom" - Chave et al. (2014) Eq. 4, using the height-diameter model in
+#     `height_custom`
+# If `stem_allometry` is true, trees use the allometry in `agb_allometry` of
+# their largest stem, see `agb_allometries` in ./func.R. Each allometry is
+# simulated separately, with its own residual error
+#
+# Diameters are corrected for taper if `taper_method` is set, see
+# ./04_height.R
+#
+# If `crown_method` is "custom", quadrat AGB density is also estimated with
+# the AGB of each tree spread over its crown, from the crown area allometry
+# in `crown_custom`, in the same simulations, see below
 
 # Define number of simulations
 nsim <- 1000
@@ -103,8 +115,10 @@ tree <- stem_fil %>%
     diam_eq_cm = first(diam_eq_cm),
     meanWD = first(meanWD),
     sdWD = first(sdWD),
+    agb_allometry = if (param$stem_allometry) first(agb_allometry) else NA_character_,
     across(any_of(c("X", "Y")), first),
-    .groups = "drop")
+    .groups = "drop") %>%
+  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), "chave2014"))
 
 # Diameter measurement error, see `diam_error` in param.yaml
 if (identical(param$diam_error, "none")) {
@@ -280,21 +294,16 @@ tree <- left_join(tree, quad_chunk, by = c("plot_id", "quadrat_id"))
 
 tree_split <- split(tree, list(tree$plot_id, tree$mc_chunk), drop = TRUE)
 
-# Run AGB Monte Carlo error propagation on each chunk
-# Missing diameters are imputed from the other trees in the same chunk, i.e.
-# the same plot, or the same group of quadrats for very large plots
-tree_simu_list <- lapply(seq_along(tree_split), function(i) {
-  x <- tree_split[[i]]
-  message(i, " / ", length(tree_split), " - ", x$plot_id[1],
-    " (", nrow(x), " trees)")
-
-  # Trees without a diameter can't be imputed if no trees in the chunk have a
+# Simulate AGB of trees `x` which share the AGB allometry `allom`, see
+# `agb_allometries` in ./func.R. Returns a matrix of trees x simulations
+mcTrees <- function(x, allom) {
+  # Trees without a diameter can't be imputed if no other trees have a
   # diameter, so they are not included in AGB density
   n_tree <- nrow(x)
   if (all(is.na(x$diam_eq_cm))) {
     warning(n_tree, " trees without a diameter in plot ", x$plot_id[1], 
-      " could not be imputed, as no trees in the plot have a diameter. They ",
-      "are not included in AGB density", call. = FALSE)
+      " could not be imputed, as no other trees with the same allometry ",
+      "have a diameter. They are not included in AGB density", call. = FALSE)
     return(matrix(NA_real_, nrow = n_tree, ncol = nsim))
   }
 
@@ -305,25 +314,49 @@ tree_simu_list <- lapply(seq_along(tree_split), function(i) {
   }
 
   # AGBmonteCarlo() warns where missing diameters are imputed. Stems with 
-  # imputed diameters are summarised below
+  # imputed diameters are summarised below. Allometries other than Chave et 
+  # al. (2014) use the heights of the height-diameter model, if any
   out <- withCallingHandlers(AGBmonteCarlo(
     D = x$diam_eq_cm,
     WD = x$meanWD,
     errWD = x$sdWD,
     H = NULL,
     errH = NULL,
-    HDmodel = if (param$height_method == "field") height_mod else NULL,
-    coord = if (param$height_method == "regional") as.matrix(x[, c("X", "Y")]) else NULL,
+    HDmodel = if (param$height_method %in% c("field", "custom")) height_mod else NULL,
+    coord = if (param$height_method == "regional" && allom == "chave2014") {
+      as.matrix(x[, c("X", "Y")]) 
+    } else NULL,
     Dpropag = diam_error,
     n = nsim,
     Carbon = FALSE,
-    Dlim = NULL),
+    Dlim = NULL,
+    fitted_allom = if (allom == "chave2014") {
+      "chave2014"
+    } else {
+      agb_allometries[[allom]][c("formula", "parameters", "link")]
+    }),
     warning = function(w) {
       if (grepl("NA values in D", conditionMessage(w))) {
         invokeRestart("muffleWarning")
       }
     })
   out$AGB_simu[seq_len(n_tree), , drop = FALSE]
+}
+
+# Run AGB Monte Carlo error propagation on each chunk, separately for each AGB
+# allometry. Missing diameters are imputed from the other trees in the same
+# chunk with the same allometry, i.e. the same plot, or the same group of
+# quadrats for very large plots
+tree_simu_list <- lapply(seq_along(tree_split), function(i) {
+  x <- tree_split[[i]]
+  message(i, " / ", length(tree_split), " - ", x$plot_id[1],
+    " (", nrow(x), " trees)")
+  out <- matrix(NA_real_, nrow = nrow(x), ncol = nsim)
+  for (a in unique(x$agb_allometry)) {
+    rows <- which(x$agb_allometry == a)
+    out[rows, ] <- mcTrees(x[rows, ], a)
+  }
+  out
 })
 
 # Combine simulations, then share tree AGB among stems. Rows match `stem_fil`
@@ -439,7 +472,7 @@ tree_un <- stem_fil %>%
   summarise(
     stem_id = paste(stem_id, collapse = ", "),
     n_stem = n(),
-    subplot_id = first(na.omit(ifelse(subplot_id == "", NA, subplot_id))),
+    subplot_id = first(na.omit(na_if(subplot_id, ""))),
     diam_eq_cm = first(diam_eq_cm),
     rows = list(row),
     .groups = "drop") %>%
@@ -595,10 +628,164 @@ quad_agb_simu <- bind_rows(lapply(plot_vec, function(x) {
   out
 }))
 
+# Crown-distributed AGB density, see `crown_method` in param.yaml. In each
+# simulation, the AGB of each tree is spread over its crown, a circle centred
+# on the centroid of its stems, with area from the crown area allometry in
+# `crown_custom`. The residual error of the allometry is drawn independently
+# for each tree in each simulation. Crown area is predicted from the measured
+# diameter, the equivalent diameter of the measured diameters of multi-stemmed
+# trees, as crown allometries are fitted to measured diameters, so diameters
+# are not corrected for taper. Crown area is not predicted from the simulated
+# diameter, as BIOMASS::AGBmonteCarlo() does not return simulated diameters.
+# Crowns crossing a quadrat edge are split among
+# quadrats, see `crownAlloc()` in ./func.R. The part of a crown outside the
+# quadrat grid is folded back into the part inside, so plot AGB density is
+# the same as with each tree in its home quadrat, and only its distribution
+# among quadrats changes. Trees without coordinates, placed at random, and
+# trees with an imputed diameter keep the stem allocation. Crown simulations
+# are drawn after the simulations above, so the stem allocation is the same
+# whether or not crowns are used
+if (param$crown_method != "none") {
+  crown_mod <- crownCustom(param$crown_custom)
+  crown_tmpl <- crownTemplate(n_ring = 16, n_angle = 32)
+  quad_rel <- st_drop_geometry(quad_pt)
+
+  # Stems without coordinates in trees where other stems have coordinates
+  # are given the mean coordinates of the other stems of the tree, as in
+  # ./07_quad.R, where trees are assigned to quadrats
+  xy_fill <- stem %>%
+    mutate(tree_grp = ifelse(is.na(tree_id) | tree_id == "",
+      paste0("record::", record_id), paste(plot_id, tree_id, sep = "::"))) %>%
+    group_by(tree_grp) %>%
+    mutate(
+      xy_ok = !is.na(x_rel_m) & !is.na(y_rel_m),
+      x_rel_m = ifelse(!xy_ok & any(xy_ok), mean(x_rel_m[xy_ok]), x_rel_m),
+      y_rel_m = ifelse(!xy_ok & any(xy_ok), mean(y_rel_m[xy_ok]), y_rel_m)) %>%
+    ungroup()
+  xy_i <- match(stem_fil$record_id, xy_fill$record_id)
+
+  crown_list <- lapply(plot_vec, function(x) {
+    grid <- quadGrid(quad_rel[quad_rel$plot_id == x, ])
+    # Stems with coordinates in a quadrat, as in the stem allocation above
+    rows <- which(stem_fil$plot_id == x & !unmapped & in_agbd &
+      !is.na(stem_fil$quadrat_id))
+    if (is.null(grid)) {
+      warning("Quadrats in plot ", x, " are not a regular grid, crown ",
+        "allocation is not used", call. = FALSE)
+      return(NULL)
+    }
+    if (length(rows) == 0) {
+      return(NULL)
+    }
+
+    # One row per tree, at the centroid of its stems, as in ./07_quad.R, with
+    # the equivalent diameter of the measured diameters of its stems
+    s <- stem_fil[rows, ]
+    s$x_rel_m <- xy_fill$x_rel_m[xy_i[rows]]
+    s$y_rel_m <- xy_fill$y_rel_m[xy_i[rows]]
+    tr <- s %>%
+      group_by(tree_key) %>%
+      summarise(
+        x = mean(x_rel_m, na.rm = TRUE),
+        y = mean(y_rel_m, na.rm = TRUE),
+        quadrat_id = first(quadrat_id),
+        diam_crown_cm = sqrt(sum(diam_cm_meas^2)),
+        .groups = "drop") %>%
+      mutate(home = match(quadrat_id, grid$quad$quadrat_id))
+    stopifnot(all(!is.na(tr$home)))
+    agb_s <- agb_simu[rows, , drop = FALSE]
+    agb_s[is.na(agb_s)] <- 0
+    agb_t <- rowsum(agb_s, s$tree_key)[tr$tree_key, , drop = FALSE]
+
+    # Trees with an imputed diameter, or without coordinates, keep stem
+    # allocation, as a crown of radius 0 at the centre of the home quadrat
+    has_crown <- is.finite(tr$diam_crown_cm) & is.finite(tr$x) & is.finite(tr$y)
+    hq <- grid$quad[tr$home, ]
+    tr$x[!has_crown] <- (hq$x_min[!has_crown] + hq$x_max[!has_crown]) / 2
+    tr$y[!has_crown] <- (hq$y_min[!has_crown] + hq$y_max[!has_crown]) / 2
+    d_edge <- pmin(tr$x - hq$x_min, hq$x_max - tr$x, tr$y - hq$y_min,
+      hq$y_max - tr$y)
+
+    # Difference in AGB of each quadrat between crown and stem allocation, in
+    # each simulation
+    nq <- nrow(grid$quad)
+    n_cross <- numeric(nsim)
+    delta <- vapply(seq_len(nsim), function(j) {
+      r <- numeric(nrow(tr))
+      r[has_crown] <- sqrt(crownArea(crown_mod, tr$diam_crown_cm[has_crown],
+        rnorm(sum(has_crown))) / pi)
+      n_cross[j] <<- sum(r > d_edge)
+      crown_q <- crownAlloc(tr$x, tr$y, agb_t[, j], r, tr$home, grid, crown_tmpl)
+      stem_q <- numeric(nq)
+      s_q <- rowsum(agb_t[, j], tr$home)
+      stem_q[as.integer(rownames(s_q))] <- s_q[, 1]
+      crown_q - stem_q
+    }, numeric(nq))
+
+    quads <- quad_area[quad_area$plot_ID == x, ]
+    area_ha <- quads$area_ha[match(grid$quad$quadrat_id, quads$subplot_ID)]
+    list(
+      # Trees with a crown, with the median crown radius and mean simulated
+      # AGB, for the figure of crowns
+      tree = data.frame(
+        plot_id = x,
+        x = tr$x[has_crown],
+        y = tr$y[has_crown],
+        r = sqrt(crownArea(crown_mod, tr$diam_crown_cm[has_crown]) / pi),
+        agb_Mg = rowMeans(agb_t[has_crown, , drop = FALSE])),
+      delta = data.frame(
+        plot_id = x,
+        quadrat_id = rep(grid$quad$quadrat_id, nsim),
+        sim = rep(seq_len(nsim), each = nq),
+        agbd_diff = as.vector(delta / area_ha)),
+      summ = data.frame(
+        plot_id = x,
+        n_tree = nrow(tr),
+        n_tree_crown = sum(has_crown),
+        crown_area_m2_median = median(crownArea(crown_mod,
+          tr$diam_crown_cm[has_crown])),
+        pct_tree_cross = round(100 * mean(n_cross) / nrow(tr), 1)))
+  })
+
+  crown_list <- Filter(Negate(is.null), crown_list)
+  crown_delta <- bind_rows(lapply(crown_list, `[[`, "delta"),
+    data.frame(plot_id = character(0), quadrat_id = character(0),
+      sim = integer(0), agbd_diff = numeric(0)))
+  quad_agb_simu <- quad_agb_simu %>%
+    left_join(., crown_delta, by = c("plot_id", "quadrat_id", "sim")) %>%
+    mutate(agbd_Mg_ha_crown = agbd_Mg_ha + coalesce(agbd_diff, 0)) %>%
+    dplyr::select(-agbd_diff)
+
+  # Crowns are folded back into the quadrat grid, so the AGB of each plot
+  # should be the same with crown and stem allocation in every simulation
+  crown_check <- quad_agb_simu %>%
+    inner_join(., transmute(quad_area, plot_id = as.character(plot_ID),
+      quadrat_id = subplot_ID, area_ha), by = c("plot_id", "quadrat_id")) %>%
+    group_by(plot_id, sim) %>%
+    summarise(
+      agb_stem = sum(agbd_Mg_ha * area_ha),
+      agb_crown = sum(agbd_Mg_ha_crown * area_ha),
+      .groups = "drop")
+  crown_bad <- abs(crown_check$agb_crown - crown_check$agb_stem) >
+    1e-6 * pmax(abs(crown_check$agb_stem), 1)
+  if (any(crown_bad, na.rm = TRUE)) {
+    warning("Plot AGB differs between crown and stem allocation in plots: ",
+      paste(unique(crown_check$plot_id[crown_bad %in% TRUE]), collapse = ", "),
+      call. = FALSE)
+  }
+
+  msgTable(bind_rows(lapply(crown_list, `[[`, "summ")), paste0(
+    "Crown allocation, ", crown_mod$reference, ". Trees with coordinates in ",
+    "a quadrat, trees with a crown (others keep stem allocation), median ",
+    "crown area (m2), and mean percentage of trees whose crown crosses a ",
+    "quadrat edge:"))
+}
+
 # Write quadrat simulations to file
 write.csv(quad_agb_simu, file.path(outdir, "quad_agb_mc.csv"), row.names = FALSE)
 
-# Extract summary statistics from AGBD simulations
+# Extract summary statistics from AGBD simulations. With crown allocation,
+# also `agbd_Mg_ha_crown_mc_*`
 quad_agb <- quad_agb_simu %>%
   group_by(plot_id, quadrat_id) %>%
   summarise(
@@ -607,10 +794,112 @@ quad_agb <- quad_agb_simu %>%
     agbd_Mg_ha_mc_sd = sd(agbd_Mg_ha),
     agbd_Mg_ha_mc_ci2.5 = quantile(agbd_Mg_ha, 0.025),
     agbd_Mg_ha_mc_ci97.5 = quantile(agbd_Mg_ha, 0.975),
+    across(any_of("agbd_Mg_ha_crown"), list(
+      mc_mean = mean,
+      mc_median = median,
+      mc_sd = sd,
+      mc_ci2.5 = ~quantile(.x, 0.025),
+      mc_ci97.5 = ~quantile(.x, 0.975))),
     .groups = "drop")
 
 # Write quadrat-level summary data to file
 write.csv(quad_agb, file.path(outdir, "quad_agb.csv"), row.names = FALSE)
+
+# Figure of the difference in quadrat AGB density between crown and stem
+# allocation, simulated means
+unlink(file.path(report_dir, "08_quad_agbd_crown_diff_map.png"))
+if (param$crown_method != "none") {
+  crown_fig <- quad_rel %>%
+    group_by(plot_id, quadrat_id) %>%
+    summarise(
+      x_min = min(x_rel_m), x_max = max(x_rel_m),
+      y_min = min(y_rel_m), y_max = max(y_rel_m),
+      .groups = "drop") %>%
+    inner_join(., quad_agb, by = c("plot_id", "quadrat_id")) %>%
+    mutate(agbd_diff = agbd_Mg_ha_crown_mc_mean - agbd_Mg_ha_mc_mean)
+  n_plot_crown <- length(unique(crown_fig$plot_id))
+  diff_lim <- c(-1, 1) * max(abs(crown_fig$agbd_diff), 1e-6)
+  p_crown <- ggplot(crown_fig) +
+    geom_blank(data = squareExtent(
+      data.frame(plot_id = rep(crown_fig$plot_id, 2),
+        x = c(crown_fig$x_min, crown_fig$x_max),
+        y = c(crown_fig$y_min, crown_fig$y_max)), "x", "y", "plot_id"),
+      aes(x = x, y = y)) +
+    geom_rect(aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max,
+      fill = agbd_diff), colour = fig_pal$surface, linewidth = 0.3) +
+    scale_fill_gradient2("Crown minus stem allocation (Mg/ha)",
+      low = fig_pal$series[1], mid = fig_pal$surface, high = fig_pal$series[2],
+      midpoint = 0, limits = diff_lim, guide = colourBar()) +
+    facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_crown),
+      scales = "free") +
+    labs(
+      title = "Quadrat AGBD, crown minus stem allocation",
+      subtitle = paste0("Simulated means. Orange quadrats gain AGB from ",
+        "crowns of trees in neighbouring quadrats, blue quadrats lose AGB ",
+        "to them. Crown area: ", crown_mod$reference),
+      x = "X (m)",
+      y = "Y (m)") +
+    themeMap() +
+    theme(aspect.ratio = 1)
+  saveFig(p_crown, file.path(report_dir, "08_quad_agbd_crown_diff_map.png"),
+    n_panel = n_plot_crown)
+}
+
+# Figure of tree crowns in each plot, as circles with the median crown area
+# from the crown area allometry, filled by the simulated mean AGB of the tree.
+# Larger crowns are drawn first, so smaller crowns stay visible
+unlink(file.path(report_dir, "08_crown_map.png"))
+if (param$crown_method != "none") {
+  crown_tree <- bind_rows(lapply(crown_list, `[[`, "tree")) %>%
+    filter(agb_Mg > 0) %>%
+    arrange(desc(r)) %>%
+    mutate(tree = row_number())
+  if (nrow(crown_tree) > 0) {
+    circ_n <- 24
+    circ_a <- 2 * pi * seq_len(circ_n) / circ_n
+    crown_poly <- data.frame(
+      plot_id = rep(crown_tree$plot_id, each = circ_n),
+      tree = rep(crown_tree$tree, each = circ_n),
+      agb_Mg = rep(crown_tree$agb_Mg, each = circ_n),
+      x = rep(crown_tree$x, each = circ_n) +
+        as.vector(outer(cos(circ_a), crown_tree$r)),
+      y = rep(crown_tree$y, each = circ_n) +
+        as.vector(outer(sin(circ_a), crown_tree$r)))
+    n_plot_crown <- length(unique(crown_tree$plot_id))
+    p_crown_map <- ggplot() +
+      geom_blank(data = squareExtent(
+        data.frame(plot_id = rep(crown_fig$plot_id, 2),
+          x = c(crown_fig$x_min, crown_fig$x_max),
+          y = c(crown_fig$y_min, crown_fig$y_max)), "x", "y", "plot_id"),
+        aes(x = x, y = y)) +
+      geom_polygon(data = crown_poly, aes(x = x, y = y, group = tree,
+        fill = agb_Mg), alpha = 0.4, colour = NA) +
+      geom_rect(data = crown_fig, aes(xmin = x_min, xmax = x_max,
+        ymin = y_min, ymax = y_max), fill = NA, colour = fig_pal$ink_muted,
+        linewidth = 0.3) +
+      # The lightest colour of the ramp is not used, so that crowns of trees
+      # with little AGB stay visible
+      scale_fill_gradientn("Tree AGB (Mg)", colours = fig_pal$seq2[-1],
+        trans = "log10", breaks = 10^(-3:3),
+        labels = function(x) format(x, drop0trailing = TRUE,
+          scientific = FALSE, trim = TRUE),
+        guide = colourBar()) +
+      facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_crown),
+        scales = "free") +
+      labs(
+        title = "Tree crowns in each plot",
+        subtitle = paste0("Circles with the median crown area from ",
+          crown_mod$reference, ", filled by simulated mean tree AGB, with ",
+          param$quad_dim[1], " x ", param$quad_dim[2], " m quadrats. Trees ",
+          "with coordinates in a quadrat"),
+        x = "X (m)",
+        y = "Y (m)") +
+      themeMap() +
+      theme(aspect.ratio = 1)
+    saveFig(p_crown_map, file.path(report_dir, "08_crown_map.png"),
+      n_panel = n_plot_crown)
+  }
+}
 
 # Summarise plot-level AGB density and its uncertainty, from the area-weighted
 # mean of quadrat AGB density in each simulation. This is compared to the sum

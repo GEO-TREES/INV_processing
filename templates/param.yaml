@@ -20,7 +20,35 @@ include_broken: true
 multi_stem_method: "equivalent"
 unmapped_method: "random"
 missing_diam_method: "impute"
+taper_method: "none"
+stem_allometry: false
+growth_form_exclude: []
+crown_method: "none"
 diam_error: "chave2004"
+# Optional, species terms of the "cushman2014" taper model, by taxon name
+# taper_species:
+#   Ceiba pentandra: 0.0495
+# Required if height_method is "custom", a published height-diameter model,
+# height (m) as a function of diameter D (cm)
+# height_custom:
+#   formula: "a * D^b / (k + D^b)"
+#   parameters:
+#     a: 57.1
+#     b: 0.73
+#     k: 21.79
+#   sigma: 0.181
+#   link: "log"
+#   reference: "Martinez-Cano et al. (2019)"
+# Required if crown_method is "custom", a crown area allometry, crown area
+# (m2) as a function of diameter D (cm)
+# crown_custom:
+#   formula: "a * D^b"
+#   parameters:
+#     a: 0.57
+#     b: 1.34
+#   sigma: 0.549
+#   link: "log"
+#   reference: "Martinez-Cano et al. (2019)"
 rocrate:
   author_name: "John L. Godlee"
   author_email: "GodleeJ@si.edu"

@@ -1,6 +1,6 @@
 # Estimate stem-level above-ground woody biomass from tree inventory data
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-26
 
 # Multi-stemmed trees: AGB is estimated for each tree from its equivalent
 # diameter, the diameter of a single stem with the same basal area as all its
@@ -13,13 +13,22 @@
 # Allometry matches that used in ./08_agb_mc.R:
 #   "regional" - Chave et al. (2014) Eq. 7, using environmental stress (E) at plot centre
 #   "field" - Chave et al. (2014) Eq. 4, using heights from local height-diameter model
+#   "custom" - Chave et al. (2014) Eq. 4, using heights from the height-diameter
+#     model in `height_custom`
+# If `stem_allometry` is true, trees use the allometry in `agb_allometry` of
+# their largest stem, see `agb_allometries` in ./func.R, e.g. Goodman et al.
+# (2013) for palms. Trees without one use Chave et al. (2014)
+#
+# Diameters are corrected for taper if `taper_method` is set, see 
+# ./04_height.R
 
 # Stems which form multi-stemmed trees, as in ./06_record_fil.R. If
 # `multi_stem_method` is "stem", AGB is estimated for each stem separately
 record_agbd <- agbdFilter(stem, plot, 
   recordFilter(stem, plot, missing_diam = param$missing_diam_method == "impute"),
   diam_min_cm = param$agbd_diam_min_cm,
-  include_broken = param$include_broken)
+  include_broken = param$include_broken,
+  growth_form_exclude = param$growth_form_exclude)
 tree_include <- if (param$multi_stem_method == "equivalent") record_agbd else character(0)
 
 # Join wood density, height, and equivalent diameter to stem data
@@ -37,8 +46,17 @@ tree <- stem_all %>%
     plot_id = first(plot_id),
     diam_eq_cm = first(diam_eq_cm),
     meanWD = first(meanWD),
+    agb_allometry = if (param$stem_allometry) first(agb_allometry) else NA_character_,
     n_taxa = n_distinct(taxon_name),
-    .groups = "drop")
+    .groups = "drop") %>%
+  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), "chave2014"))
+
+allom_unknown <- setdiff(tree$agb_allometry, c("chave2014", names(agb_allometries)))
+if (length(allom_unknown) > 0) {
+  stop("Unknown `agb_allometry` in the stem table: ", 
+    paste(allom_unknown, collapse = ", "), ". Must be one of: ",
+    paste(c("chave2014", names(agb_allometries)), collapse = ", "))
+}
 
 if (any(tree$n_taxa > 1)) {
   warning(sum(tree$n_taxa > 1), " multi-stemmed trees have stems with ",
@@ -60,18 +78,31 @@ if (param$height_method == "regional") {
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
     coord = as.matrix(tree[, c("X", "Y")])), warning = muffleNA)
-} else if (param$height_method == "field") {
+} else if (param$height_method %in% c("field", "custom")) {
   tree$agb_Mg <- withCallingHandlers(computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
     H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H), warning = muffleNA)
 }
 
+# Trees with other allometries, see `stem_allometry`
+for (a in intersect(names(agb_allometries), tree$agb_allometry)) {
+  i <- which(tree$agb_allometry == a)
+  tree$agb_Mg[i] <- agbAllomMean(agb_allometries[[a]],
+    D = tree$diam_eq_cm[i],
+    H = if (exists("height_mod")) retrieveH(D = tree$diam_eq_cm[i], model = height_mod)$H,
+    WD = tree$meanWD[i])
+}
+if (param$stem_allometry) {
+  msgTable(count(tree, agb_allometry, name = "n_tree"), "Trees by AGB allometry:")
+}
+
 # Share tree AGB among stems
 stem_agb <- stem_all %>%
   mutate(
     agb_Mg = tree$agb_Mg[match(tree_key, tree$tree_key)] * ba_share,
-    ba_m2 = base::pi * (diam_cm / 2)^2 / 10000,
+    # Basal area from the measured diameter
+    ba_m2 = base::pi * (diam_cm_meas / 2)^2 / 10000,
     volume_m3 = agb_Mg / meanWD) %>%
   dplyr::select(
     record_id,

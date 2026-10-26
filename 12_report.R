@@ -362,6 +362,10 @@ bm_version <- paste0(bm_desc$Version,
 allom_desc <- if (param$height_method == "field") {
   paste0("Chave et al. (2014) pantropical Eq. 4, AGB (kg) = 0.0673 x ",
     "(WD x D^2 x H)^0.976, using heights from the local height-diameter model")
+} else if (param$height_method == "custom") {
+  paste0("Chave et al. (2014) pantropical Eq. 4, AGB (kg) = 0.0673 x ",
+    "(WD x D^2 x H)^0.976, using heights from the height-diameter model of ",
+    param$height_custom$reference)
 } else {
   paste0("Chave et al. (2014) pantropical Eq. 7, AGB (kg) = exp(-2.024 - ",
     "0.896 E + 0.920 ln(WD) + 2.795 ln(D) - 0.0461 ln(D)^2), where E is the ",
@@ -377,6 +381,14 @@ height_desc <- if (param$height_method == "field") {
     } else {
       "Chosen by the user"
     }, ". Heights are predicted for all stems from this model")
+} else if (param$height_method == "custom") {
+  paste0("Height-diameter model of ", param$height_custom$reference, ": H = ",
+    param$height_custom$formula, ", with ",
+    paste(names(param$height_custom$parameters), unlist(param$height_custom$parameters),
+      sep = " = ", collapse = ", "), ", and ",
+    if (identical(param$height_custom$link, "identity")) "normal" else "log-normal",
+    " residual error, SD ", param$height_custom$sigma, ". Heights are predicted ",
+    "for all stems from this model")
 } else {
   paste0("No local height data used. Stem heights reported in the outputs, ",
     "e.g. quadrat maximum height, are predicted from diameter with Chave et ",
@@ -386,17 +398,23 @@ height_desc <- if (param$height_method == "field") {
 wd_desc <- paste0(
   if (param$wd_method == "field") {
     paste0("Local wood density measurements (", nrow(wd), " records), ",
-      "combined with the Global Wood Density Database (Chave et al. 2009; ",
-      "Zanne et al. 2009), with BIOMASS::getWoodDensity(). ")
+      "replacing the estimates of the same taxa in the Global Wood Density ",
+      "Database v2 (Fischer et al. 2026), with BIOMASS::getWoodDensity(). ",
+      "Taxa without local measurements use the Global Wood Density Database v2. ")
+  } else if (param$wd_method == "local") {
+    paste0("Local wood density measurements only (", nrow(wd), " records). ",
+      "Taxa without a species estimate use the mean of the species in their ",
+      "genus, else in their family, with at least two species, else the mean ",
+      "of all species in the local data. ")
   } else {
-    paste0("Global Wood Density Database (Chave et al. 2009; Zanne et al. ",
-      "2009), with BIOMASS::getWoodDensity(). ")
+    paste0("Global Wood Density Database v2 (Fischer et al. 2026), with ",
+      "BIOMASS::getWoodDensity(). ")
   },
   "Each stem uses the estimate at the lowest taxonomic level available: ",
   "species (", wdVal("species", "n_stem"), " stems), genus (",
   wdVal("genus", "n_stem"), "), family (", wdVal("family", "n_stem"),
-  "), otherwise the plot mean (", wdVal("plot mean", "n_stem") +
-    wdVal("dataset", "n_stem"), ")")
+  "), otherwise the ", if (param$wd_method == "local") "dataset" else "plot",
+  " mean (", wdVal("plot mean", "n_stem") + wdVal("dataset", "n_stem"), ")")
 
 diam_error_desc <- if (identical(param$diam_error, "none")) {
   "Not propagated"
@@ -518,11 +536,19 @@ site_summ <- bind_rows(
   sRow("Auxiliary datasets", "Field-measured height-diameter data",
     if (n_height_obs == 0) "no" else paste0("yes (", n_height_obs, " measurements)")),
   sRow("Auxiliary datasets", "Local height-diameter allometry used",
-    if (param$height_method == "field") "yes" else "no"),
+    if (param$height_method == "field") {
+      "yes"
+    } else if (param$height_method == "custom") {
+      paste0("yes (", param$height_custom$reference, ")")
+    } else "no"),
   sRow("Auxiliary datasets", "Field-measured wood density data",
     if (is.null(wd)) "no" else paste0("yes (", nrow(wd), " records)")),
   sRow("Auxiliary datasets", "Local wood density data used",
-    if (param$wd_method == "field") "yes" else "no"),
+    if (param$wd_method == "field") {
+      "yes, with the Global Wood Density Database v2"
+    } else if (param$wd_method == "local") {
+      "yes, local data only"
+    } else "no"),
   sRow("Auxiliary datasets", "Repeat diameter measurements",
     if (is.null(diam_dup)) "no" else paste0("yes (", n_dup_used, " pairs used)")),
   sRow("Auxiliary datasets", "Taxon table, e.g. families of unmatched names",
@@ -651,6 +677,39 @@ choice <- bind_rows(
     } else {
       "Stems broken above the POM are excluded from AGB density"
     }),
+  cRow("Stem selection", "Growth forms excluded", "growth_form_exclude",
+    if (length(param$growth_form_exclude) > 0) {
+      paste(param$growth_form_exclude, collapse = ", ")
+    } else NA,
+    if (length(param$growth_form_exclude) > 0) {
+      paste0("Stems with `growth_form` ", paste(param$growth_form_exclude, 
+        collapse = ", "), " in the stem table have AGB estimates, but are not ",
+        "included in AGB density")
+    } else {
+      "No growth forms are excluded from AGB density"
+    }),
+  cRow("Stem selection", "Taper correction", "taper_method", param$taper_method,
+    if (param$taper_method == "cushman2014") {
+      paste0("Diameters of non-palm stems measured above 1.3 m are corrected ",
+        "to their equivalent at 1.3 m with the exponential taper model of ",
+        "Cushman et al. (2014) for Barro Colorado Island, log(b) = -2.0205 - ",
+        "0.5053 log(D) + 0.3748 log(HOM)",
+        if (!is.null(param$taper_species)) ", with species terms",
+        ". Corrected diameters are used to estimate height and AGB. They ",
+        "overestimate standing AGB with allometries fitted partly to ",
+        "diameters measured above buttresses")
+    } else if (param$taper_method == "cushman2021") {
+      paste0("Diameters of non-palm stems measured above 1.3 m are corrected ",
+        "to their equivalent at 1.3 m with the general exponential taper ",
+        "model of Cushman et al. (2021), b = 0.151 - 0.025 log(D) - 0.02 ",
+        "log(HOM) - 0.021 log(WD), without site effects, with b at least 0. ",
+        "Corrected diameters are used to estimate height and AGB. They ",
+        "overestimate standing AGB with allometries fitted partly to ",
+        "diameters measured above buttresses, but make this bias more ",
+        "consistent among sites with different distributions of HOM")
+    } else {
+      "Diameters measured above 1.3 m are not corrected for taper"
+    }),
   cRow("Stem selection", "Multi-stemmed trees", "multi_stem_method", param$multi_stem_method,
     if (param$multi_stem_method == "equivalent") {
       paste0("AGB is estimated for each tree from its equivalent diameter, ",
@@ -668,8 +727,41 @@ choice <- bind_rows(
   cRow("Wood density", "Wood density source", "wd_method", param$wd_method, wd_desc),
   cRow("Height", "Stem height", "height_method", param$height_method, height_desc),
   cRow("Allometry", "Above-ground woody biomass allometry", "height_method",
-    param$height_method, paste0(allom_desc, ". Allometries supplied for ",
-      "individual stems (`agb_allometry` in the stem table) are not used")),
+    param$height_method, allom_desc),
+  cRow("Allometry", "Allometries of individual stems", "stem_allometry",
+    param$stem_allometry,
+    if (param$stem_allometry) {
+      allom_used <- setdiff(unique(stem_df$agb_allometry[stem_df$in_agb_calc %in% TRUE]),
+        c(NA, "", "chave2014"))
+      paste0("Stems use the allometry in `agb_allometry` in the stem table. ",
+        if (length(allom_used) > 0) {
+          paste0(paste(vapply(allom_used, function(a) {
+            paste0(agb_allometries[[a]]$description, " (",
+              sum(stem_df$agb_allometry %in% a & stem_df$in_agb_calc %in% TRUE),
+              " stems)")
+          }, character(1)), collapse = "; "), ". ")
+        },
+        "Other stems use the allometry above")
+    } else {
+      paste0("Allometries supplied for individual stems (`agb_allometry` in ",
+        "the stem table) are not used")
+    }),
+  cRow("Allometry", "Crown allocation", "crown_method", param$crown_method,
+    if (param$crown_method == "custom") {
+      paste0("Quadrat AGBD is also estimated with the AGB of each tree spread ",
+        "over its crown (AGBD_crown_estimate in the L3 product), a circle ",
+        "centred on the tree with area predicted from its measured diameter, ",
+        "not corrected for taper, by the crown area allometry of ",
+        param$crown_custom$reference, ", ", param$crown_custom$formula,
+        ", with its residual error (", param$crown_custom$link, " link, sigma = ",
+        param$crown_custom$sigma, ") drawn for each tree in each simulation. ",
+        "Crowns crossing a quadrat edge are split among quadrats. Crowns ",
+        "outside the quadrat grid are folded back into the grid, so plot AGBD ",
+        "is unchanged. Trees without coordinates, or with an imputed ",
+        "diameter, keep stem allocation")
+    } else {
+      "The AGB of each tree is assigned to the quadrat containing its stems"
+    }),
   cRow("Plot geometry", "Plot polygon", "polygon_method", param$polygon_method,
     paste0(polygon_desc, ", using BIOMASS::plotPolygonFit()")),
   cRow("Plot geometry", "GNSS outliers", "corner_outlier_dist_m", param$corner_outlier_dist_m,
@@ -734,6 +826,8 @@ choice <- bind_rows(
       "these stems, ", if (param$height_method == "field") {
         paste0("from the local height-diameter model (", height_mod_used$method, 
           "), with the fitted model")
+      } else if (param$height_method == "custom") {
+        paste0("from the height-diameter model of ", param$height_custom$reference)
       } else {
         "with Chave et al. (2014) Eq. 6a, which are not used to estimate AGB"
       })),
@@ -749,12 +843,19 @@ choice <- bind_rows(
   cRow("Uncertainty", "Height error", "height_method", param$height_method,
     if (param$height_method == "field") {
       "Residual standard error of the local height-diameter model"
+    } else if (param$height_method == "custom") {
+      paste0("Residual error of the height-diameter model of ", 
+        param$height_custom$reference, ", SD ", param$height_custom$sigma,
+        if (!identical(param$height_custom$link, "identity")) " on the log scale")
     } else {
       "Not propagated separately, height is not used in Chave et al. (2014) Eq. 7"
     }),
   cRow("Uncertainty", "Allometric model error", NA, NA,
     paste0("Residual error and coefficient uncertainty of the Chave et al. ",
-      "(2014) model, from posterior samples of its parameters")),
+      "(2014) model, from posterior samples of its parameters",
+      if (param$stem_allometry) {
+        ". Residual error of other allometries assigned to stems"
+      })),
   cRow("Uncertainty", "Not propagated", NA, NA,
     paste0("Errors in the GNSS coordinates of plot corners, which need ",
       "repeated measurements of each corner; errors in stem coordinates; ",
@@ -781,7 +882,7 @@ choice_md <- c(
 fRow <- function(file, section, caption) {
   data.frame(file = file, section = section, caption = caption)
 }
-allom_eq <- if (param$height_method == "field") {
+allom_eq <- if (param$height_method %in% c("field", "custom")) {
   "Chave et al. (2014) Eq. 4" 
 } else {
   "Chave et al. (2014) Eq. 7"
@@ -790,6 +891,9 @@ quad_txt <- paste0(param$quad_dim[1], " x ", param$quad_dim[2], " m quadrats")
 height_caption <- if (param$height_method == "field") {
   paste0("measured heights, and heights predicted for all stems by the local ",
     "height-diameter model (", height_mod_used$method, ")")
+} else if (param$height_method == "custom") {
+  paste0("measured heights, if any, and heights predicted for all stems by ",
+    "the height-diameter model of ", param$height_custom$reference)
 } else {
   paste0("measured heights, if any, and heights predicted from diameter with ",
     "Chave et al. (2014) Eq. 6a, which are not used to estimate AGB")
@@ -820,6 +924,31 @@ fig_index <- bind_rows(
     "Share of AGB in each diameter class"),
   fRow("08_plot_agbd.png", "AGB density", paste0("Plot AGBD, with the 95% ",
     "interval of ", n_sim, " simulations, and the sum of stem AGB")),
+  fRow("08_crown_map.png", "AGB density", paste0("Tree crowns in each plot, ",
+    "used to spread tree AGB over crowns (crown-distributed AGBD). Each tree ",
+    "with coordinates in a quadrat is drawn as a translucent circle centred on ",
+    "its stems, with the median crown area predicted from its measured ",
+    "diameter by the ",
+    "crown area allometry of ", param$crown_custom$reference, ", and filled by ",
+    "its simulated mean AGB. In each simulation, crown areas also vary by the ",
+    "residual error of the allometry. Where circles cross a quadrat edge, the ",
+    "AGB of the tree is shared among quadrats in proportion to the area of its ",
+    "crown in each. Axis ranges differ between plots")),
+  fRow("08_quad_agbd_crown_diff_map.png", "AGB density", paste0("Difference ",
+    "in quadrat AGBD between crown-distributed AGBD (AGBD_crown_estimate in ",
+    "the L3 product), where the AGB of each tree is spread over its crown, and ",
+    "stem-based AGBD (AGBD_stand_estimate), where all of the AGB of each tree ",
+    "is in the quadrat containing its stems. Means of ", n_sim, " simulations. ",
+    "Orange quadrats gain AGB from the crowns of large trees rooted in ",
+    "neighbouring quadrats, and blue quadrats lose AGB from the crowns of ",
+    "large trees rooted near their edges. Crown AGB outside the quadrat grid ",
+    "is folded back into the grid, so the AGBD of each plot is the same with ",
+    "both methods, and the area-weighted differences in each plot sum to ",
+    "zero. Crown-distributed AGBD is smoother among quadrats, and may match ",
+    "the canopy seen by ",
+    "airborne lidar more closely. Trees without coordinates, or with an ",
+    "imputed diameter, are not spread over crowns. Axis ranges differ ",
+    "between plots")),
   fRow("10_quad_agbd_hist.png", "AGB density", paste0("Distribution of ",
     "quadrat AGB density (AGBD) in ", quad_txt, ", coloured as in the maps ",
     "of quadrat AGBD")),

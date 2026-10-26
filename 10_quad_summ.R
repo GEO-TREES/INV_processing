@@ -70,7 +70,7 @@ quad_summ <- quad_poly %>%
           "ba_m2_sum",
           "volume_m3_sum",
           "agb_Mg_sum")),
-        starts_with("agbd_Mg_ha_mc_")),
+        starts_with(c("agbd_Mg_ha_mc_", "agbd_Mg_ha_crown_mc_"))),
       ~if_else(empty_quadrat & is.na(.x), 0, .x)),
     across(
       c(

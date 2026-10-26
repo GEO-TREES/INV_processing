@@ -14,10 +14,13 @@ record_fil <- recordFilter(stem, plot,
 # see `agbdFilter()` in ./func.R. Stems below the minimum diameter threshold,
 # the larger of `agbd_diam_min_cm` and the threshold of the plot, are
 # excluded. Stems broken above the POM are excluded if `include_broken` is
-# false. Stems without a diameter are assumed to be above the threshold
+# false, and stems of growth forms in `growth_form_exclude`, e.g. strangler
+# figs, are excluded. Stems without a diameter are assumed to be above the
+# threshold
 record_agbd <- agbdFilter(stem, plot, record_fil,
   diam_min_cm = param$agbd_diam_min_cm,
-  include_broken = param$include_broken)
+  include_broken = param$include_broken,
+  growth_form_exclude = param$growth_form_exclude)
 
 # Write filtered stem data to file
 writeLines(record_fil, file.path(outdir, "record_fil.txt"))
@@ -44,6 +47,8 @@ record_status <- stem %>%
       !is.na(diam_min) & !is.na(diam_cm) & diam_cm < diam_min ~ 
         "AGB only: below diameter threshold",
       grepl("B", code) & !param$include_broken ~ "AGB only: broken above POM",
+      growth_form %in% param$growth_form_exclude ~
+        paste0("AGB only: excluded growth form (", growth_form, ")"),
       TRUE ~ "AGB only: other")) %>%
   count(status, name = "n_record") %>%
   mutate(pct_record = round(100 * n_record / sum(n_record), 1)) %>%

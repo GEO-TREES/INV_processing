@@ -153,8 +153,8 @@ There should be one `param.yaml` file for each version of the processed data.
 * `opt_s3` -- Boolean (`true`/`false`). If `true`, raw input data will be pulled from an AWS S3 bucket specified in `s3_dir`, otherwise a local directory specified in `raw_dir`
 * `product_version` -- String specifying the version of the data products, e.g. `"v1"`. Data products may be specified with different parameter sets, for example different size quadrats (`quad_dim`) or different methods of estimating stem height (`height_method`). 
 * `software_version` -- String specifying the version of the code used to generate the data products, normally a GitHub release version, e.g. `"v2.4"`
-* `height_method` -- Method used to estimate stem height, either `"regional"` or `"field"`
-* `wd_method` -- Method used to estimate wood density, either `"regional"` or `"field"`
+* `height_method` -- Method used to estimate stem height: `"regional"` (Chave et al. 2014 Eq. 6a, with AGB from Eq. 7, which does not use height), `"field"` (a height-diameter model fitted to `height.csv`) or `"custom"` (a published height-diameter model given in `height_custom`). With `"field"` and `"custom"`, AGB is estimated with Chave et al. (2014) Eq. 4
+* `wd_method` -- Method used to estimate wood density: `"regional"` (Global Wood Density Database v2), `"field"` (local measurements in `wd.csv`, replacing the Global Wood Density Database v2 estimates of the same taxa, with the Global Wood Density Database v2 for other taxa) or `"local"` (local measurements only, with genus, family and dataset means of the local species for taxa without a species estimate)
 * `polygon_method` -- Method used to fit plot polygons, one of `"exact"`, `"affine"` or `"procrustes"`, see [Fit plot spatial polygons]
 * `outside_max_dist_m` -- Maximum distance in metres outside the quadrat grid at which stems are assigned to the nearest quadrat, e.g. `5`. `0` excludes all stems outside the grid from quadrat summaries
 * `corner_outlier_dist_m` -- Maximum distance in metres between a measured plot corner and the fitted plot polygon, beyond which the corner is treated as an outlier, e.g. `10`, see [Fit plot spatial polygons]
@@ -167,7 +167,14 @@ There should be one `param.yaml` file for each version of the processed data.
 * `diam_error` -- Diameter measurement error propagated to AGB, either `"chave2004"` (Chave et al. 2004), `"field"` (estimated from repeat diameter measurements in `stem_dup.csv` with `BIOMASS::fitDiamError()`), `"none"`, or a number giving the standard deviation of diameter measurement error in cm
 * `quad_origin` -- Optional, alignment of the quadrat grid in each plot: `"centre"` (default) centres the grid in the plot, `"corner"` starts it at the origin corner of the plot, and `[x, y]` starts it x and y m from the origin corner. Where the plot dimensions are not a multiple of the quadrat dimensions, strips of the plot outside the grid are left out
 * `missing_diam_method` -- Optional, how live stems without a diameter measurement are treated: `"impute"` (default) imputes their diameter in each Monte Carlo simulation from the other trees in the same plot, see [Missing measurements], or `"exclude"` excludes them
-* `als_date` -- Optional, date of the airborne lidar acquisition matched to the plot data, `"YYYY-MM-DD"`, `"YYYY-MM"` or `"YYYY"`, used to report the time between the ALS acquisition and the census 
+* `als_date` -- Optional, date of the airborne lidar acquisition matched to the plot data, `"YYYY-MM-DD"`, `"YYYY-MM"` or `"YYYY"`, used to report the time between the ALS acquisition and the census
+* `taper_method` -- Optional, correction of diameters measured above 1.3 m to their equivalent at 1.3 m with an exponential taper model, used to estimate height and AGB: `"none"` (default), `"cushman2014"` (Cushman et al. 2014, Barro Colorado Island only) or `"cushman2021"` (Cushman et al. 2021, general model fitted at five lowland tropical forest sites). Palms are not corrected. Diameter thresholds use the measured diameter
+* `taper_species` -- Optional, species terms of `"cushman2014"` by taxon name, e.g. `{"Ceiba pentandra": 0.0495}`
+* `stem_allometry` -- Optional, `true` or `false` (default), whether stems use the AGB allometry in `agb_allometry` in the stem table, e.g. `"goodman2013"` for palms, see `agb_allometries` in `func.R`. Stems without one use Chave et al. (2014)
+* `growth_form_exclude` -- Optional, values of `growth_form` in the stem table excluded from AGB density, e.g. `["strangler"]`. These stems have AGB estimates. None by default
+* `height_custom` -- Required if `height_method` is `"custom"`, the height-diameter model: `formula`, height (m) as a function of diameter `D` (cm), e.g. `"a * D^b / (k + D^b)"`; `parameters`, e.g. `{a: 57.1, b: 0.73, k: 21.79}`; `sigma`, the residual standard deviation; `link`, `"log"` (default) if the residual error is log-normal and `formula` gives the median height, or `"identity"`; and `reference` 
+* `crown_method` -- Optional, whether quadrat AGB density is also estimated with the AGB of each tree spread over its crown, see [Estimate quadrat AGBD and propagate error]: `"none"` (default) or `"custom"` (crown area from the allometry in `crown_custom`)
+* `crown_custom` -- Required if `crown_method` is `"custom"`, the crown area allometry: `formula`, crown area (m^2^) as a function of diameter `D` (cm), e.g. `"a * D^b"`; `parameters`, e.g. `{a: 0.57, b: 1.34}`; `sigma`, the residual standard deviation; `link`, `"log"` (default) if the residual error is log-normal and `formula` gives the median crown area, or `"identity"`; and `reference`
 * `rocrate` -- Information on who ran the workflow, used in the RO-Crate meta-data files which accompany each data product:
   * `author_name` -- e.g. `"John L. Godlee"`
   * `author_email` -- e.g. `"GodleeJ@si.edu"`
@@ -223,10 +230,33 @@ param_name_vec <- c(
 # from the origin corner of each plot
 # `missing_diam_method` is how live stems without a diameter measurement are
 # treated, see ./08_agb_mc.R: "impute" (default) or "exclude"
+# `taper_method` is the correction of diameters measured away from 1.3 m to
+# their equivalent at 1.3 m, see `taperB()` in ./func.R: "none" (default),
+# "cushman2014" (Barro Colorado Island only) or "cushman2021"
+# `taper_species` is the species terms of "cushman2014", by taxon name, e.g.
+# {"Ceiba pentandra": 0.0495}. Other species use the base class
+# `stem_allometry` is whether stems use the AGB allometry in `agb_allometry`
+# in the stem table, see `agb_allometries` in ./func.R: false (default) or
+# true
+# `growth_form_exclude` is values of `growth_form` in the stem table excluded
+# from AGB density, e.g. ["strangler"]. None by default
+# `height_custom` is the height-diameter model used if `height_method` is
+# "custom", see `heightCustom()` in ./func.R
+# `crown_method` is whether quadrat AGB density is also estimated with tree
+# AGB spread over crowns, see ./08_agb_mc.R: "none" (default) or "custom"
+# `crown_custom` is the crown area allometry used if `crown_method` is
+# "custom", see `crownCustom()` in ./func.R
 param_optional_vec <- c(
   "als_date",
   "quad_origin",
-  "missing_diam_method"
+  "missing_diam_method",
+  "taper_method",
+  "taper_species",
+  "stem_allometry",
+  "growth_form_exclude",
+  "height_custom",
+  "crown_method",
+  "crown_custom"
 )
 
 # Define RO-Crate parameter names, `author_orcid` is optional
@@ -259,8 +289,8 @@ if (length(param_extra) > 0) {
 
 # Check parameter values
 param_choices <- list(
-  height_method = c("regional", "field"),
-  wd_method = c("regional", "field"),
+  height_method = c("regional", "field", "custom"),
+  wd_method = c("regional", "field", "local"),
   polygon_method = c("exact", "affine", "procrustes"),
   height_model = c("best", "log1", "log2", "weibull", "michaelis"),
   multi_stem_method = c("equivalent", "stem"),
@@ -322,6 +352,57 @@ if (is.null(param$missing_diam_method)) {
 if (!identical(param$missing_diam_method, "impute") && 
   !identical(param$missing_diam_method, "exclude")) {
   stop("`missing_diam_method` must be one of: impute, exclude")
+}
+
+if (is.null(param$taper_method)) {
+  param$taper_method <- "none"
+}
+if (!param$taper_method %in% c("none", "cushman2014", "cushman2021")) {
+  stop("`taper_method` must be one of: none, cushman2014, cushman2021")
+}
+if (!is.null(param$taper_species) && (!is.list(param$taper_species) ||
+  is.null(names(param$taper_species)) ||
+  !all(vapply(param$taper_species, is.numeric, logical(1))))) {
+  stop("`taper_species` must be taxon names with numeric species terms, ",
+    "e.g. {\"Ceiba pentandra\": 0.0495}")
+}
+
+if (is.null(param$stem_allometry)) {
+  param$stem_allometry <- FALSE
+}
+if (length(param$stem_allometry) != 1 || !is.logical(param$stem_allometry) ||
+  is.na(param$stem_allometry)) {
+  stop("`stem_allometry` must be true or false")
+}
+
+param$growth_form_exclude <- unlist(param$growth_form_exclude)
+if (length(param$growth_form_exclude) > 0 && !is.character(param$growth_form_exclude)) {
+  stop("`growth_form_exclude` must be values of `growth_form`, e.g. [\"strangler\"]")
+}
+
+if (param$height_method == "custom") {
+  if (is.null(param$height_custom) ||
+    !all(c("formula", "parameters", "sigma") %in% names(param$height_custom))) {
+    stop("`height_method` is \"custom\", so `height_custom` must give the ",
+      "height-diameter model's `formula`, `parameters` and `sigma`")
+  }
+  # Check the model can be built
+  invisible(heightCustom(param$height_custom))
+}
+
+if (is.null(param$crown_method)) {
+  param$crown_method <- "none"
+}
+if (!param$crown_method %in% c("none", "custom")) {
+  stop("`crown_method` must be one of: none, custom")
+}
+if (param$crown_method == "custom") {
+  if (is.null(param$crown_custom)) {
+    stop("`crown_method` is \"custom\", so `crown_custom` must give the ",
+      "crown area allometry's `formula`, `parameters` and `sigma`")
+  }
+  # Check the allometry can be built
+  invisible(crownCustom(param$crown_custom))
 }
 if (!(identical(param$quad_origin, "centre") || identical(param$quad_origin, "corner") ||
   (is.numeric(param$quad_origin) && length(param$quad_origin) == 2 && 
@@ -836,15 +917,71 @@ deviation with the mean standard deviation of other taxa estimated at the same
 taxonomic level. Without a standard deviation, these stems would be dropped
 from the AGB error propagation.
 
+If `wd_method` is `"local"`, the Global Wood Density Database is not used.
+Taxa without a local species estimate take the mean of the local species in
+their genus, else in their family, where there are at least
+`wd_local_min_sp` species, else the mean of all local species. Means are
+taken over species, so that well-sampled species do not dominate, and the
+standard deviation of a genus, family or dataset estimate is the standard
+deviation among its species.
+
 ```{r}
 # Estimate wood density for each stem measurement
-wd_all <- BIOMASS::getWoodDensity(
-  genus = taxa_all$genusAccepted, 
-  species = taxa_all$speciesAccepted,
-  stand = taxa_all$plot_id,
-  family = taxa_all$familyAccepted,
-  addWoodDensityData = if (param$wd_method == "field") { wd_summ },
-  verbose = TRUE)
+# "regional" - Global Wood Density Database v2, with BIOMASS::getWoodDensity()
+# "field" - local measurements, replacing GWDD v2 estimates of the same taxa,
+#   with GWDD v2 for taxa without local measurements
+# "local" - local measurements only
+if (param$wd_method == "local") {
+  wd_local_min_sp <- 2
+
+  wd_sp <- wd_summ %>%
+    filter(!is.na(species), species != "")
+  # Mean and SD of species estimates in each genus or family
+  wd_group <- function(level) {
+    wd_sp %>%
+      filter(!is.na(.data[[level]])) %>%
+      group_by(group = .data[[level]]) %>%
+      summarise(n_sp = n(), sdWD = sd(meanWD), meanWD = mean(meanWD),
+        .groups = "drop") %>%
+      filter(n_sp >= wd_local_min_sp)
+  }
+  wd_genus <- wd_group("genus")
+  wd_family <- wd_group("family")
+
+  i_sp <- match(paste(taxa_all$genusAccepted, taxa_all$speciesAccepted),
+    paste(wd_sp$genus, wd_sp$species))
+  i_gen <- match(taxa_all$genusAccepted, wd_genus$group)
+  i_fam <- match(taxa_all$familyAccepted, wd_family$group)
+  levelWD <- case_when(
+    !is.na(i_sp) ~ "species",
+    !is.na(i_gen) ~ "genus",
+    !is.na(i_fam) ~ "family",
+    TRUE ~ "dataset")
+  wd_all <- data.frame(
+    family = taxa_all$familyAccepted,
+    genus = taxa_all$genusAccepted,
+    species = taxa_all$speciesAccepted,
+    stand = taxa_all$plot_id,
+    meanWD = case_when(
+      levelWD == "species" ~ wd_sp$meanWD[i_sp],
+      levelWD == "genus" ~ wd_genus$meanWD[i_gen],
+      levelWD == "family" ~ wd_family$meanWD[i_fam],
+      TRUE ~ mean(wd_sp$meanWD)),
+    sdWD = case_when(
+      levelWD == "species" ~ wd_sp$sdWD[i_sp],
+      levelWD == "genus" ~ wd_genus$sdWD[i_gen],
+      levelWD == "family" ~ wd_family$sdWD[i_fam],
+      TRUE ~ sd(wd_sp$meanWD)),
+    levelWD = levelWD)
+} else {
+  wd_all <- BIOMASS::getWoodDensity(
+    genus = taxa_all$genusAccepted,
+    species = taxa_all$speciesAccepted,
+    stand = taxa_all$plot_id,
+    family = taxa_all$familyAccepted,
+    addWoodDensityData = if (param$wd_method == "field") { wd_summ },
+    verbose = TRUE)
+}
 
 # Check rows of output match stems
 stopifnot(
@@ -912,7 +1049,8 @@ kable(wd_level, digits = 3)
 record_agbd <- agbdFilter(L0$stem, L0$plot, 
   recordFilter(L0$stem, L0$plot, missing_diam = param$missing_diam_method == "impute"),
   diam_min_cm = param$agbd_diam_min_cm,
-  include_broken = param$include_broken)
+  include_broken = param$include_broken,
+  growth_form_exclude = param$growth_form_exclude)
 wd_fig <- filter(wd_check, as.character(record_id) %in% record_agbd)
 wdLevelPlot(wd_fig$meanWD, wd_fig$level) +
   labs(
@@ -946,14 +1084,81 @@ Finally, if neither of the above are appropriate, use the
 `BIOMASS::retrieveH()` function and supply plot coordinates to estimate stem
 height from a regional height-diameter allometry [@Chave2014].
 
-
-
-::: {.callout-warning title="TODO"}
-Where an existing local height-diameter allometry is available:
+Height-diameter and AGB allometries use the diameter at 1.3 m. Where the
+diameter of buttressed or irregular stems was measured higher up, the diameter
+at 1.3 m can optionally be estimated with an exponential taper model, $d = D
+e^{-b(h - 1.3)}$, where $d$ is the diameter measured at height $h$ and $D$ is
+the diameter at 1.3 m, set by `taper_method`. `"cushman2014"` uses the model
+of @Cushman2014 for Barro Colorado Island, Panama, with optional species terms
+in `taper_species`. `"cushman2021"` uses the general model of @Cushman2021,
+fitted at five lowland tropical forest sites, without its site effect. Only
+stems measured above 1.3 m are corrected, as the taper models were fitted to
+stems measured above buttresses, and palms are not corrected. The corrected
+diameter is used to estimate height and AGB, while the measured diameter,
+`diam_cm_meas`, is used for diameter thresholds, as the plots were sampled on
+measured diameters. The example data use the default, `"none"`.
 
 ```{r}
+# Diameter at 1.3 m, corrected for taper, see `taper_method` in param.yaml
+# and `taperB()` in func.R. Stems without a POM were measured at the default
+# POM of the plot
+stem_taper <- L0$stem
+stem_taper$diam_cm_meas <- stem_taper$diam_cm
+if (param$taper_method != "none") {
+  hom <- coalesce(stem_taper$pom_m,
+    L0$plot$meas_pom_default_m[match(stem_taper$plot_id, L0$plot$plot_id)])
+  wd_i <- match(stem_taper$record_id, stem_wd_all$record_id)
+  palm <- stem_wd_all$family[wd_i] %in% "Arecaceae"
+  sp_term <- unlist(param$taper_species)[
+    paste(stem_wd_all$genus[wd_i], stem_wd_all$species[wd_i])]
+  sp_term[is.na(sp_term)] <- 0
+  b <- taperB(stem_taper$diam_cm, hom, param$taper_method,
+    wd = stem_wd_all$meanWD[wd_i], sp_term = sp_term)
+  taper_corr <- !palm & !is.na(stem_taper$diam_cm) & !is.na(hom) & hom > 1.3 + 1e-6
+  stem_taper$diam_cm[taper_corr] <- stem_taper$diam_cm[taper_corr] /
+    exp(-b[taper_corr] * (hom[taper_corr] - 1.3))
+}
 ```
-:::
+
+Where an existing local height-diameter allometry is available
+(`height_method: "custom"`), it is given in `height_custom`, and built with
+`BIOMASS::customHD()`, through `heightCustom()` in `func.R`. Its residual
+error, `sigma`, is propagated to AGB in [Estimate quadrat AGBD and propagate
+error]. With `link: "log"`, the residual error is log-normal, `formula` gives
+the median height, and `retrieveH()` returns the mean height. The example data
+have no local allometry, so here we use the model of @MartinezCano2019 for
+Barro Colorado Island to illustrate:
+
+```{r}
+# Published height-diameter model, see `height_custom` in param.yaml
+height_custom <- if (!is.null(param$height_custom)) {
+  param$height_custom
+} else {
+  list(
+    formula = "a * D^b / (k + D^b)",
+    parameters = list(a = 57.1, b = 0.73, k = 21.79),
+    sigma = 0.181,
+    link = "log",
+    reference = "Martinez-Cano et al. (2019)")
+}
+height_mod_custom <- heightCustom(height_custom)
+height_mod_custom
+
+# Predict mean height. For a model with log-normal error, the RSE is on the
+# log scale
+height_est_custom <- retrieveH(
+  D = stem_taper$diam_cm,
+  model = height_mod_custom)
+
+# Create output dataframe, if `height_method` is "custom"
+if (param$height_method == "custom") {
+  stem_height_all <- stem_taper %>%
+    mutate(
+      height_m_pred = height_est_custom$H,
+      height_m_pred_rse = height_est_custom$RSE) %>%
+    dplyr::select(record_id, height_m_pred, height_m_pred_rse)
+}
+```
 
 
 Where sufficient local height data are available:
@@ -997,12 +1202,12 @@ height_mod <- modelHD(
 
 # Predict with best height diameter model
 height_est <- retrieveH(
-  D = L0$stem$diam_cm,
+  D = stem_taper$diam_cm,
   model = height_mod)
 
 # Create output dataframe, if `height_method` is "field"
 if (param$height_method == "field") {
-  stem_height_all <- L0$stem %>% 
+  stem_height_all <- stem_taper %>% 
     mutate(
       height_m_pred = height_est$H,
       height_m_pred_rse = height_est$RSE) %>% 
@@ -1038,7 +1243,7 @@ st_drop_geometry() %>%
 dplyr::select(plot_id, X, Y)
 
 # Add plot centres to stem data
-s_cent <- L0$stem %>% 
+s_cent <- stem_taper %>% 
   left_join(., p_cent, by = "plot_id")
 
 stopifnot(all(!is.na(s_cent$X)))
@@ -1068,8 +1273,13 @@ indicate errors in stem diameter.
 
 ```{r}
 #| tab-cap: "Summary of predicted stem height."
+# Height-diameter model used to estimate AGB, if `height_method` is "custom"
+if (param$height_method == "custom") {
+  height_mod <- height_mod_custom
+}
+
 # Summarise predicted heights
-height_check <- L0$stem %>%
+height_check <- stem_taper %>%
   dplyr::select(record_id, plot_id, diam_cm) %>%
   inner_join(., stem_height_all, by = "record_id") %>%
   filter(!is.na(diam_cm), !is.na(height_m_pred))
@@ -1136,7 +1346,8 @@ p_height +
 Here we estimate the above-ground woody biomass (AGB, `agb_Mg`) of each stem
 measurement using the `BIOMASS::computeAGB()` function, which returns the AGB
 of each tree in Mg. Where heights come from a local
-height-diameter model (`height_method: "field"`), Equation 4 from @Chave2014
+height-diameter model, fitted to the height data (`height_method: "field"`) or
+published (`height_method: "custom"`), Equation 4 from @Chave2014
 is used to estimate AGB with stem diameter (`D`), stem height (`H`), and wood
 density (`WD`). Where no local height data are available (`height_method:
 "regional"`), Equation 7 from @Chave2014 is used, which replaces stem height
@@ -1151,8 +1362,20 @@ appropriate.
 
 You may also choose to have different AGB allometries for different functional
 groups in the tree inventory data. For example, if there are large baobab trees
-(_Adansonia_ sp.), bamboos, or lianas which have drastically different
-physiognomy to other trees in the dataset.
+(_Adansonia_ sp.), bamboos, palms, or lianas which have drastically different
+physiognomy to other trees in the dataset. If `stem_allometry` is `true`, each
+tree uses the allometry in `agb_allometry` of its largest stem in the stem
+table, one of `agb_allometries` in `func.R`, e.g. `"goodman2013"`, the palm
+allometry of @Goodman2013. Trees without one use @Chave2014. Each allometry in
+`agb_allometries` is given in the format of the `fitted_allom` argument of
+`BIOMASS::AGBmonteCarlo()`, as a formula of `D`, `H` and `WD`, its parameters
+and residual standard deviation, and a link, so that its residual error is
+propagated in [Estimate quadrat AGBD and propagate error]. Here, with a log
+link, `agbAllomMean()` gives the mean of the log-normal distribution of AGB.
+The example data do not use stem allometries.
+
+Diameters are corrected for taper if `taper_method` is set, see [Estimate
+stem height]. Basal area is calculated from the measured diameter.
 
 Where trees have multiple stems, AGB is estimated for the tree from its
 equivalent diameter, $D_{eq} = \sqrt{\sum D_i^2}$, the diameter of a single
@@ -1173,17 +1396,19 @@ stem volume (`volume_m3`).
 ```{r}
 # Stems which form multi-stemmed trees. If `multi_stem_method` is "stem", AGB
 # is estimated for each stem separately
-record_agbd <- agbdFilter(L0$stem, L0$plot, 
-  recordFilter(L0$stem, L0$plot, missing_diam = param$missing_diam_method == "impute"),
+record_agbd <- agbdFilter(stem_taper, L0$plot, 
+  recordFilter(stem_taper, L0$plot, missing_diam = param$missing_diam_method == "impute"),
   diam_min_cm = param$agbd_diam_min_cm,
-  include_broken = param$include_broken)
+  include_broken = param$include_broken,
+  growth_form_exclude = param$growth_form_exclude)
 tree_include <- if (param$multi_stem_method == "equivalent") record_agbd else character(0)
 
-# Join wood density, height, and equivalent diameter to stem data
-stem_all <- L0$stem %>%
+# Join wood density, height, and equivalent diameter to stem data. Diameters
+# are corrected for taper, see `taper_method`
+stem_all <- stem_taper %>%
   left_join(., stem_wd_all, by = "record_id") %>%
   left_join(., stem_height_all, by = "record_id") %>%
-  left_join(., treeEquiv(L0$stem, tree_include), by = "record_id")
+  left_join(., treeEquiv(stem_taper, tree_include), by = "record_id")
 
 # One row per tree. Wood density depends on taxonomic identity, which is the
 # same for all stems of a tree, so the wood density of the largest stem is used
@@ -1194,8 +1419,17 @@ tree <- stem_all %>%
     plot_id = first(plot_id),
     diam_eq_cm = first(diam_eq_cm),
     meanWD = first(meanWD),
+    agb_allometry = if (param$stem_allometry) first(agb_allometry) else NA_character_,
     n_taxa = n_distinct(taxon_name),
-    .groups = "drop")
+    .groups = "drop") %>%
+  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), "chave2014"))
+
+allom_unknown <- setdiff(tree$agb_allometry, c("chave2014", names(agb_allometries)))
+if (length(allom_unknown) > 0) {
+  stop("Unknown `agb_allometry` in the stem table: ", 
+    paste(allom_unknown, collapse = ", "), ". Must be one of: ",
+    paste(c("chave2014", names(agb_allometries)), collapse = ", "))
+}
 
 if (any(tree$n_taxa > 1)) {
   warning(sum(tree$n_taxa > 1), " multi-stemmed trees have stems with ",
@@ -1217,18 +1451,28 @@ if (param$height_method == "regional") {
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
     coord = as.matrix(tree[, c("X", "Y")])), warning = muffleNA)
-} else if (param$height_method == "field") {
+} else if (param$height_method %in% c("field", "custom")) {
   tree$agb_Mg <- withCallingHandlers(BIOMASS::computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
     H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H), warning = muffleNA)
 }
 
+# Trees with other allometries, see `stem_allometry`
+for (a in intersect(names(agb_allometries), tree$agb_allometry)) {
+  i <- which(tree$agb_allometry == a)
+  tree$agb_Mg[i] <- agbAllomMean(agb_allometries[[a]],
+    D = tree$diam_eq_cm[i],
+    H = if (param$height_method != "regional") retrieveH(D = tree$diam_eq_cm[i], model = height_mod)$H,
+    WD = tree$meanWD[i])
+}
+
 # Share tree AGB among stems
 stem_agb_all <- stem_all %>%
   mutate(
     agb_Mg = tree$agb_Mg[match(tree_key, tree$tree_key)] * ba_share,
-    ba_m2 = base::pi * (diam_cm / 2)^2 / 10000,
+    # Basal area from the measured diameter
+    ba_m2 = base::pi * (diam_cm_meas / 2)^2 / 10000,
     volume_m3 = agb_Mg / meanWD) %>%
   dplyr::select(
     record_id,
@@ -1354,13 +1598,6 @@ Where a local biomass allometry is available:
 ```
 :::
 
-::: {.callout-warning title="TODO"}
-Where some stem measurements specify a custom biomass allometry, e.g. for bamboos:
-
-```{r}
-```
-:::
-
 ## Filter stem data 
 
 `06_record_fil.R`
@@ -1381,7 +1618,11 @@ Stems with a diameter below the minimum diameter threshold of the plot have
 their own AGB estimates, but are not part of multi-stemmed trees, and are
 excluded when AGB is summed to estimate AGB density, so that AGB density
 matches the sampling of the plot. Stems without a diameter are assumed to be
-at or above the threshold, as they were recorded in the census.
+at or above the threshold, as they were recorded in the census. The threshold
+applies to the measured diameter, not the diameter corrected for taper. Stems
+of growth forms listed in `growth_form_exclude`, from `growth_form` in the
+stem table, e.g. strangler figs, whose stems are fused around a host tree,
+are also excluded from AGB density.
 
 ```{r}
 # Select stems used to estimate AGB, see `recordFilter()` in func.R
@@ -1395,10 +1636,12 @@ record_fil <- recordFilter(L0$stem, L0$plot,
 # Select stems used to estimate AGB density, see `agbdFilter()` in func.R
 # Stems below the minimum diameter threshold, the larger of
 # `agbd_diam_min_cm` and the threshold of the plot, are excluded. Stems broken
-# above the POM are excluded if `include_broken` is false
+# above the POM are excluded if `include_broken` is false, and stems of growth
+# forms in `growth_form_exclude` are excluded
 record_agbd <- agbdFilter(L0$stem, L0$plot, record_fil,
   diam_min_cm = param$agbd_diam_min_cm,
-  include_broken = param$include_broken)
+  include_broken = param$include_broken,
+  growth_form_exclude = param$growth_form_exclude)
 ```
 
 We summarise why stem records are excluded from AGB estimates and AGB
@@ -1427,6 +1670,8 @@ record_status <- L0$stem %>%
       !is.na(diam_min) & !is.na(diam_cm) & diam_cm < diam_min ~ 
         "AGB only: below diameter threshold",
       grepl("B", code) & !param$include_broken ~ "AGB only: broken above POM",
+      growth_form %in% param$growth_form_exclude ~
+        paste0("AGB only: excluded growth form (", growth_form, ")"),
       TRUE ~ "AGB only: other")) %>%
   count(status, name = "n_record") %>%
   mutate(pct_record = round(100 * n_record / sum(n_record), 1)) %>%
@@ -2294,6 +2539,15 @@ The errors propagated depend on `height_method`:
   not used.
 * `"field"` - Equation 4 from @Chave2014 is used, with stem height predicted
   from the local height-diameter model, including its uncertainty.
+* `"custom"` - Equation 4 from @Chave2014 is used, with stem height predicted
+  from the height-diameter model in `height_custom`, including its residual
+  error.
+
+If `stem_allometry` is `true`, trees with another allometry in
+`agb_allometry`, see [Estimate stem AGB], are simulated separately, with the
+residual error of their allometry, by passing the allometry to the
+`fitted_allom` argument of `AGBmonteCarlo()`. Diameters are corrected for
+taper if `taper_method` is set, see [Estimate stem height].
 
 As in [Estimate stem AGB], AGB is simulated for each multi-stemmed tree from
 its equivalent diameter, then shared among its stems in proportion to their
@@ -2312,7 +2566,7 @@ different numbers of quadrats and a quadrat contains no stems,
 
 Stems without a diameter have their diameter imputed in each simulation by
 `AGBmonteCarlo()`, from the simulated diameters of the other trees in the
-same call, i.e. the same plot, which can include trees below the minimum
+same call, i.e. the same plot and AGB allometry, which can include trees below the minimum
 diameter threshold for AGBD. For very large plots, split into groups of
 quadrats, the trees in the same group of quadrats are used.
 
@@ -2342,8 +2596,9 @@ set.seed(42)
 # Define maximum number of trees per AGBmonteCarlo() call, to limit memory use
 mc_stems_max <- 10000
 
-# Filter stem data and add quadrat IDs
-stem_fil <- L0$stem %>% 
+# Filter stem data and add quadrat IDs. Diameters are corrected for taper,
+# see `taper_method`
+stem_fil <- stem_taper %>% 
   filter(record_id %in% record_fil) %>% 
   left_join(., stem_wd_all, by = "record_id") %>% 
   left_join(., stem_height_all, by = "record_id") %>% 
@@ -2389,8 +2644,10 @@ tree <- stem_fil %>%
     diam_eq_cm = first(diam_eq_cm),
     meanWD = first(meanWD),
     sdWD = first(sdWD),
+    agb_allometry = if (param$stem_allometry) first(agb_allometry) else NA_character_,
     across(any_of(c("X", "Y")), first),
-    .groups = "drop")
+    .groups = "drop") %>%
+  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), "chave2014"))
 
 # Group trees into Monte Carlo chunks
 # Whole plots, split into groups of whole quadrats for very large plots
@@ -2420,12 +2677,10 @@ value of `diam_error` directly.
 # Diameter measurement error, see `diam_error` in param.yaml
 diam_error <- if (identical(param$diam_error, "none")) NULL else param$diam_error
 
-# Run AGB Monte Carlo error propagation on each chunk
-# Missing diameters are imputed from the other trees in the same chunk
-tree_simu_list <- lapply(seq_along(tree_split), function(i) {
-  x <- tree_split[[i]]
-
-  # Trees without a diameter can't be imputed if no trees in the chunk have a
+# Simulate AGB of trees `x` which share the AGB allometry `allom`, see
+# `agb_allometries` in func.R. Returns a matrix of trees x simulations
+mcTrees <- function(x, allom) {
+  # Trees without a diameter can't be imputed if no other trees have a
   # diameter, so they are not included in AGB density
   n_tree <- nrow(x)
   if (all(is.na(x$diam_eq_cm))) {
@@ -2438,19 +2693,28 @@ tree_simu_list <- lapply(seq_along(tree_split), function(i) {
     x <- x[c(1, 1), ]
   }
 
-  # AGBmonteCarlo() warns where missing diameters are imputed
+  # AGBmonteCarlo() warns where missing diameters are imputed. Allometries 
+  # other than Chave et al. (2014) use the heights of the height-diameter 
+  # model, if any
   out <- withCallingHandlers(AGBmonteCarlo(
     D = x$diam_eq_cm,
     WD = x$meanWD,
     errWD = x$sdWD,
     H = NULL,
     errH = NULL,
-    HDmodel = if (param$height_method == "field") height_mod else NULL,
-    coord = if (param$height_method == "regional") as.matrix(x[, c("X", "Y")]) else NULL,
+    HDmodel = if (param$height_method %in% c("field", "custom")) height_mod else NULL,
+    coord = if (param$height_method == "regional" && allom == "chave2014") {
+      as.matrix(x[, c("X", "Y")])
+    } else NULL,
     Dpropag = diam_error,
     n = nsim,
     Carbon = FALSE,
-    Dlim = NULL),
+    Dlim = NULL,
+    fitted_allom = if (allom == "chave2014") {
+      "chave2014"
+    } else {
+      agb_allometries[[allom]][c("formula", "parameters", "link")]
+    }),
     warning = function(w) {
       if (grepl("NA values in D", conditionMessage(w))) {
         invokeRestart("muffleWarning")
@@ -2458,6 +2722,19 @@ tree_simu_list <- lapply(seq_along(tree_split), function(i) {
     })
 
   out$AGB_simu[seq_len(n_tree), , drop = FALSE]
+}
+
+# Run AGB Monte Carlo error propagation on each chunk, separately for each AGB
+# allometry. Missing diameters are imputed from the other trees in the same
+# chunk with the same allometry
+tree_simu_list <- lapply(seq_along(tree_split), function(i) {
+  x <- tree_split[[i]]
+  out <- matrix(NA_real_, nrow = nrow(x), ncol = nsim)
+  for (a in unique(x$agb_allometry)) {
+    rows <- which(x$agb_allometry == a)
+    out[rows, ] <- mcTrees(x[rows, ], a)
+  }
+  out
 })
 
 # Combine simulations, then share tree AGB among stems. Rows match `stem_fil`
@@ -2575,7 +2852,7 @@ tree_un <- stem_fil %>%
   summarise(
     stem_id = paste(stem_id, collapse = ", "),
     n_stem = n(),
-    subplot_id = first(na.omit(ifelse(subplot_id == "", NA, subplot_id))),
+    subplot_id = first(na.omit(na_if(subplot_id, ""))),
     diam_eq_cm = first(diam_eq_cm),
     rows = list(row),
     .groups = "drop") %>%
@@ -2733,18 +3010,238 @@ kable(head(sub_un %>%
   transmute(plot_id, subplot_id, n_tree, agb_Mg, area_ha, agbd_Mg_ha), 10), digits = 3)
 ```
 
+Assigning all of a tree's AGB to the quadrat containing its stems ignores
+that the crowns of large trees often spread into neighbouring quadrats,
+which is what airborne lidar sees. Optionally (`crown_method: "custom"`),
+quadrat AGBD is also estimated with the AGB of each tree spread over its
+crown, a circle centred on the tree with area from the crown area allometry
+in `crown_custom`. The residual error of the allometry is drawn
+independently for each tree in each simulation. Crowns inside their home
+quadrat are assigned to it, and crowns crossing a quadrat edge are split
+among quadrats by the share of 512 points spread evenly over the crown in
+each quadrat, see `crownAlloc()` in `func.R`. The part of a crown outside
+the quadrat grid is folded back into the part inside, so plot AGBD is
+unchanged, and only its distribution among quadrats changes. Trees without
+coordinates, placed at random, and trees with an imputed diameter keep stem
+allocation. Crown area is predicted from the measured diameter, the
+equivalent diameter of the measured diameters of multi-stemmed trees, not
+corrected for taper, as crown allometries are fitted to measured diameters.
+It is not predicted from the simulated diameter, as `AGBmonteCarlo()` does
+not return simulated diameters. The example data use the default, `"none"`, so here we use the
+crown area allometry of @MartinezCano2019 for Barro Colorado Island to
+illustrate, without adding it to the results:
+
+```{r}
+# Crown area allometry, see `crown_custom` in param.yaml
+crown_custom <- if (!is.null(param$crown_custom)) {
+  param$crown_custom
+} else {
+  list(
+    formula = "a * D^b",
+    parameters = list(a = 0.57, b = 1.34),
+    sigma = 0.549,
+    link = "log",
+    reference = "Martinez-Cano et al. (2019)")
+}
+crown_mod <- crownCustom(crown_custom)
+crown_tmpl <- crownTemplate(n_ring = 16, n_angle = 32)
+quad_rel <- st_drop_geometry(quad_pt)
+
+# Stems without coordinates in trees where other stems have coordinates are
+# given the mean coordinates of the other stems of the tree, as in [Fit plot
+# spatial polygons], where trees are assigned to quadrats
+xy_fill <- L0$stem %>%
+  mutate(tree_grp = ifelse(is.na(tree_id) | tree_id == "",
+    paste0("record::", record_id), paste(plot_id, tree_id, sep = "::"))) %>%
+  group_by(tree_grp) %>%
+  mutate(
+    xy_ok = !is.na(x_rel_m) & !is.na(y_rel_m),
+    x_rel_m = ifelse(!xy_ok & any(xy_ok), mean(x_rel_m[xy_ok]), x_rel_m),
+    y_rel_m = ifelse(!xy_ok & any(xy_ok), mean(y_rel_m[xy_ok]), y_rel_m)) %>%
+  ungroup()
+xy_i <- match(stem_fil$record_id, xy_fill$record_id)
+
+# Difference in AGB density of each quadrat between crown and stem
+# allocation, in each simulation, and trees with a crown
+crown_list <- lapply(plot_vec, function(x) {
+  grid <- quadGrid(quad_rel[quad_rel$plot_id == x, ])
+  # Stems with coordinates in a quadrat, as in the stem allocation above
+  rows <- which(stem_fil$plot_id == x & !unmapped & in_agbd &
+    !is.na(stem_fil$quadrat_id))
+  if (is.null(grid) || length(rows) == 0) {
+    return(NULL)
+  }
+
+  # One row per tree, at the centroid of its stems, with the equivalent
+  # diameter of the measured diameters of its stems
+  s <- stem_fil[rows, ]
+  s$x_rel_m <- xy_fill$x_rel_m[xy_i[rows]]
+  s$y_rel_m <- xy_fill$y_rel_m[xy_i[rows]]
+  tr <- s %>%
+    group_by(tree_key) %>%
+    summarise(
+      x = mean(x_rel_m, na.rm = TRUE),
+      y = mean(y_rel_m, na.rm = TRUE),
+      quadrat_id = first(quadrat_id),
+      diam_crown_cm = sqrt(sum(diam_cm_meas^2)),
+      .groups = "drop") %>%
+    mutate(home = match(quadrat_id, grid$quad$quadrat_id))
+  agb_s <- agb_simu[rows, , drop = FALSE]
+  agb_s[is.na(agb_s)] <- 0
+  agb_t <- rowsum(agb_s, s$tree_key)[tr$tree_key, , drop = FALSE]
+
+  # Trees with an imputed diameter keep stem allocation, as a crown of
+  # radius 0 at the centre of the home quadrat
+  has_crown <- is.finite(tr$diam_crown_cm) & is.finite(tr$x) & is.finite(tr$y)
+  hq <- grid$quad[tr$home, ]
+  tr$x[!has_crown] <- (hq$x_min[!has_crown] + hq$x_max[!has_crown]) / 2
+  tr$y[!has_crown] <- (hq$y_min[!has_crown] + hq$y_max[!has_crown]) / 2
+
+  nq <- nrow(grid$quad)
+  delta <- vapply(seq_len(nsim), function(j) {
+    r <- numeric(nrow(tr))
+    r[has_crown] <- sqrt(crownArea(crown_mod, tr$diam_crown_cm[has_crown],
+      rnorm(sum(has_crown))) / pi)
+    crown_q <- crownAlloc(tr$x, tr$y, agb_t[, j], r, tr$home, grid, crown_tmpl)
+    stem_q <- numeric(nq)
+    s_q <- rowsum(agb_t[, j], tr$home)
+    stem_q[as.integer(rownames(s_q))] <- s_q[, 1]
+    crown_q - stem_q
+  }, numeric(nq))
+
+  quads <- quad_area[quad_area$plot_ID == x, ]
+  area_ha <- quads$area_ha[match(grid$quad$quadrat_id, quads$subplot_ID)]
+  list(
+    tree = data.frame(
+      plot_id = x,
+      x = tr$x[has_crown],
+      y = tr$y[has_crown],
+      r = sqrt(crownArea(crown_mod, tr$diam_crown_cm[has_crown]) / pi),
+      agb_Mg = rowMeans(agb_t[has_crown, , drop = FALSE])),
+    delta = data.frame(
+      plot_id = x,
+      quadrat_id = rep(grid$quad$quadrat_id, nsim),
+      sim = rep(seq_len(nsim), each = nq),
+      agbd_diff = as.vector(delta / area_ha)))
+})
+crown_list <- Filter(Negate(is.null), crown_list)
+crown_delta <- bind_rows(lapply(crown_list, `[[`, "delta"))
+
+# Add crown-distributed AGB density to the simulations, if `crown_method`
+# is "custom"
+if (param$crown_method != "none") {
+  quad_agb_simu <- quad_agb_simu %>%
+    left_join(., crown_delta, by = c("plot_id", "quadrat_id", "sim")) %>%
+    mutate(agbd_Mg_ha_crown = agbd_Mg_ha + coalesce(agbd_diff, 0)) %>%
+    dplyr::select(-agbd_diff)
+}
+```
+
+```{r}
+#| fig-cap: "Quadrat AGB density with tree AGB spread over crowns, minus quadrat AGB density with each tree in its home quadrat, simulated means."
+#| fig-width: 8
+#| fig-height: 8
+# Figure of the difference in quadrat AGB density between crown and stem
+# allocation, simulated means
+crown_fig <- quad_rel %>%
+  group_by(plot_id, quadrat_id) %>%
+  summarise(
+    x_min = min(x_rel_m), x_max = max(x_rel_m),
+    y_min = min(y_rel_m), y_max = max(y_rel_m),
+    .groups = "drop") %>%
+  inner_join(., crown_delta %>%
+    group_by(plot_id, quadrat_id) %>%
+    summarise(agbd_diff = mean(agbd_diff), .groups = "drop"),
+    by = c("plot_id", "quadrat_id"))
+n_plot_crown <- length(unique(crown_fig$plot_id))
+diff_lim <- c(-1, 1) * max(abs(crown_fig$agbd_diff), 1e-6)
+ggplot(crown_fig) +
+  geom_blank(data = squareExtent(
+    data.frame(plot_id = rep(crown_fig$plot_id, 2),
+      x = c(crown_fig$x_min, crown_fig$x_max),
+      y = c(crown_fig$y_min, crown_fig$y_max)), "x", "y", "plot_id"),
+    aes(x = x, y = y)) +
+  geom_rect(aes(xmin = x_min, xmax = x_max, ymin = y_min, ymax = y_max,
+    fill = agbd_diff), colour = fig_pal$surface, linewidth = 0.3) +
+  scale_fill_gradient2("Crown minus stem allocation (Mg/ha)",
+    low = fig_pal$series[1], mid = fig_pal$surface, high = fig_pal$series[2],
+    midpoint = 0, limits = diff_lim, guide = colourBar()) +
+  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_crown),
+    scales = "free") +
+  labs(
+    title = "Quadrat AGBD, crown minus stem allocation",
+    x = "X (m)",
+    y = "Y (m)") +
+  themeMap() +
+  theme(aspect.ratio = 1)
+```
+
+```{r}
+#| fig-cap: "Tree crowns in each plot, as translucent circles with the median crown area from the crown area allometry, filled by the simulated mean AGB of the tree, with quadrats."
+#| fig-width: 8
+#| fig-height: 8
+# Figure of tree crowns in each plot, as circles with the median crown area,
+# filled by the simulated mean AGB of the tree. Larger crowns are drawn
+# first, so smaller crowns stay visible
+crown_tree <- bind_rows(lapply(crown_list, `[[`, "tree")) %>%
+  filter(agb_Mg > 0) %>%
+  arrange(desc(r)) %>%
+  mutate(tree = row_number())
+circ_n <- 24
+circ_a <- 2 * pi * seq_len(circ_n) / circ_n
+crown_poly <- data.frame(
+  plot_id = rep(crown_tree$plot_id, each = circ_n),
+  tree = rep(crown_tree$tree, each = circ_n),
+  agb_Mg = rep(crown_tree$agb_Mg, each = circ_n),
+  x = rep(crown_tree$x, each = circ_n) +
+    as.vector(outer(cos(circ_a), crown_tree$r)),
+  y = rep(crown_tree$y, each = circ_n) +
+    as.vector(outer(sin(circ_a), crown_tree$r)))
+ggplot() +
+  geom_blank(data = squareExtent(
+    data.frame(plot_id = rep(crown_fig$plot_id, 2),
+      x = c(crown_fig$x_min, crown_fig$x_max),
+      y = c(crown_fig$y_min, crown_fig$y_max)), "x", "y", "plot_id"),
+    aes(x = x, y = y)) +
+  geom_polygon(data = crown_poly, aes(x = x, y = y, group = tree,
+    fill = agb_Mg), alpha = 0.4, colour = NA) +
+  geom_rect(data = crown_fig, aes(xmin = x_min, xmax = x_max,
+    ymin = y_min, ymax = y_max), fill = NA, colour = fig_pal$ink_muted,
+    linewidth = 0.3) +
+  scale_fill_gradientn("Tree AGB (Mg)", colours = fig_pal$seq2[-1],
+    trans = "log10", breaks = 10^(-3:3),
+    labels = function(x) format(x, drop0trailing = TRUE,
+      scientific = FALSE, trim = TRUE),
+    guide = colourBar()) +
+  facet_wrap(vars(plotFactor(plot_id)), ncol = figCols(n_plot_crown),
+    scales = "free") +
+  labs(
+    title = "Tree crowns in each plot",
+    x = "X (m)",
+    y = "Y (m)") +
+  themeMap() +
+  theme(aspect.ratio = 1)
+```
+
 Finally extract relevant summary statistics from the AGBD error propagation:
 
 ```{r}
-# Extract summary statistics from AGBD simulations
+# Extract summary statistics from AGBD simulations. With crown allocation,
+# also `agbd_Mg_ha_crown_mc_*`
 quad_agb <- quad_agb_simu %>%
-  group_by(plot_id, quadrat_id) %>% 
+  group_by(plot_id, quadrat_id) %>%
   summarise(
     agbd_Mg_ha_mc_mean = mean(agbd_Mg_ha),
     agbd_Mg_ha_mc_median = median(agbd_Mg_ha),
     agbd_Mg_ha_mc_sd = sd(agbd_Mg_ha),
     agbd_Mg_ha_mc_ci2.5 = quantile(agbd_Mg_ha, 0.025),
     agbd_Mg_ha_mc_ci97.5 = quantile(agbd_Mg_ha, 0.975),
+    across(any_of("agbd_Mg_ha_crown"), list(
+      mc_mean = mean,
+      mc_median = median,
+      mc_sd = sd,
+      mc_ci2.5 = ~quantile(.x, 0.025),
+      mc_ci97.5 = ~quantile(.x, 0.975))),
     .groups = "drop")
 ```
 
@@ -2976,7 +3473,7 @@ quad_summ <- quad_poly %>%
           "ba_m2_sum",
           "volume_m3_sum",
           "agb_Mg_sum")),
-        starts_with("agbd_Mg_ha_mc_")), 
+        starts_with(c("agbd_Mg_ha_mc_", "agbd_Mg_ha_crown_mc_"))), 
       ~if_else(empty_quadrat & is.na(.x), 0, .x)),
     across(
       c(
@@ -3383,6 +3880,9 @@ if (param_fil$opt_s3) {
   param_fil[["raw_dir"]] <- param_fil$s3_dir
 } 
 param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate", "als_date", "quad_origin", "missing_diam_method")] <- NULL
+# Parameters with several or named values, e.g. `height_custom`, as one
+# column each, see `paramString()` in func.R
+param_fil <- lapply(param_fil, paramString)
 
 L3_quad <- quad_summ %>% 
   dplyr::select(
@@ -3398,7 +3898,10 @@ L3_quad <- quad_summ %>%
     Basal_area = ba_m2_sum_ha,
     Lorey_height = lorey_height_m,
     Wood_density = meanWD_wm_ba,
-    Quadrat_area = quadrat_area_ha) %>%
+    Quadrat_area = quadrat_area_ha,
+    # Crown-distributed AGB density, if `crown_method` is not "none"
+    AGBD_crown_estimate = any_of("agbd_Mg_ha_crown_mc_mean"),
+    AGBD_crown_uncertainty = any_of("agbd_Mg_ha_crown_mc_sd")) %>%
   bind_cols(param_fil)
 
 # Check all values filled

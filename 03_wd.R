@@ -6,7 +6,7 @@
 stem_taxa_all <- left_join(stem, taxa, by = c("taxon_name" = "nameOriginal"))
 
 # Optionally process local wood density data
-if (param$wd_method == "field") { 
+if (param$wd_method %in% c("field", "local")) {
   # Summarise by accepted name, so that original names which resolve to the 
   # same taxon are pooled
   wd_summ <- wd %>%
@@ -42,13 +42,65 @@ if (param$wd_method == "field") {
 }
 
 # Estimate wood density for each stem measurement
-wd_all <- getWoodDensity(
-  genus = stem_taxa_all$genusAccepted, 
-  species = stem_taxa_all$speciesAccepted,
-  stand = stem_taxa_all$plot_id,
-  family = stem_taxa_all$familyAccepted,
-  addWoodDensityData = if (param$wd_method == "field") { wd_summ },
-  verbose = TRUE)
+# "regional" - Global Wood Density Database v2, with BIOMASS::getWoodDensity()
+# "field" - local measurements, replacing GWDD v2 estimates of the same taxa,
+#   with GWDD v2 for taxa without local measurements
+# "local" - local measurements only. Taxa without a species estimate take the
+#   mean of the species in their genus, else in their family, with at least
+#   `wd_local_min_sp` species, else the mean of all species. Means are over
+#   species, so well-sampled species do not dominate. The SD of a genus,
+#   family or dataset estimate is the SD among its species
+if (param$wd_method == "local") {
+  wd_local_min_sp <- 2
+
+  wd_sp <- wd_summ %>%
+    filter(!is.na(species), species != "")
+  # Mean and SD of species estimates in each genus or family
+  wd_group <- function(level) {
+    wd_sp %>%
+      filter(!is.na(.data[[level]])) %>%
+      group_by(group = .data[[level]]) %>%
+      summarise(n_sp = n(), sdWD = sd(meanWD), meanWD = mean(meanWD),
+        .groups = "drop") %>%
+      filter(n_sp >= wd_local_min_sp)
+  }
+  wd_genus <- wd_group("genus")
+  wd_family <- wd_group("family")
+
+  i_sp <- match(paste(stem_taxa_all$genusAccepted, stem_taxa_all$speciesAccepted),
+    paste(wd_sp$genus, wd_sp$species))
+  i_gen <- match(stem_taxa_all$genusAccepted, wd_genus$group)
+  i_fam <- match(stem_taxa_all$familyAccepted, wd_family$group)
+  levelWD <- case_when(
+    !is.na(i_sp) ~ "species",
+    !is.na(i_gen) ~ "genus",
+    !is.na(i_fam) ~ "family",
+    TRUE ~ "dataset")
+  wd_all <- data.frame(
+    family = stem_taxa_all$familyAccepted,
+    genus = stem_taxa_all$genusAccepted,
+    species = stem_taxa_all$speciesAccepted,
+    stand = stem_taxa_all$plot_id,
+    meanWD = case_when(
+      levelWD == "species" ~ wd_sp$meanWD[i_sp],
+      levelWD == "genus" ~ wd_genus$meanWD[i_gen],
+      levelWD == "family" ~ wd_family$meanWD[i_fam],
+      TRUE ~ mean(wd_sp$meanWD)),
+    sdWD = case_when(
+      levelWD == "species" ~ wd_sp$sdWD[i_sp],
+      levelWD == "genus" ~ wd_genus$sdWD[i_gen],
+      levelWD == "family" ~ wd_family$sdWD[i_fam],
+      TRUE ~ sd(wd_sp$meanWD)),
+    levelWD = levelWD)
+} else {
+  wd_all <- getWoodDensity(
+    genus = stem_taxa_all$genusAccepted,
+    species = stem_taxa_all$speciesAccepted,
+    stand = stem_taxa_all$plot_id,
+    family = stem_taxa_all$familyAccepted,
+    addWoodDensityData = if (param$wd_method == "field") { wd_summ },
+    verbose = TRUE)
+}
 
 # Check rows of output match stems
 stopifnot(
@@ -102,7 +154,8 @@ msgTable(wd_level, "Wood density (g cm-3) by taxonomic level of the estimate:")
 record_agbd <- agbdFilter(stem, plot, 
   recordFilter(stem, plot, missing_diam = param$missing_diam_method == "impute"),
   diam_min_cm = param$agbd_diam_min_cm,
-  include_broken = param$include_broken)
+  include_broken = param$include_broken,
+  growth_form_exclude = param$growth_form_exclude)
 wd_fig <- filter(wd_check, as.character(record_id) %in% record_agbd)
 p_wd <- wdLevelPlot(wd_fig$meanWD, wd_fig$level) +
   labs(

@@ -1,6 +1,42 @@
 # Estimate stem height
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-21
+# Last updated: 2026-10-26
+
+# Diameter at 1.3 m, corrected for taper, see `taper_method` in param.yaml
+# and `taperB()` in ./func.R. Only stems measured above 1.3 m are corrected,
+# as the taper models were fitted to stems measured above buttresses. Palms
+# keep the measured diameter, as they don't taper like buttressed trees.
+# Stems without a POM were measured at the default POM of the plot. The
+# corrected diameter is used to estimate height, and AGB in ./05_agb_stem.R
+# and ./08_agb_mc.R, see `taperDiam()` in ./func.R. Diameter thresholds use
+# the measured diameter
+if (param$taper_method != "none") {
+  hom <- coalesce(stem$pom_m,
+    plot$meas_pom_default_m[match(stem$plot_id, plot$plot_id)])
+  wd_i <- match(stem$record_id, stem_wd$record_id)
+  palm <- stem_wd$family[wd_i] %in% "Arecaceae"
+  sp_term <- unlist(param$taper_species)[
+    paste(stem_wd$genus[wd_i], stem_wd$species[wd_i])]
+  sp_term[is.na(sp_term)] <- 0
+  b <- taperB(stem$diam_cm, hom, param$taper_method,
+    wd = stem_wd$meanWD[wd_i], sp_term = sp_term)
+  taper_corr <- !palm & !is.na(stem$diam_cm) & !is.na(hom) & hom > 1.3 + 1e-6
+  diam_cm_taper <- stem$diam_cm
+  diam_cm_taper[taper_corr] <- stem$diam_cm[taper_corr] /
+    exp(-b[taper_corr] * (hom[taper_corr] - 1.3))
+
+  msgTable(data.frame(
+    taper_method = param$taper_method,
+    n_stem_corrected = sum(taper_corr),
+    hom_m_median = median(hom[taper_corr]),
+    diam_change_pct_median = round(100 * median(diam_cm_taper[taper_corr] /
+      stem$diam_cm[taper_corr] - 1), 1),
+    diam_change_pct_max = round(100 * max(diam_cm_taper[taper_corr] /
+      stem$diam_cm[taper_corr] - 1), 1),
+    n_b_zero = sum(b[taper_corr] == 0)),
+    "Diameters measured above 1.3 m, corrected for taper:")
+  stem$diam_cm <- diam_cm_taper
+}
 
 # Regional height estimation
 if (param$height_method == "regional") { 
@@ -90,15 +126,37 @@ if (param$height_method == "regional") {
   out <- stem %>% 
     mutate(
       height_m_pred = height_est$H,
-      height_m_pred_rse = height_est$RSE) %>% 
+      height_m_pred_rse = height_est$RSE) %>%
     dplyr::select(record_id, height_m_pred, height_m_pred_rse)
+} else if (param$height_method == "custom") {
+
+  # Published height-diameter model, see `height_custom` in param.yaml
+  height_mod <- heightCustom(param$height_custom)
+  print(height_mod)
+
+  # Predict mean height. For a model with log-normal error, the RSE is on
+  # the log scale
+  height_est <- retrieveH(
+    D = stem$diam_cm,
+    model = height_mod)
+
+  out <- stem %>%
+    mutate(
+      height_m_pred = height_est$H,
+      height_m_pred_rse = height_est$RSE) %>%
+    dplyr::select(record_id, height_m_pred, height_m_pred_rse)
+}
+
+# Diameter at 1.3 m corrected for taper, used to estimate AGB
+if (param$taper_method != "none") {
+  out$diam_cm_taper <- stem$diam_cm[match(out$record_id, stem$record_id)]
 }
 
 # Write height estimates to file
 write.csv(out, file.path(outdir, "stem_height.csv"), row.names = FALSE)
 
 # Write height-diameter model to file
-if (param$height_method == "field" && exists("height_mod")) {
+if (param$height_method %in% c("field", "custom") && exists("height_mod")) {
   saveRDS(height_mod, file.path(outdir, "height_mod.rds"))
 }
 
@@ -125,7 +183,8 @@ msgTable(height_summ, paste0("Predicted stem height (", param$height_method,
 record_agbd <- agbdFilter(stem, plot, 
   recordFilter(stem, plot, missing_diam = param$missing_diam_method == "impute"),
   diam_min_cm = param$agbd_diam_min_cm,
-  include_broken = param$include_broken)
+  include_broken = param$include_broken,
+  growth_form_exclude = param$growth_form_exclude)
 height_pred_fig <- filter(height_check, as.character(record_id) %in% record_agbd)
 height_obs <- if (!is.null(height)) {
   filter(height, !is.na(diam_cm), !is.na(height_m))

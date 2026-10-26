@@ -878,12 +878,14 @@ recordFilter <- function(stem, plot, missing_diam = FALSE) {
 #' Select stem measurements used to estimate AGB density
 #'
 #' Selects stems from `recordFilter()` with a diameter at or above the minimum
-#' diameter threshold, and optionally excludes stems broken above the POM.
-#' Other stems have their own AGB estimates, but are not part of multi-stemmed
-#' trees, and are not included in AGB density, so that AGB density matches the
-#' sampling of the plot. Stems without a diameter measurement, if included by
-#' `recordFilter()`, are assumed to be at or above the threshold, as they were
-#' recorded in the census.
+#' diameter threshold, and optionally excludes stems broken above the POM, and
+#' stems of some growth forms. Other stems have their own AGB estimates, but
+#' are not part of multi-stemmed trees, and are not included in AGB density,
+#' so that AGB density matches the sampling of the plot. Stems without a
+#' diameter measurement, if included by `recordFilter()`, are assumed to be at
+#' or above the threshold, as they were recorded in the census. The threshold
+#' applies to the measured diameter, `diam_cm_meas` if `stem` has been passed
+#' through `taperDiam()`, as the plot was sampled on measured diameters.
 #'
 #' @param stem stem measurement table, see ./templates/stem_cols.csv
 #' @param plot plot meta-data table, see ./templates/plot_cols.csv
@@ -892,19 +894,334 @@ recordFilter <- function(stem, plot, missing_diam = FALSE) {
 #'     of this and the minimum diameter threshold of the plot is used
 #' @param include_broken logical, if FALSE stems broken above the POM ("B" in
 #'     `code`) are excluded
+#' @param growth_form_exclude optional character vector of values of
+#'     `growth_form` in the stem table to exclude, e.g. "strangler"
 #'
 #' @return character vector of `record_id` values
 #'
-agbdFilter <- function(stem, plot, record_fil, diam_min_cm = 0, 
-  include_broken = TRUE) {
+agbdFilter <- function(stem, plot, record_fil, diam_min_cm = 0,
+  include_broken = TRUE, growth_form_exclude = NULL) {
   diam_min <- plot$meas_diam_min_cm[match(stem$plot_id, plot$plot_id)]
   diam_min <- pmax(diam_min, diam_min_cm)
+  diam <- if ("diam_cm_meas" %in% names(stem)) stem$diam_cm_meas else stem$diam_cm
   keep <- as.character(stem$record_id) %in% as.character(record_fil) &
-    !is.na(diam_min) & (is.na(stem$diam_cm) | stem$diam_cm >= diam_min)
+    !is.na(diam_min) & (is.na(diam) | diam >= diam_min)
   if (!include_broken) {
     keep <- keep & !grepl("B", stem$code)
   }
+  if (length(growth_form_exclude) > 0) {
+    keep <- keep & !stem$growth_form %in% growth_form_exclude
+  }
   as.character(stem$record_id[keep])
+}
+
+#' Taper parameter of the exponential taper model
+#'
+#' The taper model, d = D exp(-b (h - 1.3)), gives the diameter d at height h
+#' (m) of a stem with diameter D at 1.3 m (Metcalf et al. 2008; Cushman et al.
+#' 2014). This function predicts b for a diameter measured at height `hom`.
+#'
+#' @param diam diameter (cm) measured at `hom`, i.e. diameter above buttress
+#' @param hom height of the diameter measurement (m)
+#' @param method "cushman2014", the model for Barro Colorado Island, Panama,
+#'     of Cushman et al. (2014), Table 3: log(b) = -2.0205 - 0.5053 log(D) +
+#'     0.3748 log(hom), plus a species term. Or "cushman2021", the general
+#'     model of Cushman et al. (2021), Table 2, Model 1, fitted at five
+#'     lowland tropical forest sites: b = 0.151 - 0.025 log(D) -
+#'     0.02 log(hom) - 0.021 log(wd), without the site effect. Logs are
+#'     natural logs
+#' @param wd wood density (g cm-3), used by "cushman2021"
+#' @param sp_term species term of "cushman2014", 0 for species without a term
+#'
+#' @return vector of b. For "cushman2021", b is at least 0, as the model can
+#'     give b < 0 for very large trees measured high on the stem, which would
+#'     make the diameter at 1.3 m smaller than the measured diameter
+#'
+taperB <- function(diam, hom, method, wd = NULL, sp_term = 0) {
+  if (method == "cushman2014") {
+    exp(-2.0205 + sp_term - 0.5053 * log(diam) + 0.3748 * log(hom))
+  } else if (method == "cushman2021") {
+    pmax(0.151 - 0.025 * log(diam) - 0.02 * log(hom) - 0.021 * log(wd), 0)
+  } else {
+    stop("Unknown taper method: ", method)
+  }
+}
+
+#' Use taper-corrected diameters to estimate AGB
+#'
+#' Replaces `diam_cm` in the stem table with the diameter at 1.3 m corrected
+#' for taper, `diam_cm_taper` from ./04_height.R, where it exists. The measured
+#' diameter is kept in `diam_cm_meas`, which `agbdFilter()` uses for diameter
+#' thresholds.
+#'
+#' @param stem stem measurement table
+#' @param stem_height stem height table from ./04_height.R, with `record_id`
+#'     and `diam_cm_taper`
+#'
+#' @return `stem`, with `diam_cm` replaced and `diam_cm_meas` added
+#'
+taperDiam <- function(stem, stem_height) {
+  stem$diam_cm_meas <- stem$diam_cm
+  if ("diam_cm_taper" %in% names(stem_height)) {
+    d <- stem_height$diam_cm_taper[match(stem$record_id, stem_height$record_id)]
+    stem$diam_cm <- ifelse(is.na(d), stem$diam_cm, d)
+  }
+  stem
+}
+
+#' AGB allometries which can be assigned to individual stems
+#'
+#' Allometries other than Chave et al. (2014), which can be assigned to stems
+#' in `agb_allometry` in the stem table, used if `stem_allometry` is true in
+#' param.yaml. Each is a list in the format of the `fitted_allom` argument of
+#' BIOMASS::AGBmonteCarlo(): a one-sided `formula` of D (cm), H (m) and/or WD
+#' (g cm-3) giving AGB in Mg, or log(AGB) if `link` is "log", a data frame of
+#' `parameters` including the residual standard deviation `sigma`, and the
+#' `link`. Stems with `agb_allometry` "chave2014" or NA use Chave et al.
+#' (2014), Eq. 4 or Eq. 7, set by `height_method`.
+#'
+agb_allometries <- list(
+  # Goodman et al. (2013), Arecaceae, diameter only:
+  # ln(AGB kg) = -3.3488 + 2.7483 ln(D), RSE 0.5876
+  goodman2013 = list(
+    formula = ~ a + b * log(D),
+    parameters = data.frame(a = -3.3488 - log(1000), b = 2.7483, sigma = 0.5876),
+    link = "log",
+    description = paste0("Goodman et al. (2013) Arecaceae allometry, ",
+      "ln(AGB kg) = -3.3488 + 2.7483 ln(D)")))
+
+#' Mean AGB from an allometry in `agb_allometries`
+#'
+#' @param allom an element of `agb_allometries`
+#' @param D diameter (cm)
+#' @param H height (m)
+#' @param WD wood density (g cm-3)
+#'
+#' @return vector of AGB (Mg). With a log link, the mean of the log-normal,
+#'     exp(mu + sigma^2 / 2), consistent with the mean of simulations in
+#'     BIOMASS::AGBmonteCarlo()
+#'
+agbAllomMean <- function(allom, D, H = NULL, WD = NULL) {
+  p <- as.list(allom$parameters[1, , drop = FALSE])
+  mu <- eval(allom$formula[[2]], c(list(D = D, H = H, WD = WD), p))
+  if (identical(allom$link, "log")) exp(mu + p$sigma^2 / 2) else mu
+}
+
+#' Height-diameter model from param.yaml
+#'
+#' @param x `height_custom` from param.yaml: a list with `formula`, a string
+#'     giving height (m) as a function of diameter `D` (cm), e.g.
+#'     "a * D^b / (k + D^b)", `parameters`, a named list of parameter values,
+#'     `sigma`, the residual standard deviation, `link`, "log" if the
+#'     residual error is log-normal and `formula` gives the median height, or
+#'     "identity", and `reference`
+#'
+#' @return a height-diameter model from BIOMASS::customHD()
+#'
+heightCustom <- function(x) {
+  BIOMASS::customHD(
+    formula = as.formula(paste("~", x$formula)),
+    parameters = unlist(x$parameters),
+    sigma = x$sigma,
+    link = if (is.null(x$link)) "log" else x$link,
+    name = x$reference)
+}
+
+#' Crown area allometry from param.yaml
+#'
+#' @param x `crown_custom` from param.yaml: a list with `formula`, a string
+#'     giving crown area (m2) as a function of diameter `D` (cm), e.g.
+#'     "a * D^b", `parameters`, a named list of parameter values, `sigma`,
+#'     the residual standard deviation, `link`, "log" if the residual error
+#'     is log-normal and `formula` gives the median crown area, or
+#'     "identity", and `reference`
+#'
+#' @return list with `formula` (an expression), `parameters`, `sigma`, `link`
+#'     and `reference`, used by `crownArea()`
+#'
+crownCustom <- function(x) {
+  if (is.null(x$formula) || is.null(x$parameters) || is.null(x$sigma)) {
+    stop("`crown_custom` must give the crown area allometry's `formula`, ",
+      "`parameters` and `sigma`")
+  }
+  if (!all(vapply(x$parameters, is.numeric, logical(1))) ||
+    is.null(names(unlist(x$parameters)))) {
+    stop("`parameters` of `crown_custom` must be named numbers, e.g. ",
+      "{a: 0.57, b: 1.34}")
+  }
+  if (length(x$sigma) != 1 || !is.numeric(x$sigma) || x$sigma < 0) {
+    stop("`sigma` of `crown_custom` must be a number >= 0")
+  }
+  link <- if (is.null(x$link)) "log" else x$link
+  if (!link %in% c("log", "identity")) {
+    stop("`link` of `crown_custom` must be \"log\" or \"identity\"")
+  }
+  formula <- str2lang(x$formula)
+  vars_unknown <- setdiff(all.vars(formula), c("D", names(unlist(x$parameters))))
+  if (length(vars_unknown) > 0) {
+    stop("`formula` of `crown_custom` uses variables which are not `D` or ",
+      "in `parameters`: ", paste(vars_unknown, collapse = ", "))
+  }
+  out <- list(
+    formula = formula,
+    parameters = as.list(unlist(x$parameters)),
+    sigma = x$sigma,
+    link = link,
+    reference = if (is.null(x$reference)) "" else x$reference)
+  # Check the formula can be evaluated
+  ca <- crownArea(out, c(10, 50))
+  if (any(!is.finite(ca)) || any(ca <= 0)) {
+    stop("`crown_custom` must give a positive crown area for D = 10 and 50 cm")
+  }
+  out
+}
+
+#' Crown area from a crown area allometry
+#'
+#' @param model crown area allometry from `crownCustom()`
+#' @param D diameter (cm)
+#' @param z standard normal residual draws, the same length as `D`, or 0 for
+#'     the median crown area with a log link
+#'
+#' @return vector of crown area (m2), at least 0
+#'
+crownArea <- function(model, D, z = 0) {
+  ca <- eval(model$formula, c(list(D = D), model$parameters))
+  ca <- if (model$link == "log") ca * exp(model$sigma * z) else ca + model$sigma * z
+  pmax(ca, 0)
+}
+
+#' Points on the unit disc used to split crowns among quadrats
+#'
+#' Points are in `n_ring` rings of equal area, with `n_angle` points in each
+#' ring, so each point represents the same area of the crown. Points in
+#' alternate rings are staggered, and no point lies on the x or y axis, so
+#' that a crown centred on a quadrat edge is split equally
+#'
+#' @param n_ring number of rings
+#' @param n_angle number of points in each ring
+#'
+#' @return list with `u` and `v`, coordinates of the points on the unit disc,
+#'     and `w`, the weight of each point, summing to 1
+#'
+crownTemplate <- function(n_ring = 16, n_angle = 32) {
+  rho <- sqrt((seq_len(n_ring) - 0.5) / n_ring)
+  g <- expand.grid(a = seq_len(n_angle), k = seq_len(n_ring))
+  theta <- 2 * pi * (g$a - 0.75 + 0.5 * (g$k %% 2)) / n_angle
+  list(u = rho[g$k] * cos(theta), v = rho[g$k] * sin(theta),
+    w = rep(1 / nrow(g), nrow(g)))
+}
+
+#' Regular grid of quadrats in the relative coordinates of a plot
+#'
+#' @param x quadrat corners of one plot, with columns `quadrat_id`,
+#'     `x_rel_m` and `y_rel_m`, e.g. from ./07_quad.R
+#'
+#' @return list with the grid origin `x0` and `y0`, quadrat dimensions `qx`
+#'     and `qy`, numbers of quadrats `nx` and `ny`, and `quad`, a dataframe
+#'     with one row per quadrat in grid order, `ix + iy * nx + 1`, with its
+#'     extent. NULL if the quadrats are not a complete regular grid
+#'
+quadGrid <- function(x) {
+  quad <- x %>%
+    group_by(quadrat_id) %>%
+    summarise(
+      x_min = min(x_rel_m), x_max = max(x_rel_m),
+      y_min = min(y_rel_m), y_max = max(y_rel_m),
+      .groups = "drop")
+  g <- list(
+    x0 = min(quad$x_min),
+    y0 = min(quad$y_min),
+    qx = median(quad$x_max - quad$x_min),
+    qy = median(quad$y_max - quad$y_min))
+  quad$ix <- as.integer(round((quad$x_min - g$x0) / g$qx))
+  quad$iy <- as.integer(round((quad$y_min - g$y0) / g$qy))
+  g$nx <- max(quad$ix) + 1L
+  g$ny <- max(quad$iy) + 1L
+  quad$quad <- quad$ix + quad$iy * g$nx + 1L
+  tol <- 0.01
+  if (nrow(quad) != g$nx * g$ny || anyDuplicated(quad$quad) > 0 ||
+    any(abs(quad$x_max - quad$x_min - g$qx) > tol) ||
+    any(abs(quad$y_max - quad$y_min - g$qy) > tol) ||
+    any(abs(quad$x_min - g$x0 - quad$ix * g$qx) > tol) ||
+    any(abs(quad$y_min - g$y0 - quad$iy * g$qy) > tol)) {
+    return(NULL)
+  }
+  g$quad <- quad[order(quad$quad), ]
+  g
+}
+
+#' Allocate tree AGB to quadrats by crown
+#'
+#' Each tree's crown is a circle of radius `r` centred on the tree. Crowns
+#' inside the home quadrat of the tree are assigned to it. Crowns crossing a
+#' quadrat edge are split by the share of the points of `tmpl` in each
+#' quadrat. The part of a crown outside the quadrat grid is folded back into
+#' the part inside the grid, so the total AGB of the grid is the same as with
+#' each tree in its home quadrat. Trees whose crown has no points inside the
+#' grid stay in their home quadrat.
+#'
+#' @param x,y tree coordinates, in the relative coordinates of the plot
+#' @param agb tree AGB
+#' @param r crown radius
+#' @param home index of the home quadrat of each tree in `grid$quad`
+#' @param grid quadrat grid from `quadGrid()`
+#' @param tmpl crown points from `crownTemplate()`
+#'
+#' @return vector of AGB in each quadrat, in the order of `grid$quad`
+#'
+crownAlloc <- function(x, y, agb, r, home, grid, tmpl) {
+  nq <- nrow(grid$quad)
+  sumQuad <- function(q, a) {
+    out <- numeric(nq)
+    if (length(q) > 0) {
+      s <- rowsum(a, q, reorder = FALSE)
+      out[as.integer(rownames(s))] <- s[, 1]
+    }
+    out
+  }
+  hq <- grid$quad[home, ]
+  d_edge <- pmin(x - hq$x_min, hq$x_max - x, y - hq$y_min, hq$y_max - y)
+  cross <- r > d_edge
+  out <- sumQuad(home[!cross], agb[!cross])
+  if (any(cross)) {
+    jx <- floor((x[cross] + outer(r[cross], tmpl$u) - grid$x0) / grid$qx)
+    jy <- floor((y[cross] + outer(r[cross], tmpl$v) - grid$y0) / grid$qy)
+    inside <- jx >= 0 & jx < grid$nx & jy >= 0 & jy < grid$ny
+    w <- matrix(tmpl$w, nrow = sum(cross), ncol = length(tmpl$w), byrow = TRUE) *
+      inside
+    w_in <- rowSums(w)
+    agb_cross <- agb[cross]
+    # Crowns with no points inside the grid stay in their home quadrat
+    none <- w_in == 0
+    out <- out + sumQuad(home[cross][none], agb_cross[none])
+    w <- w / ifelse(none, 1, w_in)
+    out <- out + sumQuad((jx + jy * grid$nx + 1)[inside],
+      (w * agb_cross)[inside])
+  }
+  out
+}
+
+#' Format a parameter from param.yaml as a single value
+#'
+#' Parameters with several values, or named values, e.g. `growth_form_exclude`
+#' or `height_custom`, are collapsed to one string, so that each parameter
+#' is one column in the L3 product
+#'
+#' @param x value of a parameter
+#'
+#' @return `x`, or a string
+#'
+paramString <- function(x) {
+  if (!is.list(x) && length(x) <= 1 && is.null(names(x))) {
+    return(x)
+  }
+  x <- unlist(x)
+  if (is.null(names(x))) {
+    paste(x, collapse = ", ")
+  } else {
+    paste(names(x), x, sep = " = ", collapse = "; ")
+  }
 }
 
 #' Calculate the equivalent diameter of multi-stemmed trees

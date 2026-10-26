@@ -78,6 +78,9 @@ if (param_fil$opt_s3) {
   param_fil[["raw_dir"]] <- param_fil$s3_dir
 } 
 param_fil[c("site_id", "acquisition_id", "out_dir", "quad_dim", "s3_dir", "opt_s3", "rocrate", "als_date", "quad_origin", "missing_diam_method")] <- NULL
+# Parameters with several or named values, e.g. `height_custom`, as one
+# column each, see `paramString()` in ./func.R
+param_fil <- lapply(param_fil, paramString)
 
 L3_quad <- quad_summ %>% 
   dplyr::select(
@@ -93,7 +96,10 @@ L3_quad <- quad_summ %>%
     Basal_area = ba_m2_sum_ha,
     Lorey_height = lorey_height_m,
     Wood_density = meanWD_wm_ba,
-    Quadrat_area = quadrat_area_ha) %>%
+    Quadrat_area = quadrat_area_ha,
+    # Crown-distributed AGB density, if `crown_method` is not "none"
+    AGBD_crown_estimate = any_of("agbd_Mg_ha_crown_mc_mean"),
+    AGBD_crown_uncertainty = any_of("agbd_Mg_ha_crown_mc_sd")) %>%
   bind_cols(param_fil)
 
 # Check all values filled

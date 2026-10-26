@@ -23,7 +23,7 @@ and optionally:
 
 * `taxon.csv` - Additional taxonomic information for each taxonomic name. Where a name has no matched family, e.g. stems identified only to family, `taxon_family` is used as its family, so that wood density is estimated at family level rather than from the plot mean.
 * `height.csv` - Stem diameter and height measurements, used to fit a local height-diameter model.
-* `wd.csv` - Local wood density measurements.
+* `wd.csv` - Local wood density measurements, used if `wd_method` is `"field"` or `"local"` in `param.yaml`.
 * `stem_dup.csv` - Repeat diameter measurements of stems in `stem.csv`, matched to their original measurement by `plot_id` and `stem_id`, used to estimate diameter measurement error if `diam_error` is `"field"` in `param.yaml`. Repeat measurements should be made independently of the original measurements, at the same POM, soon after the original measurements, and cover the range of stem sizes, e.g. a random sample of stems across the site rather than all stems in one quadrat. Both measurements are assumed to have the same error. Several hundred pairs are needed to estimate the proportion of large errors.
 * `subplot.csv` - Bounds of field subplots in the relative coordinate system of each plot, one row per subplot, matched to stems by `plot_id` and `subplot_id`. Used to place stems without coordinates within their field subplot during AGB error propagation, see [Missing measurements](#missing-measurements).
 
@@ -34,12 +34,12 @@ Raw data and processed outputs are stored in `./dat/`, which is not tracked by g
 In the root directory there are additional scripts which process data from any site:
 
 * `./02_taxa.R` - correct taxonomic information
-* `./03_wd.R` - estimate wood density for each stem measurement
-* `./04_height.R` - estimate stem height for each stem measurement
-* `./05_agb_stem.R` - estimate above-ground woody biomass for each stem measurement
-* `./06_record_fil.R` - select stems used to estimate AGB, and AGB density. Stems below the minimum diameter threshold of a plot have their own AGB estimates, but are not part of multi-stemmed trees, and are not included in AGB density
+* `./03_wd.R` - estimate wood density for each stem measurement, from the Global Wood Density Database v2 (`wd_method: "regional"`), local measurements in `wd.csv` with the Global Wood Density Database v2 for other taxa (`"field"`), or local measurements only (`"local"`)
+* `./04_height.R` - estimate stem height for each stem measurement, from a regional (`height_method: "regional"`), locally fitted (`"field"`) or published (`"custom"`, given in `height_custom`) height-diameter model. Optionally, diameters of non-palm stems measured above 1.3 m are first corrected to their equivalent at 1.3 m with an exponential taper model (`taper_method`: `"cushman2014"`, Barro Colorado Island only, or `"cushman2021"`). Corrected diameters are used to estimate height and AGB, and measured diameters for diameter thresholds
+* `./05_agb_stem.R` - estimate above-ground woody biomass for each stem measurement. If `stem_allometry` is `true`, stems use the allometry given in `agb_allometry` in the stem table, e.g. `"goodman2013"` for palms, see `agb_allometries` in `./func.R`
+* `./06_record_fil.R` - select stems used to estimate AGB, and AGB density. Stems below the minimum diameter threshold of a plot, and stems of growth forms in the optional `growth_form_exclude`, e.g. strangler figs, have their own AGB estimates, but are not part of multi-stemmed trees, and are not included in AGB density
 * `./07_quad.R` - fit plot polygons and create quadrats in each plot. By default the quadrat grid is centred in each plot, so where the plot dimensions are not a multiple of the quadrat dimensions, equal strips along opposite edges of the plot are left out, up to `quad_grid_tol` of the plot area. The alignment can be changed with the optional `quad_origin` in `param.yaml`
-* `./08_agb_mc.R` - AGB Monte-Carlo error propagation
+* `./08_agb_mc.R` - AGB Monte-Carlo error propagation. Optionally (`crown_method: "custom"`), quadrat AGB density is also estimated with the AGB of each tree spread over its crown, a circle with area from the crown area allometry in `crown_custom`, with its residual error, in the same simulations. Crowns crossing a quadrat edge are split among quadrats, and crowns outside the quadrat grid are folded back into the grid, so plot AGB density is unchanged
 * `./09_stem_summ.R` - create master stem measurement table
 * `./10_quad_summ.R` - summarise quadrat measurements
 * `./11_brm.R` - Create L1, L2 and L3 datasets
@@ -72,7 +72,7 @@ Key outputs from each site include:
         * `*_L2_*_stem.csv` - GEO-TREES L2 stem AGB estimates
         * `*_L2_*_poly.gpkg` - GEO-TREES L2 plot spatial polygons
     * L3
-        * `*_L3_*_quad.gpkg` - GEO-TREES L3 quadrat AGBD estimates
+        * `*_L3_*_quad.gpkg` - GEO-TREES L3 quadrat AGBD estimates, with crown-distributed AGBD (`AGBD_crown_estimate`, `AGBD_crown_uncertainty`) if `crown_method` is `"custom"`. Processing parameters are included as columns, one per parameter
 * `./12_report.R`, in `report/`, tables for GEO-TREES site reports, alongside the figures written to `report/` by other steps. `large_diam_cm`, the diameter thresholds for large trees, is set in `./zz_site.R`. Settings at the top of `./12_report.R` control the tolerance for stems measured above the default POM, and the figures of the site report which the figures of each step reproduce:
     * `site_summary.csv` - One row per reported value, with units, grouped by section: plot inventory (e.g. census dates and the time from the ALS acquisition, if `als_date` is set in `param.yaml`), measurement methods (e.g. allometry, taxonomic resolution, the taxonomic level of wood density estimates and their share of AGB, stems measured above the default POM), stem measurement completeness, auxiliary datasets, AGB density with its 95% interval, large trees, data quality (e.g. excluded stems, GNSS outliers, stems outside the quadrat grid, trees without coordinates), and provenance (e.g. software and BIOMASS versions).
     * `plot_summary.csv` - The same values for each plot.
@@ -107,6 +107,8 @@ Figures to check the results of each step are also written to `report/`:
 * `08_subplot_unmapped_map.png` - If the site supplies `subplot.csv`, the AGB of trees without coordinates placed within each field subplot, per hectare of the subplot, labelled with the number of trees. Axis ranges differ between plots, with equal x and y scales.
 * `08_plot_agbd.png` - Plot AGB density over the quadrat grid, from error propagation with a 95% interval, and from the sum of stem AGB.
 * `08_diam_error.png` - If `diam_error` is `"field"`, differences between repeat diameter measurements, with the fitted measurement error model.
+* `08_crown_map.png` - If `crown_method` is `"custom"`, tree crowns in each plot, as translucent circles with the median crown area from the crown area allometry, filled by tree AGB, with quadrats. Axis ranges differ between plots, with equal x and y scales.
+* `08_quad_agbd_crown_diff_map.png` - If `crown_method` is `"custom"`, crown-distributed quadrat AGB density minus quadrat AGB density with each tree in the quadrat containing its stems, in each plot. Axis ranges differ between plots, with equal x and y scales.
 * `10_quad_agbd_map.png` - Map of quadrat AGB density in each plot. Axis ranges differ between plots, with equal x and y scales.
 * `10_quad_agbd_map_site.png` - Map of quadrat AGB density across the site, in longitude and latitude.
 * `10_quad_agbd_hist.png` - Distribution of quadrat AGB density, all plots.
@@ -145,7 +147,7 @@ The `./.renvignore` file specifies files and directories to be monitored for new
 2. Install the package: `renv::install("package_name")` or `renv::install("user/repo@branch")` for packages on GitHub.
 3. Update the lockfile: `renv::snapshot()`
 
-The `BIOMASS` package is installed from the `BIOMASS_for_GEOTREES` branch on GitHub, which contains functions developed for GEO-TREES, e.g. `plotPolygonFit()`: `renv::install("umr-amap/BIOMASS@BIOMASS_for_GEOTREES")`.
+The `BIOMASS` package is installed from the `BIOMASS_for_GEOTREES` branch on GitHub, which contains functions developed for GEO-TREES, e.g. `plotPolygonFit()`: `renv::install("umr-amap/BIOMASS@BIOMASS_for_GEOTREES")`. Published height-diameter models (`height_method: "custom"`) and the AGB allometries of individual stems (`stem_allometry`) need `BIOMASS::customHD()` and user-defined allometries in `BIOMASS::AGBmonteCarlo()`, from the `user_allom_custom_hd` branch, until it is merged into `BIOMASS_for_GEOTREES`.
 
 ## Tests
 
@@ -159,7 +161,7 @@ testthat::test_dir("./tests")
 
 To track data inputs and versions of the processing code, each `L`-level data output is accompanied by an [RO-Crate](https://www.researchobject.org/ro-crate/) JSON file containing this meta-data. `./11_brm.R` contains code to programmatically create these files. These files can be used to precisely reproduce each data output.
 
-A `param.yaml` file is used to track user-defined parameters for each product version of an acquisition, such as the site name, quadrat dimensions, input and output directories, the methods used to estimate stem height, wood density, and plot polygons, which stems are included in AGB density, how multi-stemmed trees and trees without coordinates are treated, the diameter measurement error, and author information for the RO-Crate files. A copy of this file is placed alongside each `L`-level data output. A template of `param.yaml` is located in `./templates/param.yaml`, and each parameter is described in the vignette. `./zz_site.R` checks that all parameters are present and valid before processing.
+A `param.yaml` file is used to track user-defined parameters for each product version of an acquisition, such as the site name, quadrat dimensions, input and output directories, the methods used to estimate stem height, wood density, and plot polygons, taper correction, the AGB allometries of individual stems, which stems are included in AGB density, how multi-stemmed trees and trees without coordinates are treated, the diameter measurement error, crown-distributed AGB density, and author information for the RO-Crate files. A copy of this file is placed alongside each `L`-level data output. A template of `param.yaml` is located in `./templates/param.yaml`, and each parameter is described in the vignette. `./zz_site.R` checks that all parameters are present and valid before processing.
 
 If `opt_s3` is `true`, raw data are first downloaded from the AWS S3 directory `s3_dir` to `raw_dir`. This is for processing on the [MAAP](https://docs.maap-project.org/en/hub/index.html) platform.
 

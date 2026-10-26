@@ -72,10 +72,33 @@ param_name_vec <- c(
 # from the origin corner of each plot
 # `missing_diam_method` is how live stems without a diameter measurement are
 # treated, see ./08_agb_mc.R: "impute" (default) or "exclude"
+# `taper_method` is the correction of diameters measured away from 1.3 m to
+# their equivalent at 1.3 m, see `taperB()` in ./func.R: "none" (default),
+# "cushman2014" (Barro Colorado Island only) or "cushman2021"
+# `taper_species` is the species terms of "cushman2014", by taxon name, e.g.
+# {"Ceiba pentandra": 0.0495}. Other species use the base class
+# `stem_allometry` is whether stems use the AGB allometry in `agb_allometry`
+# in the stem table, see `agb_allometries` in ./func.R: false (default) or
+# true
+# `growth_form_exclude` is values of `growth_form` in the stem table excluded
+# from AGB density, e.g. ["strangler"]. None by default
+# `height_custom` is the height-diameter model used if `height_method` is
+# "custom", see `heightCustom()` in ./func.R
+# `crown_method` is whether quadrat AGB density is also estimated with tree
+# AGB spread over crowns, see ./08_agb_mc.R: "none" (default) or "custom"
+# `crown_custom` is the crown area allometry used if `crown_method` is
+# "custom", see `crownCustom()` in ./func.R
 param_optional_vec <- c(
   "als_date",
   "quad_origin",
-  "missing_diam_method"
+  "missing_diam_method",
+  "taper_method",
+  "taper_species",
+  "stem_allometry",
+  "growth_form_exclude",
+  "height_custom",
+  "crown_method",
+  "crown_custom"
 )
 
 # Define RO-Crate parameter names, `author_orcid` is optional
@@ -108,8 +131,8 @@ if (length(param_extra) > 0) {
 
 # Check parameter values
 param_choices <- list(
-  height_method = c("regional", "field"),
-  wd_method = c("regional", "field"),
+  height_method = c("regional", "field", "custom"),
+  wd_method = c("regional", "field", "local"),
   polygon_method = c("exact", "affine", "procrustes"),
   height_model = c("best", "log1", "log2", "weibull", "michaelis"),
   multi_stem_method = c("equivalent", "stem"),
@@ -168,9 +191,60 @@ if (is.null(param$quad_origin)) {
 if (is.null(param$missing_diam_method)) {
   param$missing_diam_method <- "impute"
 }
-if (!identical(param$missing_diam_method, "impute") && 
+if (!identical(param$missing_diam_method, "impute") &&
   !identical(param$missing_diam_method, "exclude")) {
   stop("`missing_diam_method` must be one of: impute, exclude")
+}
+
+if (is.null(param$taper_method)) {
+  param$taper_method <- "none"
+}
+if (!param$taper_method %in% c("none", "cushman2014", "cushman2021")) {
+  stop("`taper_method` must be one of: none, cushman2014, cushman2021")
+}
+if (!is.null(param$taper_species) && (!is.list(param$taper_species) ||
+  is.null(names(param$taper_species)) ||
+  !all(vapply(param$taper_species, is.numeric, logical(1))))) {
+  stop("`taper_species` must be taxon names with numeric species terms, ",
+    "e.g. {\"Ceiba pentandra\": 0.0495}")
+}
+
+if (is.null(param$stem_allometry)) {
+  param$stem_allometry <- FALSE
+}
+if (length(param$stem_allometry) != 1 || !is.logical(param$stem_allometry) ||
+  is.na(param$stem_allometry)) {
+  stop("`stem_allometry` must be true or false")
+}
+
+param$growth_form_exclude <- unlist(param$growth_form_exclude)
+if (length(param$growth_form_exclude) > 0 && !is.character(param$growth_form_exclude)) {
+  stop("`growth_form_exclude` must be values of `growth_form`, e.g. [\"strangler\"]")
+}
+
+if (param$height_method == "custom") {
+  if (is.null(param$height_custom) ||
+    !all(c("formula", "parameters", "sigma") %in% names(param$height_custom))) {
+    stop("`height_method` is \"custom\", so `height_custom` must give the ",
+      "height-diameter model's `formula`, `parameters` and `sigma`")
+  }
+  # Check the model can be built
+  invisible(heightCustom(param$height_custom))
+}
+
+if (is.null(param$crown_method)) {
+  param$crown_method <- "none"
+}
+if (!param$crown_method %in% c("none", "custom")) {
+  stop("`crown_method` must be one of: none, custom")
+}
+if (param$crown_method == "custom") {
+  if (is.null(param$crown_custom)) {
+    stop("`crown_method` is \"custom\", so `crown_custom` must give the ",
+      "crown area allometry's `formula`, `parameters` and `sigma`")
+  }
+  # Check the allometry can be built
+  invisible(crownCustom(param$crown_custom))
 }
 if (!(identical(param$quad_origin, "centre") || identical(param$quad_origin, "corner") ||
   (is.numeric(param$quad_origin) && length(param$quad_origin) == 2 && 
@@ -351,7 +425,7 @@ outdir <- file.path(param$out_dir, software_version_sanit, "03_wd")
 dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), colClasses = stem_col_class)
 taxa <- read.csv(file.path(param$out_dir, software_version_sanit, "02_taxa", "stem_taxa.csv"))
-if (param$wd_method == "field") {
+if (param$wd_method %in% c("field", "local")) {
   wd <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"), colClasses = wd_col_class)
 }
 plot <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot.csv"), colClasses = plot_col_class)
@@ -369,6 +443,7 @@ if (param$height_method == "field") {
 }
 plot <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot.csv"), colClasses = plot_col_class)
 height <- readOpt(file.path(param$out_dir, software_version_sanit, "01_fmt", "height.csv"), colClasses = height_col_class)
+stem_wd <- read.csv(file.path(param$out_dir, software_version_sanit, "03_wd", "stem_wd.csv"))
 runFn("./04_height.R")
 
 # Estimate AGB for every measurement
@@ -377,11 +452,13 @@ dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), colClasses = stem_col_class)
 stem_wd <- read.csv(file.path(param$out_dir, software_version_sanit, "03_wd", "stem_wd.csv"))
 stem_height <- read.csv(file.path(param$out_dir, software_version_sanit, "04_height", "stem_height.csv"))
+# AGB uses diameters corrected for taper, see `taper_method`
+stem <- taperDiam(stem, stem_height)
 plot <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "plot.csv"), colClasses = plot_col_class)
 if (param$height_method == "regional") { 
   plot_cent <- read.csv(file.path(param$out_dir, software_version_sanit, "04_height", "plot_cent.csv"), colClasses = c(plot_id = "character"))
 }
-if (param$height_method == "field") {
+if (param$height_method %in% c("field", "custom")) {
   height_mod <- readRDS(file.path(param$out_dir, software_version_sanit, "04_height", "height_mod.rds"))
 }
 runFn("./05_agb_stem.R")
@@ -408,6 +485,8 @@ dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), colClasses = stem_col_class)
 stem_wd <- read.csv(file.path(param$out_dir, software_version_sanit, "03_wd", "stem_wd.csv"))
 stem_height <- read.csv(file.path(param$out_dir, software_version_sanit, "04_height", "stem_height.csv"))
+# AGB uses diameters corrected for taper, see `taper_method`
+stem <- taperDiam(stem, stem_height)
 stem_agb <- read.csv(file.path(param$out_dir, software_version_sanit, "05_agb_stem", "stem_agb.csv"))
 record_fil <- readLines(file.path(param$out_dir, software_version_sanit, "06_record_fil", "record_fil.txt"))
 record_agbd <- readLines(file.path(param$out_dir, software_version_sanit, "06_record_fil", "record_agbd.txt"))
@@ -416,7 +495,7 @@ stem_pt <- st_read(file.path(param$out_dir, software_version_sanit, "07_quad", "
 if (param$height_method == "regional") { 
   plot_cent <- read.csv(file.path(param$out_dir, software_version_sanit, "04_height", "plot_cent.csv"), colClasses = c(plot_id = "character"))
 }
-if (param$height_method == "field") { 
+if (param$height_method %in% c("field", "custom")) { 
   height_mod <- readRDS(file.path(param$out_dir, software_version_sanit, "04_height", "height_mod.rds"))
 }
 if (identical(param$diam_error, "field")) {

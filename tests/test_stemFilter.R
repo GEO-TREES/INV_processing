@@ -74,3 +74,21 @@ test_that("treeEquiv() combines only included stems into trees", {
   expect_true(all(te0$ba_share == 1))
   expect_equal(te0$diam_eq_cm[match(c(5, 6), te0$record_id)], c(20, 15))
 })
+
+test_that("agbdFilter() excludes stems of growth forms in `growth_form_exclude`", {
+  stem_gf <- mutate(stem, growth_form = c("tree", "tree", "strangler", "palm",
+    "tree", "tree", "tree"))
+  record_fil <- recordFilter(stem_gf, plot)
+  expect_setequal(agbdFilter(stem_gf, plot, record_fil,
+    growth_form_exclude = "strangler"), c("1", "4", "5", "6"))
+  expect_setequal(agbdFilter(stem_gf, plot, record_fil,
+    growth_form_exclude = c("strangler", "palm")), c("1", "5", "6"))
+})
+
+test_that("agbdFilter() applies the diameter threshold to the measured diameter", {
+  # Stem 2 is 8 cm measured, 11 cm after taper correction, in a 10 cm plot
+  stem_taper <- mutate(stem, diam_cm_meas = diam_cm,
+    diam_cm = ifelse(record_id == 2, 11, diam_cm))
+  record_fil <- recordFilter(stem_taper, plot)
+  expect_false("2" %in% agbdFilter(stem_taper, plot, record_fil))
+})

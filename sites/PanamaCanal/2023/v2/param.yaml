@@ -3,22 +3,45 @@ acquisition_id: "2023"
 out_dir: "./dat/sites/PanamaCanal/INV/2023/v2"
 raw_dir: "./dat/sites/PanamaCanal/INV/2023/L0"
 raw_version: "v1"
-s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/PanamaCanal/L0"
-quad_dim: [25, 25]
+s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/PanamaCanal/INV/2023/L0"
+quad_dim: [50, 50]
 opt_s3: false
 product_version: "v2"
-height_method: "regional"
-wd_method: "regional"
+height_method: "custom"
+wd_method: "field"
 polygon_method: "exact"
 outside_max_dist_m: 0
 corner_outlier_dist_m: 10
-quad_grid_tol: 0.1
+quad_grid_tol: 0.5
+quad_origin: "centre"
 height_model: "best"
-agbd_diam_min_cm: 0
+agbd_diam_min_cm: 10
 include_broken: true
 multi_stem_method: "equivalent"
 unmapped_method: "random"
+missing_diam_method: "impute"
+taper_method: "cushman2021"
+stem_allometry: true
+growth_form_exclude: ["strangler"]
 diam_error: "chave2004"
+height_custom:
+  formula: "a * D^b / (k + D^b)"
+  parameters:
+    a: 57.1
+    b: 0.73
+    k: 21.79
+  sigma: 0.181
+  link: "log"
+  reference: "Martinez-Cano et al. (2019)"
+crown_method: "custom"
+crown_custom:
+  formula: "a * D^b"
+  parameters:
+    a: 0.57
+    b: 1.34
+  sigma: 0.549
+  link: "log"
+  reference: "Martinez-Cano et al. (2019)"
 rocrate:
   author_name: "John L. Godlee"
   author_email: "GodleeJ@si.edu"

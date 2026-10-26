@@ -1,12 +1,10 @@
 # Process Amacayacu plot data
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-21
 
 # Import data
 s <- readRDS(file.path(indir, "amacayacu_census4_20260225.rds"))
-q <- read.csv(file.path(indir, "quadrat.20260224.csv"))
 sp <- read.csv(file.path(indir, "species.20260224.csv"))
-p <- read_excel(file.path(indir, "plot_pi.xlsx"))
 poly <- st_read(file.path(indir, "poly/Amacayacu_plot_new.shp"))
 
 # Process plot corners
@@ -98,7 +96,7 @@ p_clean <- data.frame(
   meas_palm = NA,
   meas_bamboo = NA,
   meas_protocol = NA_character_,
-  meas_plot_loc = NA_character_,
+  meas_plot_loc = "Handheld GPS. Plot corners recorded with a Garmin GPSMap 65s.",
   meas_stem_loc = "ForestGEO protocol. Well-surveyed 10x10 m subplot grid. Tape measures to locate stems by X and Y coordinates.",
   notes_meas = NA_character_,
   forest_status = "old-growth",

@@ -3,7 +3,7 @@ acquisition_id: "2024"
 out_dir: "./dat/sites/Amacayacu/INV/2024/v2"
 raw_dir: "./dat/sites/Amacayacu/INV/2024/L0"
 raw_version: "v1"
-s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/Amacayacu/L0"
+s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/Amacayacu/INV/2024/L0"
 quad_dim: [25, 25]
 opt_s3: false
 product_version: "v2"

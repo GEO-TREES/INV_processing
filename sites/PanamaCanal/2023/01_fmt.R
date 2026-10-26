@@ -339,8 +339,29 @@ joe_corner_all <- bind_rows(lapply(1:nrow(joe_corner_fil), function(i) {
   colGen(., pt_cols$column_name, pt_cols$class) %>% 
   dplyr::select(all_of(pt_cols$column_name))
 
-pts_all <- bind_rows(pts, joe_corner_all) %>% 
+# Joe Wright's plots are excluded, as they only include trees >= 20 cm, above
+# the maximum `meas_diam_min_cm` of 10 cm in ./templates/plot_cols.csv
+pts_all <- pts %>%
   dplyr::select(all_of(pt_cols$column_name))
+
+# Growth forms and AGB allometries of stems, used if `growth_form_exclude`
+# and `stem_allometry` are set in param.yaml. Palms (Arecaceae) use the
+# Goodman et al. (2013) palm allometry. Strangler figs are the species whose
+# life form in the BCI species table contains "estrangulador", as removed in
+# AGB_ESTIMATION_BCI. Ficus trigonata (BCI code ficutr) is named Ficus aurea
+# in the census data
+strangler_species <- c("Ficus aurea", "Ficus citrifolia", "Ficus colubrinae", 
+  "Ficus costaricana", "Ficus matiziana", "Ficus obtusifolia", 
+  "Ficus pertusa", "Ficus popenoei", "Ficus trigonata", "Oreopanax capitatus")
+growthForm <- function(family, taxon_name) {
+  case_when(
+    family %in% "Arecaceae" ~ "palm",
+    taxon_name %in% strangler_species ~ "strangler",
+    TRUE ~ "tree")
+}
+agbAllometry <- function(family) {
+  ifelse(family %in% "Arecaceae", "goodman2013", NA_character_)
+}
 
 # Prepare stem data 
 s_clean <- s %>% 
@@ -358,7 +379,9 @@ s_clean <- s %>%
     x_rel_m = as.numeric(gx23),
     y_rel_m = as.numeric(gy23),
     stem_id = tag,
-    taxon_name = paste(genus, species)) %>% 
+    taxon_name = paste(genus, species),
+    growth_form = growthForm(family, taxon_name),
+    agb_allometry = agbAllometry(family)) %>% 
   dplyr::select(any_of(stem_cols$column_name))
 
 s2_clean <- s2 %>% 
@@ -370,7 +393,9 @@ s2_clean <- s2 %>%
     alive = ifelse(Status %in% c("alive", "broken below"), "A", "D"),
     broken = ifelse(Status == "broken below", "B", ""),
     missing = ifelse(Status == "missing", "M", ""),
-    fallen = ifelse(grepl("Y", ListOfTSM), "F", "S"),
+    # Match the code "Y" exactly, not "cylY", which marks a cylindrical trunk
+    # at the POM of buttressed trees
+    fallen = ifelse(grepl("(^|;)Y(;|$)", ListOfTSM), "F", "S"),
     code = pasteVals(alive, broken, missing, fallen),
     plot_id = case_when(
       PlotName == "bci" ~ "BCI 50 ha plot",
@@ -390,7 +415,9 @@ s2_clean <- s2 %>%
       plot_id == "San Lorenzo B" ~ y_rel_m - 40,
       TRUE ~ y_rel_m),
     pom_m = as.numeric(HOM),
-    taxon_name = paste(Genus, SpeciesName)
+    taxon_name = paste(Genus, SpeciesName),
+    growth_form = growthForm(Family, taxon_name),
+    agb_allometry = agbAllometry(Family)
   ) %>% 
   rename(
     measurement_date = ExactDate,
@@ -446,7 +473,8 @@ s3_clean <- s3 %>%
 
 # Join stems tables
 # Add metadata to stems
-s_all <- bind_rows(s_clean, s2_clean, s3_clean) %>% 
+# Joe Wright's plots (`s3_clean`) are excluded, see `pts_all`
+s_all <- bind_rows(s_clean, s2_clean) %>%
   group_by(plot_id) %>% 
   mutate(census_date = as.character(median(as.Date(measurement_date), na.rm = TRUE))) %>% 
   ungroup() %>%
@@ -457,12 +485,12 @@ s_all <- bind_rows(s_clean, s2_clean, s3_clean) %>%
     tree_id = as.character(tree_id),
     stem_id = as.character(stem_id),
     record_id = row_number(),
+    measurement_date_res = dateRes(measurement_date),
+    measurement_date = decDate(measurement_date),
     height_m = NA_real_,
     taxon_name = gsub("NA NA", "Indet indet", taxon_name),
     diam_cm = ifelse(diam_cm == 0, NA_real_, diam_cm),
-    growth_form = NA_character_,
-    height_allometry = NA_character_,
-    agb_allometry = NA_character_) %>%
+    height_allometry = NA_character_) %>%
   group_by(plot_id, census_date, stem_id) %>% 
   mutate(measurement_id = row_number()) %>% 
   ungroup() %>% 
@@ -470,7 +498,7 @@ s_all <- bind_rows(s_clean, s2_clean, s3_clean) %>%
 
 # Prepare census table
 plots  <- s_all %>% 
-  dplyr::select(site_id, acquisition_id, plot_id, census_date) %>% 
+  dplyr::select(site_id, acquisition_id, plot_id) %>%
   distinct() %>% 
   mutate(
     plot_width_m = case_when(
@@ -518,19 +546,22 @@ plots  <- s_all %>%
     plot_elevation_m = NA_real_,
     plot_planar = FALSE,
     notes_plot = NA_character_,
+    # Census thresholds, from the stem data. AGB density uses stems >= 10 cm,
+    # set by `agbd_diam_min_cm` in param.yaml. Gigante is kept at 10 cm, as
+    # stems < 10 cm appear to be measured in only part of the plot
     meas_diam_min_cm = case_when(
-      plot_id == "BCI 50 ha plot" ~ 10,
-      plot_id == "ElCharco" ~ 10,
-      plot_id == "FincaRoubik" ~ 10,
+      plot_id == "BCI 50 ha plot" ~ 1,
+      plot_id == "ElCharco" ~ 1,
+      plot_id == "FincaRoubik" ~ 1,
       plot_id == "Gigante fertilization plot" ~ 10,
-      plot_id == "Metrop" ~ 10,
+      plot_id == "Metrop" ~ 1,
       plot_id == "P06" ~ 10,
-      plot_id == "P12" ~ 10,
+      plot_id == "P12" ~ 1,
       plot_id == "P14" ~ 10,
-      plot_id == "P15" ~ 10,
-      plot_id == "San Lorenzo A" ~ 10,
-      plot_id == "San Lorenzo B" ~ 10,
-      plot_id == "Soberania" ~ 10,
+      plot_id == "P15" ~ 1,
+      plot_id == "San Lorenzo A" ~ 1,
+      plot_id == "San Lorenzo B" ~ 1,
+      plot_id == "Soberania" ~ 1,
       plot_id == "10ha" ~ 20,
       plot_id == "25ha" ~ 20,
       plot_id == "AVA" ~ 20,
@@ -580,5 +611,35 @@ write.csv(pts_all, file.path(outdir, "plot_pt.csv"), row.names = FALSE)
 # Write stem data to file
 write.csv(s_all, file.path(outdir, "stem.csv"), row.names = FALSE)
 
-# Write stem data to file
+# Write plot data to file
 write.csv(plots, file.path(outdir, "plot.csv"), row.names = FALSE)
+
+# Local wood density of central Panama species, by species code, as used in
+# AGB_ESTIMATION_BCI (Dryad, doi:10.5061/dryad.5qfttdzn3). wd100 is oven-dry 
+# mass at 100 C over fresh volume. Used if `wd_method` is "field" or "local".
+# Codes are matched to names with the species codes of the census data. Only
+# species in the census are kept, so genus and family means with `wd_method`
+# "local" are over census species, as in AGB_ESTIMATION_BCI
+wd_raw <- read.delim(file.path(indir, "bci_wd/WD_species.txt"))
+sp_code <- bind_rows(
+  distinct(s2, code = tolower(Mnemonic), taxon_name = paste(Genus, SpeciesName)),
+  distinct(n, code = tolower(sp6), taxon_name = paste(genus, species))) %>%
+  filter(!is.na(code), !code %in% c("", "null")) %>%
+  distinct(code, .keep_all = TRUE)
+wd_out <- wd_raw %>%
+  filter(!is.na(wd100.mean)) %>%
+  mutate(code = tolower(sp6)) %>%
+  inner_join(., sp_code, by = "code") %>%
+  filter(taxon_name %in% s_all$taxon_name) %>%
+  transmute(
+    site_id = param$site_id,
+    taxon_name,
+    wood_density_gcm3 = round(wd100.mean, 3),
+    wood_density_sd_gcm3 = round(wd100.sd, 3),
+    wood_density_n = as.integer(wd100.n))
+message(nrow(wd_out), " of ", sum(!is.na(wd_raw$wd100.mean)), 
+  " species in the local wood density data matched to census species")
+colCheck(wd_out, wd_cols)
+
+# Write wood density data to file
+write.csv(wd_out, file.path(outdir, "wd.csv"), row.names = FALSE)

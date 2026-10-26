@@ -4,7 +4,7 @@ product_version: "v1"
 out_dir: "./dat/sites/Bicuar/INV/2024/v1"
 raw_dir: "./dat/sites/Bicuar/INV/2024/L0"
 raw_version: "v1"
-s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/Bicuar/L0"
+s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/Bicuar/INV/2024/L0"
 quad_dim: [50, 50]
 opt_s3: false
 height_method: "regional"

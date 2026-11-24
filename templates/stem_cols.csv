@@ -1,4 +1,4 @@
-﻿column_name,class,description,units,min_val,max_val,derived
+column_name,class,description,units,min_val,max_val,derived
 record_id,integer,"ID of the stem measurement record, unique within the acquisition.",NA,1,NA,TRUE
 site_id,character,GEO-TREES site name.,NA,,,
 acquisition_id,character,"Acquisition ID. The tree inventory data collection event, to separate different GEO-TREES data collection campaigns. Commonly the census year, i.e. the year of the mid-date of stem measurements within the site for this acquisition (census).",NA,,,TRUE

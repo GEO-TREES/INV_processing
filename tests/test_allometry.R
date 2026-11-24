@@ -55,6 +55,20 @@ test_that("heightCustom() builds a height-diameter model with BIOMASS::customHD(
     median_h * exp(0.181^2 / 2))
 })
 
+test_that("heightPredict() predicts height in groups of stems", {
+  set.seed(1)
+  D_fit <- runif(200, 5, 100)
+  H_fit <- exp(0.9 + 0.6 * log(D_fit) + rnorm(200, 0, 0.1))
+  mod <- BIOMASS::modelHD(D = D_fit, H = H_fit, method = "log2",
+    bayesian = FALSE, useCache = FALSE)
+  # Repeated and missing diameters, in more than one group
+  D <- c(10, 50, NA, 10, 75.5, 50)
+  expect_equal(heightPredict(D, mod, chunk = 2),
+    BIOMASS::retrieveH(D = D, model = mod)$H)
+  expect_equal(heightPredict(c(NA_real_, NA_real_), mod), c(NA_real_, NA_real_))
+  expect_equal(heightPredict(numeric(0), mod), numeric(0))
+})
+
 test_that("paramString() collapses parameters with several or named values", {
   expect_equal(paramString("regional"), "regional")
   expect_equal(paramString(10), 10)

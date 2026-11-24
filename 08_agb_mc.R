@@ -38,7 +38,10 @@
 #
 # Allometry matches that used in ./05_agb_stem.R:
 #   "regional" - Chave et al. (2014) Eq. 7, using bioclimatic variables at plot centre
-#   "field" - Chave et al. (2014) Eq. 4, using local height-diameter model
+#   "field" - Chave et al. (2014) Eq. 4, using local height-diameter model, a
+#     Bayesian model, see ./04_height.R. Each simulation uses one posterior
+#     draw of the parameters of the model, for all trees, so the uncertainty
+#     in its parameters is propagated, as well as its residual error
 #   "custom" - Chave et al. (2014) Eq. 4, using the height-diameter model in
 #     `height_custom`
 # If `stem_allometry` is true, trees use the allometry in `agb_allometry` of

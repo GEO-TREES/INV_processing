@@ -1,6 +1,6 @@
 # Summarise stem data within quadrats
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-26
 
 # Ensure plot IDs are character class
 quad_poly$plot_id <- as.character(quad_poly$plot_id)
@@ -41,7 +41,12 @@ quad_summ_pre <- stem_summ %>%
     lorey_height_m = sum(ba_m2 * height_m_pred, na.rm = TRUE) / 
       sum(ba_m2[!is.na(height_m_pred)], na.rm = TRUE),
     meanWD_mean = mean(meanWD, na.rm = TRUE),
-    meanWD_wm_ba = weighted.mean(meanWD, ba_m2, na.rm = TRUE),
+    # Basal area-weighted mean wood density. Stems without a diameter, whose
+    # diameter is imputed during AGB error propagation, have no basal area,
+    # and are left out. weighted.mean(na.rm = TRUE) only drops missing
+    # values, not missing weights
+    meanWD_wm_ba = weighted.mean(meanWD[!is.na(ba_m2)], ba_m2[!is.na(ba_m2)],
+      na.rm = TRUE),
     .groups = "drop_last") %>% 
   ungroup() %>%
   mutate(

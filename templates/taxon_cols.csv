@@ -1,4 +1,4 @@
-﻿column_name,class,description,units,derived
+column_name,class,description,units,derived
 site_id,character,GEO-TREES site name.,NA,
 acquisition_id,character,"Acquisition ID. The census year, i.e. the year of the mid-date of stem measurements within the site for that data collection event.",NA,TRUE
 taxon_name,character,The taxonomic name of the tree. Matching the stem measurement table.,NA,

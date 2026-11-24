@@ -1027,6 +1027,135 @@ heightCustom <- function(x) {
     name = x$reference)
 }
 
+#' Fit a Bayesian height-diameter model
+#'
+#' Fits a height-diameter model with BIOMASS::modelHD(bayesian = TRUE), which
+#' uses the brms package, so that the uncertainty in the parameters of the
+#' model is propagated to AGB by BIOMASS::AGBmonteCarlo(), as well as its
+#' residual error. A model fitted by least squares only propagates its
+#' residual error.
+#'
+#' The compiled model is kept in the BIOMASS cache, see
+#' BIOMASS::createCache(), and updated with the data, so that the model is
+#' only compiled the first time each form of model is fitted. The model must
+#' always be fitted through the cache (`useCache = TRUE`): with
+#' `useCache = FALSE`, BIOMASS::modelHD() returns the model saved in the cache
+#' by a previous fit, e.g. of another site, without fitting the new data.
+#'
+#' The Weibull model, H = a (1 - exp(-(D / b)^c)), does not converge with the
+#' default flat priors of BIOMASS::modelHD(), so it is given the bounded
+#' uniform priors suggested in the BIOMASS vignette: a, the asymptotic
+#' height, between 0 and 80 m, or 1.5 times the tallest measured stem if
+#' that is more; b, the scale, between 0 and 100 cm, or the largest measured
+#' diameter if that is more; and c, the shape, between 0.01 and 0.99. Other
+#' forms of model use the default priors.
+#'
+#' @param D diameter (cm)
+#' @param H height (m)
+#' @param method form of the model, one of "log1", "log2", "weibull" or
+#'     "michaelis", see BIOMASS::modelHD()
+#' @param n_sim number of simulations in error propagation. The model must
+#'     have at least this many posterior draws
+#' @param seed random seed, so that the model can be reproduced
+#' @param rhat_max maximum potential scale reduction factor (Rhat) of any
+#'     parameter. Above this, the chains have not converged
+#' @param must_converge logical, if TRUE (default) the function stops if the
+#'     model has not converged. If FALSE, the model is returned with
+#'     `converged` FALSE, e.g. to try another form of model
+#' @param ... other arguments to BIOMASS::modelHD(), passed to brms::brm(),
+#'     e.g. `prior`, `iter`, `warmup`, `thin`, `cores`
+#'
+#' @return a height-diameter model from BIOMASS::modelHD(), with the
+#'     additional elements `rhat_max`, the maximum Rhat of any parameter,
+#'     `n_draw`, the number of posterior draws, `n_divergent`, the number of
+#'     divergent transitions, and `converged`, whether the maximum Rhat is
+#'     at or below `rhat_max`
+#'
+heightBayes <- function(D, H, method, n_sim = 1000, seed = 42, rhat_max = 1.05,
+  must_converge = TRUE, ...) {
+  if (!requireNamespace("brms", quietly = TRUE)) {
+    stop("Bayesian height-diameter models need the brms package, which is ",
+      "not installed", call. = FALSE)
+  }
+
+  args <- list(...)
+  if (method == "weibull" && is.null(args$prior)) {
+    a_max <- max(80, ceiling(1.5 * max(H, na.rm = TRUE)))
+    b_max <- max(100, ceiling(max(D, na.rm = TRUE)))
+    args$prior <- c(
+      brms::set_prior(paste0("uniform(0,", a_max, ")"), lb = 0, ub = a_max,
+        class = "b", nlpar = "a"),
+      brms::set_prior(paste0("uniform(0,", b_max, ")"), lb = 0, ub = b_max,
+        class = "b", nlpar = "b"),
+      brms::set_prior("uniform(0.01,0.99)", lb = 0.01, ub = 0.99,
+        class = "b", nlpar = "c"))
+  }
+
+  # brms and Stan give their own warnings if a model has not converged.
+  # Convergence is reported below
+  mod <- suppressWarnings(do.call(BIOMASS::modelHD, c(list(D = D, H = H,
+    method = method, bayesian = TRUE, useCache = TRUE, drawGraph = FALSE,
+    seed = seed, refresh = 0), args)))
+
+  # The model must be fitted to these data, see above
+  n_obs <- sum(!is.na(D) & !is.na(H))
+  if (stats::nobs(mod$model) != n_obs) {
+    stop("Bayesian height-diameter model was fitted to ",
+      stats::nobs(mod$model), " measurements, not the ", n_obs,
+      " measurements supplied. Check the BIOMASS cache", call. = FALSE)
+  }
+
+  mod$rhat_max <- max(brms::rhat(mod$model), na.rm = TRUE)
+  mod$n_draw <- brms::ndraws(mod$model)
+  np <- brms::nuts_params(mod$model)
+  mod$n_divergent <- sum(np$Value[np$Parameter == "divergent__"])
+  mod$converged <- is.finite(mod$rhat_max) && mod$rhat_max <= rhat_max
+
+  if (!mod$converged && must_converge) {
+    stop("Bayesian height-diameter model (", method, ") did not converge, ",
+      "maximum Rhat ", round(mod$rhat_max, 3), ". Set `height_model` to ",
+      "another form of model, e.g. \"log2\", in param.yaml", call. = FALSE)
+  }
+  if (mod$n_draw < n_sim) {
+    stop("Bayesian height-diameter model has ", mod$n_draw, " posterior ",
+      "draws, at least ", n_sim, " are needed for error propagation",
+      call. = FALSE)
+  }
+  if (mod$converged && mod$n_divergent > 0) {
+    warning("Bayesian height-diameter model (", method, ") had ",
+      mod$n_divergent, " divergent transitions, its posterior may be biased",
+      call. = FALSE)
+  }
+  mod
+}
+
+#' Predict stem height from a height-diameter model
+#'
+#' Predicts height with BIOMASS::retrieveH(), a group of stems at a time. For
+#' a Bayesian model, BIOMASS::retrieveH() predicts the height of each stem
+#' from every posterior draw, then takes the median, which holds matrices of
+#' stems x draws in memory, so stems are predicted in groups to limit memory
+#' use. Stems with the same diameter are only predicted once.
+#'
+#' @param D diameter (cm)
+#' @param model height-diameter model from BIOMASS::modelHD(),
+#'     BIOMASS::customHD() or `heightBayes()`
+#' @param chunk maximum number of diameters predicted at once
+#'
+#' @return vector of predicted height (m), the same length as `D`
+#'
+heightPredict <- function(D, model, chunk = 2000) {
+  D_unique <- unique(D[!is.na(D)])
+  if (length(D_unique) == 0) {
+    return(rep(NA_real_, length(D)))
+  }
+  H_unique <- unlist(lapply(
+    split(D_unique, ceiling(seq_along(D_unique) / chunk)),
+    function(x) BIOMASS::retrieveH(D = x, model = model)$H),
+    use.names = FALSE)
+  as.numeric(H_unique[match(D, D_unique)])
+}
+
 #' Crown area allometry from param.yaml
 #'
 #' @param x `crown_custom` from param.yaml: a list with `formula`, a string

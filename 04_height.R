@@ -102,31 +102,77 @@ if (param$height_method == "regional") {
     param$height_model
   }
 
-  msgTable(height_mod_comp, paste0("Height-diameter models, fitted to ",
-    nrow(height), " measurements. RSE in m. Model used: ", height_mod_best))
+  msgTable(height_mod_comp, paste0("Height-diameter models, fitted by least ",
+    "squares to ", nrow(height), " measurements. RSE in m. Model used: ",
+    height_mod_best))
+
+  # Fit best height diameter model, as a Bayesian model with brms, see
+  # `heightBayes()` in ./func.R, so that the uncertainty in its parameters is
+  # propagated to AGB in ./08_agb_mc.R, as well as its residual error. A
+  # model fitted by least squares would only propagate its residual error.
+  # BIOMASS::modelHD() always compares models by least squares, so the form
+  # of the model is chosen from the least-squares fits above. The Bayesian
+  # model needs at least as many posterior draws as there are simulations in
+  # ./08_agb_mc.R.
+  #
+  # The parameters of some forms of model, mostly Weibull and
+  # Michaelis-Menten, can be poorly identified, so that the Bayesian model
+  # does not converge. If `height_model` is "best", the forms are then tried
+  # in order of RSE, and the first whose Bayesian model converges is used.
+  # If `height_model` names a form, processing stops if it does not converge
+  height_mod_comp$bayes_rhat_max <- NA_real_
+  height_mod_try <- if (param$height_model == "best") {
+    height_mod_comp$method[order(height_mod_comp$RSE)]
+  } else {
+    height_mod_best
+  }
+  for (i in height_mod_try) {
+    height_mod <- heightBayes(
+      D = height$diam_cm,
+      H = height$height_m,
+      method = i,
+      n_sim = 1000,
+      seed = 42,
+      must_converge = FALSE)
+    height_mod_comp$bayes_rhat_max[height_mod_comp$method == i] <- height_mod$rhat_max
+    if (height_mod$converged) {
+      break
+    }
+    warning("Bayesian height-diameter model (", i, ") did not converge, ",
+      "maximum Rhat ", round(height_mod$rhat_max, 3), call. = FALSE)
+  }
+  if (!height_mod$converged) {
+    stop("No Bayesian height-diameter model converged, of: ",
+      paste(height_mod_try, collapse = ", "),
+      if (param$height_model != "best") ". Set `height_model` to another form of model")
+  }
+  height_mod_best <- i
+  msgTable(data.frame(
+    method = height_mod_best,
+    RSE = height_mod$RSE,
+    rhat_max = height_mod$rhat_max,
+    n_draw = height_mod$n_draw,
+    n_divergent = height_mod$n_divergent),
+    "Bayesian height-diameter model used. RSE in m:")
+
+  # Write model comparison to file, with the model used. `RSE` is from the
+  # least-squares fits. `RSE_used` is the RSE of the Bayesian model used.
+  # `bayes_rhat_max` is the maximum Rhat of each Bayesian model fitted, above
+  # 1.05 if it did not converge
   write.csv(
-    mutate(height_mod_comp, used = method == height_mod_best, n_height = nrow(height)),
+    mutate(height_mod_comp,
+      used = method == height_mod_best,
+      n_height = nrow(height),
+      RSE_used = ifelse(used, height_mod$RSE, NA_real_),
+      n_draw = ifelse(used, height_mod$n_draw, NA_integer_)),
     file.path(outdir, "height_mod_comp.csv"), row.names = FALSE)
 
-  # Fit best height diameter model
-  height_mod <- modelHD(
-    D = height$diam_cm,
-    H = height$height_m,
-    method = height_mod_best,
-    bayesian = FALSE,
-    useCache = FALSE,
-    drawGraph = FALSE)
-
-  # Predict with best height diameter model
-  height_est <- retrieveH(
-    D = stem$diam_cm,
-    model = height_mod)
-
-  # Create output dataframe
+  # Predict with best height diameter model, see `heightPredict()` in
+  # ./func.R: the median prediction of the posterior draws
   out <- stem %>% 
     mutate(
-      height_m_pred = height_est$H,
-      height_m_pred_rse = height_est$RSE) %>%
+      height_m_pred = heightPredict(diam_cm, height_mod),
+      height_m_pred_rse = height_mod$RSE) %>%
     dplyr::select(record_id, height_m_pred, height_m_pred_rse)
 } else if (param$height_method == "custom") {
 
@@ -136,14 +182,10 @@ if (param$height_method == "regional") {
 
   # Predict mean height. For a model with log-normal error, the RSE is on
   # the log scale
-  height_est <- retrieveH(
-    D = stem$diam_cm,
-    model = height_mod)
-
   out <- stem %>%
     mutate(
-      height_m_pred = height_est$H,
-      height_m_pred_rse = height_est$RSE) %>%
+      height_m_pred = heightPredict(diam_cm, height_mod),
+      height_m_pred_rse = height_mod$RSE) %>%
     dplyr::select(record_id, height_m_pred, height_m_pred_rse)
 }
 
@@ -203,7 +245,7 @@ p_height <- p_height +
 if (param$height_method == "field") {
   height_curve <- data.frame(diam_cm = seq(min(height_obs$diam_cm), 
     max(height_obs$diam_cm), length.out = 200))
-  height_curve$height_m <- retrieveH(D = height_curve$diam_cm, model = height_mod)$H
+  height_curve$height_m <- heightPredict(height_curve$diam_cm, height_mod)
   p_height <- p_height +
     geom_line(data = height_curve, aes(x = diam_cm, y = height_m, 
       colour = "Fitted model"), linewidth = 0.7)

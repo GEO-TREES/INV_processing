@@ -232,6 +232,14 @@ if (param$height_method == "custom") {
   invisible(heightCustom(param$height_custom))
 }
 
+# A local height-diameter model is fitted as a Bayesian model with the brms
+# package, so that the uncertainty in its parameters is propagated to AGB,
+# see `heightBayes()` in ./func.R
+if (param$height_method == "field" && !requireNamespace("brms", quietly = TRUE)) {
+  stop("`height_method` is \"field\", so the local height-diameter model is ",
+    "fitted as a Bayesian model with the brms package, which is not installed")
+}
+
 if (is.null(param$crown_method)) {
   param$crown_method <- "none"
 }

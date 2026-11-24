@@ -15,7 +15,7 @@ corner_outlier_dist_m: 10
 quad_grid_tol: 0.1
 quad_origin: "centre"
 height_model: "best"
-agbd_diam_min_cm: 0
+agbd_diam_min_cm: 10
 include_broken: true
 multi_stem_method: "equivalent"
 unmapped_method: "random"

@@ -351,6 +351,15 @@ height_mod_used <- if (!is.null(height_mod_comp)) {
   NULL
 }
 
+# Forms of height model with a lower RSE than the model used, whose Bayesian
+# model did not converge, see ./04_height.R
+height_mod_failed <- if (!is.null(height_mod_comp)) {
+  height_mod_comp$method[!height_mod_comp$used %in% TRUE &
+    !is.na(height_mod_comp$bayes_rhat_max)]
+} else {
+  character(0)
+}
+
 # Software versions
 bm_desc <- utils::packageDescription("BIOMASS")
 bm_version <- paste0(bm_desc$Version,
@@ -375,11 +384,21 @@ allom_desc <- if (param$height_method == "field") {
 height_desc <- if (param$height_method == "field") {
   paste0("Local height-diameter model fitted to ", height_mod_used$n_height,
     " field height measurements with BIOMASS::modelHD(): ",
-    height_mod_used$method, " model, RSE ", round(height_mod_used$RSE, 2), " m. ",
+    height_mod_used$method, " model, RSE ", round(height_mod_used$RSE_used, 2), " m. ",
     if (param$height_model == "best") {
-      "Chosen as the model with the lowest RSE"
+      if (length(height_mod_failed) > 0) {
+        "Chosen as the model with the lowest RSE among least-squares fits, of those whose Bayesian model converged"
+      } else {
+        "Chosen as the model with the lowest RSE among least-squares fits"
+      }
     } else {
       "Chosen by the user"
+    },
+    ". Fitted as a Bayesian model with brms (", height_mod_used$n_draw,
+    " posterior draws, maximum Rhat ", round(height_mod_used$bayes_rhat_max, 3), ")",
+    if (length(height_mod_failed) > 0) {
+      paste0(". The Bayesian model of form ", paste(height_mod_failed, collapse = ", "),
+        " had a lower RSE but did not converge")
     }, ". Heights are predicted for all stems from this model")
 } else if (param$height_method == "custom") {
   paste0("Height-diameter model of ", param$height_custom$reference, ": H = ",
@@ -842,7 +861,8 @@ choice <- bind_rows(
     "Standard deviation of the wood density estimate at its taxonomic level"),
   cRow("Uncertainty", "Height error", "height_method", param$height_method,
     if (param$height_method == "field") {
-      "Residual standard error of the local height-diameter model"
+      paste0("Residual error and parameter uncertainty of the local ",
+        "height-diameter model, from posterior samples of its parameters")
     } else if (param$height_method == "custom") {
       paste0("Residual error of the height-diameter model of ", 
         param$height_custom$reference, ", SD ", param$height_custom$sigma,
@@ -860,7 +880,10 @@ choice <- bind_rows(
     paste0("Errors in the GNSS coordinates of plot corners, which need ",
       "repeated measurements of each corner; errors in stem coordinates; ",
       "taxonomic misidentification; and systematic diameter errors, e.g. ",
-      "stems measured around buttresses")))
+      "stems measured around buttresses",
+      if (param$height_method == "custom") {
+        "; uncertainty in the parameters of the published height-diameter model"
+      })))
 
 # Write processing choices as Markdown, for reading alongside the data
 choice_md <- c(

@@ -12,7 +12,9 @@
 #
 # Allometry matches that used in ./08_agb_mc.R:
 #   "regional" - Chave et al. (2014) Eq. 7, using environmental stress (E) at plot centre
-#   "field" - Chave et al. (2014) Eq. 4, using heights from local height-diameter model
+#   "field" - Chave et al. (2014) Eq. 4, using heights from local height-diameter model,
+#     a Bayesian model, see ./04_height.R: the median prediction of its
+#     posterior draws
 #   "custom" - Chave et al. (2014) Eq. 4, using heights from the height-diameter
 #     model in `height_custom`
 # If `stem_allometry` is true, trees use the allometry in `agb_allometry` of
@@ -82,7 +84,7 @@ if (param$height_method == "regional") {
   tree$agb_Mg <- withCallingHandlers(computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
-    H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H), warning = muffleNA)
+    H = heightPredict(tree$diam_eq_cm, height_mod)), warning = muffleNA)
 }
 
 # Trees with other allometries, see `stem_allometry`
@@ -90,7 +92,7 @@ for (a in intersect(names(agb_allometries), tree$agb_allometry)) {
   i <- which(tree$agb_allometry == a)
   tree$agb_Mg[i] <- agbAllomMean(agb_allometries[[a]],
     D = tree$diam_eq_cm[i],
-    H = if (exists("height_mod")) retrieveH(D = tree$diam_eq_cm[i], model = height_mod)$H,
+    H = if (exists("height_mod")) heightPredict(tree$diam_eq_cm[i], height_mod),
     WD = tree$meanWD[i])
 }
 if (param$stem_allometry) {

@@ -84,6 +84,14 @@ library(rocrateR)  # rocrate() etc. - Create RO-Crate meta-data files
 library(kableExtra)  # Print dataframes in Quarto documents, only for the vignette
 ```
 
+```{r}
+#| include: false
+#| cache: false
+# Invalidate cached chunks when func.R changes, as chunks which use its
+# functions don't change themselves
+knitr::opts_chunk$set(cache.extra = tools::md5sum("../../func.R"))
+```
+
 Source additional functions:
 
 ```{r}
@@ -160,7 +168,7 @@ There should be one `param.yaml` file for each version of the processed data.
 * `corner_outlier_dist_m` -- Maximum distance in metres between a measured plot corner and the fitted plot polygon, beyond which the corner is treated as an outlier, e.g. `10`, see [Fit plot spatial polygons]
 * `quad_grid_tol` -- Maximum proportion of the area of each plot which may be excluded from the grid of quadrats, e.g. `0.1`. The automated workflow centres the quadrat grid in each plot, so where the plot dimensions are not a multiple of the quadrat dimensions, equal strips along opposite edges of the plot are excluded, e.g. `0.4` allows 100 x 100 m quadrats in a 250 x 250 m plot, which excludes 36% of the plot
 * `height_model` -- Height-diameter model used if `height_method` is `"field"`, one of `"best"` (lowest residual standard error), `"log1"`, `"log2"`, `"weibull"` or `"michaelis"`
-* `agbd_diam_min_cm` -- Minimum stem diameter in cm for AGB density. The larger of this and the minimum diameter threshold of each plot is used, e.g. `0` uses the threshold of each plot
+* `agbd_diam_min_cm` -- Minimum stem diameter in cm for AGB density. The larger of this and the minimum diameter threshold of each plot is used, e.g. `10`, the value in the template `param.yaml`, excludes stems below 10 cm in plots with a lower threshold, and `0` uses the threshold of each plot
 * `include_broken` -- `true` or `false`, whether stems broken above the POM are included in AGB density
 * `multi_stem_method` -- How AGB is estimated for multi-stemmed trees, either `"equivalent"` (from the equivalent diameter of a single stem with the same basal area as the tree) or `"stem"` (from each stem separately)
 * `unmapped_method` -- How trees without stem coordinates are treated, either `"random"` (assigned to a random quadrat in their plot in each Monte Carlo simulation) or `"exclude"` (excluded from AGB density)
@@ -388,6 +396,14 @@ if (param$height_method == "custom") {
   }
   # Check the model can be built
   invisible(heightCustom(param$height_custom))
+}
+
+# A local height-diameter model is fitted as a Bayesian model with the brms
+# package, so that the uncertainty in its parameters is propagated to AGB,
+# see `heightBayes()` in ./func.R
+if (param$height_method == "field" && !requireNamespace("brms", quietly = TRUE)) {
+  stop("`height_method` is \"field\", so the local height-diameter model is ",
+    "fitted as a Bayesian model with the brms package, which is not installed")
 }
 
 if (is.null(param$crown_method)) {
@@ -1191,26 +1207,37 @@ height_mod_best <- if (param$height_model == "best") {
   param$height_model
 }
 
-# Fit best height diameter model
-height_mod <- modelHD(
-  D = L0$height$diam_cm,
-  H = L0$height$height_m,
-  method = height_mod_best,
-  bayesian = FALSE,
-  useCache = FALSE,
-  drawGraph = FALSE)
+# Fit best height diameter model. If `height_method` is "field", the model
+# is fitted as a Bayesian model with brms, see `heightBayes()` in ./func.R,
+# so that the uncertainty in its parameters is propagated to AGB, as well as
+# its residual error. Otherwise the model is not used to estimate AGB, and
+# is fitted by least squares here to illustrate, as a Bayesian model takes
+# longer to fit
+if (param$height_method == "field") {
+  height_mod <- heightBayes(
+    D = L0$height$diam_cm,
+    H = L0$height$height_m,
+    method = height_mod_best,
+    n_sim = 1000,
+    seed = 42)
+} else {
+  height_mod <- modelHD(
+    D = L0$height$diam_cm,
+    H = L0$height$height_m,
+    method = height_mod_best,
+    bayesian = FALSE,
+    useCache = FALSE,
+    drawGraph = FALSE)
+}
 
-# Predict with best height diameter model
-height_est <- retrieveH(
-  D = stem_taper$diam_cm,
-  model = height_mod)
-
-# Create output dataframe, if `height_method` is "field"
+# Create output dataframe, if `height_method` is "field". Heights are
+# predicted with `heightPredict()` in ./func.R: the median prediction of the
+# posterior draws of the Bayesian model
 if (param$height_method == "field") {
   stem_height_all <- stem_taper %>% 
     mutate(
-      height_m_pred = height_est$H,
-      height_m_pred_rse = height_est$RSE) %>% 
+      height_m_pred = heightPredict(diam_cm, height_mod),
+      height_m_pred_rse = height_mod$RSE) %>% 
     dplyr::select(record_id, height_m_pred, height_m_pred_rse)
 }
 ```
@@ -1218,6 +1245,27 @@ if (param$height_method == "field") {
 We choose the model with the lowest residual standard error (RSE). Note that
 `Average_bias` is signed, so choosing the model with the lowest
 `Average_bias` would choose the model which most underestimates stem height.
+
+`BIOMASS::modelHD()` always compares the forms of model by least squares. If
+`height_method` is `"field"`, the chosen form is then fitted as a Bayesian
+model with `BIOMASS::modelHD(bayesian = TRUE)`, which uses the `brms`
+package. A model fitted by least squares has fixed parameters, so only its
+residual error is propagated to AGB. With a Bayesian model, each simulation
+in [Estimate quadrat AGBD and propagate error] uses one posterior draw of
+the parameters for all trees, so the uncertainty in the parameters is also
+propagated. This uncertainty is shared by all trees, so unlike the residual
+error it does not average out among the trees of a quadrat. It matters most
+where there are few height measurements.
+
+The Bayesian model must converge, i.e. the maximum Rhat of its parameters
+must be at or below 1.05. The parameters of the Weibull and Michaelis-Menten
+models can be poorly identified. In the automated workflow, if `height_model`
+is `"best"` and the Bayesian model of the form with the lowest RSE does not
+converge, the form with the next lowest RSE is tried. If `height_model` names
+a form which does not converge, processing stops. In that case, set
+`height_model` to another form, e.g. `"log2"`. The Weibull model does not converge with the default priors of
+`BIOMASS::modelHD()`, so `heightBayes()` gives it the bounded uniform priors
+suggested in the `BIOMASS` vignette.
 
 Alternatively using a regional height-diameter allometry where no height data
 are available. `retrieveH()` estimates height from Equation 6a of
@@ -1321,7 +1369,7 @@ p_height <- p_height +
 if (param$height_method == "field") {
   height_curve <- data.frame(diam_cm = seq(min(height_obs$diam_cm), 
     max(height_obs$diam_cm), length.out = 200))
-  height_curve$height_m <- retrieveH(D = height_curve$diam_cm, model = height_mod)$H
+  height_curve$height_m <- heightPredict(height_curve$diam_cm, height_mod)
   p_height <- p_height +
     geom_line(data = height_curve, aes(x = diam_cm, y = height_m, 
       colour = "Fitted model"), linewidth = 0.7)
@@ -1455,7 +1503,7 @@ if (param$height_method == "regional") {
   tree$agb_Mg <- withCallingHandlers(BIOMASS::computeAGB(
     D = tree$diam_eq_cm,
     WD = tree$meanWD,
-    H = retrieveH(D = tree$diam_eq_cm, model = height_mod)$H), warning = muffleNA)
+    H = heightPredict(tree$diam_eq_cm, height_mod)), warning = muffleNA)
 }
 
 # Trees with other allometries, see `stem_allometry`
@@ -1463,7 +1511,7 @@ for (a in intersect(names(agb_allometries), tree$agb_allometry)) {
   i <- which(tree$agb_allometry == a)
   tree$agb_Mg[i] <- agbAllomMean(agb_allometries[[a]],
     D = tree$diam_eq_cm[i],
-    H = if (param$height_method != "regional") retrieveH(D = tree$diam_eq_cm[i], model = height_mod)$H,
+    H = if (param$height_method != "regional") heightPredict(tree$diam_eq_cm[i], height_mod),
     WD = tree$meanWD[i])
 }
 
@@ -2538,7 +2586,8 @@ The errors propagated depend on `height_method`:
   the environmental stress index (E) and the model parameters. Stem height is
   not used.
 * `"field"` - Equation 4 from @Chave2014 is used, with stem height predicted
-  from the local height-diameter model, including its uncertainty.
+  from the local height-diameter model, a Bayesian model, including its
+  residual error and the uncertainty in its parameters.
 * `"custom"` - Equation 4 from @Chave2014 is used, with stem height predicted
   from the height-diameter model in `height_custom`, including its residual
   error.
@@ -3444,7 +3493,12 @@ quad_summ_pre <- stem_summ %>%
     lorey_height_m = sum(ba_m2 * height_m_pred, na.rm = TRUE) / 
       sum(ba_m2[!is.na(height_m_pred)], na.rm = TRUE),
     meanWD_mean = mean(meanWD, na.rm = TRUE),
-    meanWD_wm_ba = weighted.mean(meanWD, ba_m2, na.rm = TRUE),
+    # Basal area-weighted mean wood density. Stems without a diameter, whose
+    # diameter is imputed during AGB error propagation, have no basal area,
+    # and are left out. weighted.mean(na.rm = TRUE) only drops missing
+    # values, not missing weights
+    meanWD_wm_ba = weighted.mean(meanWD[!is.na(ba_m2)], ba_m2[!is.na(ba_m2)],
+      na.rm = TRUE),
     .groups = "drop_last") %>% 
   ungroup() %>%
   mutate(
@@ -3893,6 +3947,9 @@ L3_quad <- quad_summ %>%
     Quadrat_name = quadrat_id,
     AGBD_stand_estimate = agbd_Mg_ha_mc_mean,
     AGBD_stand_uncertainty = agbd_Mg_ha_mc_sd,
+    # 95% interval, the 2.5% and 97.5% quantiles of the simulations
+    AGBD_stand_ci_lower = agbd_Mg_ha_mc_ci2.5,
+    AGBD_stand_ci_upper = agbd_Mg_ha_mc_ci97.5,
     Height_stand_estimate = height_m_pred_max,
     Height_stand_uncertainty = height_m_pred_max_rse,
     Basal_area = ba_m2_sum_ha,
@@ -3901,11 +3958,15 @@ L3_quad <- quad_summ %>%
     Quadrat_area = quadrat_area_ha,
     # Crown-distributed AGB density, if `crown_method` is not "none"
     AGBD_crown_estimate = any_of("agbd_Mg_ha_crown_mc_mean"),
-    AGBD_crown_uncertainty = any_of("agbd_Mg_ha_crown_mc_sd")) %>%
+    AGBD_crown_uncertainty = any_of("agbd_Mg_ha_crown_mc_sd"),
+    AGBD_crown_ci_lower = any_of("agbd_Mg_ha_crown_mc_ci2.5"),
+    AGBD_crown_ci_upper = any_of("agbd_Mg_ha_crown_mc_ci97.5")) %>%
   bind_cols(param_fil)
 
 # Check all values filled
 stopifnot(all(!is.na(L3_quad$AGBD_stand_estimate)))
+stopifnot(all(!is.na(L3_quad$AGBD_stand_ci_lower)))
+stopifnot(all(!is.na(L3_quad$AGBD_stand_ci_upper)))
 
 # Check not all AGBD estimates should be zero
 stopifnot(!all(L3_quad$AGBD_stand_estimate == 0))

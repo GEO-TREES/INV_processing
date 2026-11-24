@@ -1,142 +1,45 @@
 <mxfile host="Electron" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/28.0.4 Chrome/138.0.7204.97 Electron/37.2.1 Safari/537.36" version="28.0.4">
   <diagram name="Page-1" id="9sY1Td-BVDshkgw1yt8k">
-    <mxGraphModel dx="983" dy="588" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="983" dy="588" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="iDL1loc01U4FXoYdKAi--2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.75;exitY=0;exitDx=0;exitDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--4" edge="1" target="iDL1loc01U4FXoYdKAi--80">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="160" y="180" />
-              <mxPoint x="300" y="180" />
-            </Array>
-            <mxPoint x="290" y="210" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--4" edge="1" target="iDL1loc01U4FXoYdKAi--89">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="80" y="160" />
-              <mxPoint x="460" y="160" />
-            </Array>
-            <mxPoint x="620" y="200" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--4" value="Raw tree inventory data [L0]" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;fillColor=#D9D9D9;fontColor=#333333;strokeColor=#666666;" parent="1" vertex="1">
-          <mxGeometry x="40" y="190" width="160" height="150" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--5" value="Stem measurement table" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" parent="iDL1loc01U4FXoYdKAi--4" vertex="1">
-          <mxGeometry y="30" width="160" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="q-BMRPveGdaiZa-Hyo3l-1" value="Taxonomy table" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" vertex="1" parent="iDL1loc01U4FXoYdKAi--4">
-          <mxGeometry y="60" width="160" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--6" value="Plot meta-data table" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" parent="iDL1loc01U4FXoYdKAi--4" vertex="1">
-          <mxGeometry y="90" width="160" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--7" value="GNSS coordinates" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" parent="iDL1loc01U4FXoYdKAi--4" vertex="1">
-          <mxGeometry y="120" width="160" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--79" value="Initial QA/QC and data formatting" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;labelBackgroundColor=default;" parent="1" vertex="1">
-          <mxGeometry x="214" y="150" width="200" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--92" value="Clean taxonomy" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--80" target="iDL1loc01U4FXoYdKAi--82" edge="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--94" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--80" target="iDL1loc01U4FXoYdKAi--83" edge="1">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="220" y="245" />
-              <mxPoint x="220" y="350" />
-              <mxPoint x="140" y="350" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--112" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--80" target="iDL1loc01U4FXoYdKAi--84" edge="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--80" value="Stem measurements&lt;br&gt;(_stem.csv) [L1]" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
-          <mxGeometry x="240" y="200" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--93" value="Estimate wood density" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--82" target="iDL1loc01U4FXoYdKAi--85" edge="1">
-          <mxGeometry x="-0.3333" y="20" relative="1" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--82" value="&lt;div&gt;Cleaned taxonomic names&lt;/div&gt;(stem_taxa.csv)" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-          <mxGeometry x="240" y="290" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--97" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--83" target="iDL1loc01U4FXoYdKAi--84" edge="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--83" value="&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;Stem height estimates&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;(stem_taxa.csv)&lt;/span&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-          <mxGeometry x="80" y="380" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--102" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--84" target="iDL1loc01U4FXoYdKAi--86" edge="1">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="460" y="500" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--84" value="Stem simple AGB estimates&lt;div&gt;(stem_agb.csv)&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-          <mxGeometry x="240" y="470" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--111" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--85" target="iDL1loc01U4FXoYdKAi--84" edge="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--85" value="&lt;div&gt;Stem wood density estimates&lt;/div&gt;&lt;div&gt;(stem_wd.csv)&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-          <mxGeometry x="240" y="380" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--115" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--86" target="iDL1loc01U4FXoYdKAi--91" edge="1">
-          <mxGeometry relative="1" as="geometry">
-            <mxPoint x="620" y="440" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--86" value="Filtered stem measurements&lt;div&gt;(_stem.csv) [L2]&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" vertex="1">
-          <mxGeometry x="400" y="380" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--98" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="q-BMRPveGdaiZa-Hyo3l-2" target="iDL1loc01U4FXoYdKAi--90" edge="1">
-          <mxGeometry relative="1" as="geometry">
-            <mxPoint x="459.9999999999998" y="259.9999999999999" as="sourcePoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="q-BMRPveGdaiZa-Hyo3l-3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="iDL1loc01U4FXoYdKAi--89" target="q-BMRPveGdaiZa-Hyo3l-2">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--89" value="GNSS coordinates&lt;div&gt;(_pt.gpkg) [L1]&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1">
-          <mxGeometry x="400" y="200" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--114" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.25;entryDx=0;entryDy=0;" parent="1" source="iDL1loc01U4FXoYdKAi--90" target="iDL1loc01U4FXoYdKAi--91" edge="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--90" value="Quadrat polygons&amp;nbsp;&lt;div&gt;(poly_quad.gpkg, stem_quad.csv)&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-          <mxGeometry x="400" y="300" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--91" value="50x50 m quadrat AGBD estimates [L3]&lt;div&gt;(_quad.gpkg)&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
-          <mxGeometry x="620" y="340" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--78" value="AGB &lt;br&gt;Monte-Carlo error propagation" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;fillColor=none;spacing=0;spacingBottom=0;" parent="1" vertex="1">
-          <mxGeometry x="526" y="340" width="80" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--64" value="Combine and filter stem datasets" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;" parent="1" vertex="1">
-          <mxGeometry x="405" y="485" width="110" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--106" value="Split plots into quadrats" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;fillColor=none;" parent="1" vertex="1">
-          <mxGeometry x="460" y="250" width="176" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--108" value="Estimate stem height" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;" parent="1" vertex="1">
-          <mxGeometry x="120" y="350" width="110" height="20" as="geometry" />
-        </mxCell>
-        <mxCell id="iDL1loc01U4FXoYdKAi--109" value="Estimate stem AGB" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;" parent="1" vertex="1">
-          <mxGeometry x="250" y="440" width="110" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="q-BMRPveGdaiZa-Hyo3l-2" value="Plot polygons&lt;br&gt;&lt;div&gt;(_poly.gpkg) [L2]&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
-          <mxGeometry x="590" y="200" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="q-BMRPveGdaiZa-Hyo3l-4" value="Fit plot polygons" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=11;rotation=0;labelBackgroundColor=default;textShadow=0;" vertex="1" parent="1">
-          <mxGeometry x="520" y="200" width="60" height="30" as="geometry" />
-        </mxCell>
+        <mxCell id="gt-2" value="Quality control&lt;br&gt;(treeInvQC)" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;dashed=1;" parent="1" vertex="1"><mxGeometry x="20" y="20" width="200" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-3" value="&lt;b&gt;L0&lt;/b&gt; Submitted data" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;fillColor=#D9D9D9;fontColor=#333333;strokeColor=#666666;fontSize=16;" parent="1" vertex="1"><mxGeometry x="20" y="100" width="200" height="180" as="geometry" /></mxCell>
+        <mxCell id="gt-4" value="Stem measurements" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=6;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;fontSize=14;" parent="gt-3" vertex="1"><mxGeometry x="0" y="30" width="200" height="30" as="geometry" /></mxCell>
+        <mxCell id="gt-5" value="Plot meta-data" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=6;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;fontSize=14;" parent="gt-3" vertex="1"><mxGeometry x="0" y="60" width="200" height="30" as="geometry" /></mxCell>
+        <mxCell id="gt-6" value="GNSS points" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=6;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;fontSize=14;" parent="gt-3" vertex="1"><mxGeometry x="0" y="90" width="200" height="30" as="geometry" /></mxCell>
+        <mxCell id="gt-7" value="Optional: taxonomy, height, wood density, repeat diameter, subplots" style="text;strokeColor=none;fillColor=#E6E6E6;align=left;verticalAlign=middle;spacingLeft=6;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;fontSize=14;" parent="gt-3" vertex="1"><mxGeometry x="0" y="120" width="200" height="60" as="geometry" /></mxCell>
+        <mxCell id="gt-8" value="&lt;b&gt;01&lt;/b&gt; Formatted tables" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;" parent="1" vertex="1"><mxGeometry x="270" y="20" width="190" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-9" value="&lt;b&gt;02&lt;/b&gt; Taxonomic names" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;" parent="1" vertex="1"><mxGeometry x="270" y="100" width="190" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-10" value="&lt;b&gt;03&lt;/b&gt; Wood density" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;" parent="1" vertex="1"><mxGeometry x="270" y="180" width="190" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-11" value="&lt;b&gt;04&lt;/b&gt; Taper correction, height" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;" parent="1" vertex="1"><mxGeometry x="270" y="260" width="190" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-12" value="&lt;b&gt;05&lt;/b&gt; Stem AGB" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;" parent="1" vertex="1"><mxGeometry x="270" y="340" width="190" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-13" value="&lt;b&gt;06&lt;/b&gt; Stem selection" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;" parent="1" vertex="1"><mxGeometry x="510" y="20" width="190" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-14" value="&lt;b&gt;07&lt;/b&gt; Plot polygons, quadrats" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;" parent="1" vertex="1"><mxGeometry x="510" y="100" width="190" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-15" value="&lt;b&gt;08&lt;/b&gt; Monte Carlo error propagation" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;" parent="1" vertex="1"><mxGeometry x="510" y="180" width="190" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-16" value="&lt;b&gt;09&lt;/b&gt; Stem summary" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;" parent="1" vertex="1"><mxGeometry x="510" y="260" width="190" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-17" value="&lt;b&gt;10&lt;/b&gt; Quadrat summary" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;" parent="1" vertex="1"><mxGeometry x="510" y="340" width="190" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-18" value="&lt;b&gt;L1&lt;/b&gt; Stems, plots, GNSS points" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;fillColor=#fff2cc;strokeColor=#d6b656;" parent="1" vertex="1"><mxGeometry x="750" y="180" width="200" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-19" value="&lt;b&gt;L2&lt;/b&gt; Stem AGB, plot polygons" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;fillColor=#ffe6cc;strokeColor=#d79b00;" parent="1" vertex="1"><mxGeometry x="750" y="260" width="200" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-20" value="&lt;b&gt;L3&lt;/b&gt; Quadrat AGBD" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1"><mxGeometry x="750" y="340" width="200" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-21" value="&lt;b&gt;12&lt;/b&gt; Report" style="rounded=0;whiteSpace=wrap;html=1;fontSize=16;" parent="1" vertex="1"><mxGeometry x="750" y="420" width="200" height="50" as="geometry" /></mxCell>
+        <mxCell id="gt-22" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gt-2" target="gt-3" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-23" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.0833;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="gt-3" target="gt-8" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="245" y="115" /><mxPoint x="245" y="45" /></Array></mxGeometry></mxCell>
+        <mxCell id="gt-24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gt-8" target="gt-9" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-25" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gt-9" target="gt-10" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-26" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gt-10" target="gt-11" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-27" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gt-11" target="gt-12" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-28" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="gt-8" target="gt-13" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-29" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gt-13" target="gt-14" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-30" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gt-14" target="gt-15" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-31" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="gt-12" target="gt-15" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="485" y="365" /><mxPoint x="485" y="205" /></Array></mxGeometry></mxCell>
+        <mxCell id="gt-32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gt-15" target="gt-16" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-33" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="gt-16" target="gt-17" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-34" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="gt-16" target="gt-18" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="725" y="272" /><mxPoint x="725" y="205" /></Array></mxGeometry></mxCell>
+        <mxCell id="gt-35" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0;entryY=0.75;entryDx=0;entryDy=0;" parent="1" source="gt-16" target="gt-19" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-36" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="gt-17" target="gt-20" edge="1"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="gt-37" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="gt-17" target="gt-21" edge="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="605" y="445" /></Array></mxGeometry></mxCell>
       </root>
     </mxGraphModel>
   </diagram>

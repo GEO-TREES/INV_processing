@@ -11,6 +11,7 @@ height_method: "regional"
 wd_method: "regional"
 polygon_method: "exact"
 outside_max_dist_m: 0
+corner_error: "none"
 corner_outlier_dist_m: 10
 quad_grid_tol: 0.5
 quad_origin: "centre"
@@ -21,8 +22,10 @@ multi_stem_method: "equivalent"
 unmapped_method: "random"
 missing_diam_method: "impute"
 taper_method: "none"
+agb_method: "regional"
 stem_allometry: false
 growth_form_exclude: []
+crown_method: "none"
 diam_error: "chave2004"
 rocrate:
   author_name: "John L. Godlee"

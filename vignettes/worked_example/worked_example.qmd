@@ -736,7 +736,7 @@ The argument `interactive = TRUE` means that when a name matches multiple
 taxonomic names in the WFO database, users will be prompted to pick the correct
 taxonomic name from a list in the R console. In the automated workflow,
 prompts are only shown in an interactive R session. When processing many sites
-with `zz_site_all.R`, which sets `options(inv.batch = TRUE)`, ambiguous names
+with `runSiteAll()` in `run.R`, which sets `options(inv.batch = TRUE)`, ambiguous names
 are left unmatched so that processing isn't interrupted. These names can be
 matched in a later interactive run.
 

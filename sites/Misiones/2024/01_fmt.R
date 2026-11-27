@@ -1,6 +1,6 @@
 # Clean Misiones plot polygons data
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-14
+# Last updated: 2026-10-21
 
 # Import stem data 
 s <- read_excel(file.path(indir, "Medicion2024 planilla compartida GEO-TREES.xlsx"), sheet = 2, guess_max = Inf)
@@ -72,6 +72,26 @@ pt <- bind_rows(lapply(seq_len(nrow(polys_utm)), function(i) {
   colGen(., pt_cols$column_name, pt_cols$class) %>% 
   dplyr::select(all_of(pt_cols$column_name))
 
+# Convert stem coordinates within subplots to plot coordinates, with the
+# origin at the SW corner, as in the plot corners above. From a meeting with
+# N. Bedrij, see notes_misiones_2025-07-22.md with the raw data: subplots
+# (`bloque`) are 20 x 100 m strips running E-W, numbered from the southern
+# edge of the plot. Each has a left (`lado` "I", southern) and right ("D",
+# northern) side, each 10 m wide. Stems on the left side are measured from
+# the E (`y_long`) and S (`x_per`) edges, and stems on the right side from
+# the W and N edges. The origin of plot G19 is the NE corner rather than the
+# SE corner, so its coordinates are rotated by 180 degrees
+stemCoord <- function(x) {
+  x %>%
+    mutate(
+      lado = toupper(lado),
+      strip_y_min = (bloque - 1) * 20,
+      x_plot = ifelse(lado == "I", 100 - y_rel_m, y_rel_m),
+      y_plot = ifelse(lado == "I", strip_y_min + x_rel_m, strip_y_min + 20 - x_rel_m),
+      x_rel_m = ifelse(plot_id == "19", 100 - x_plot, x_plot),
+      y_rel_m = ifelse(plot_id == "19", 100 - y_plot, y_plot))
+}
+
 # Clean stem data
 s_clean <- s %>% 
   rename(
@@ -106,11 +126,8 @@ s_clean <- s %>%
       x_rel_m == "1,2" ~ 12,
       TRUE ~ as.numeric(x_rel_m)),
     y_rel_m = as.numeric(y_rel_m),
-    agb_allometry = NA_character_) %>%  # TODO:
-  mutate(
-    x_block_origin = (bloque - 1) * 20,
-    x_transect = x_block_origin + 10,
-    x_rel_m = ifelse(lado == "I", x_transect - x_rel_m, x_transect + x_rel_m)) %>% 
+    agb_allometry = NA_character_) %>%
+  stemCoord() %>%
   dplyr::select(any_of(stem_cols$column_name))
 
 # Clean recruits table
@@ -145,6 +162,7 @@ recs_clean <- recs %>%
       TRUE ~ as.numeric(x_rel_m)),
     y_rel_m = as.numeric(y_rel_m),
     agb_allometry = NA_character_) %>% 
+  stemCoord() %>%
   dplyr::select(any_of(stem_cols$column_name))
 
 s_all <- bind_rows(s_clean, recs_clean) %>% 
@@ -199,9 +217,13 @@ plots <- polys %>%
     meas_fallen = TRUE,
     meas_liana = TRUE,
     meas_palm = TRUE,
-    meas_bamboo = NA,
-    meas_plot_loc = NA_character_,
-    meas_stem_loc = NA_character_,
+    meas_bamboo = FALSE,
+    meas_plot_loc = "Handheld GPS.",
+    meas_stem_loc = paste("Tape measures, following the ground topography.",
+      "Each plot is divided into five 20 x 100 m strips running E-W, each with",
+      "a southern and northern side 10 m wide. Stems are located by their",
+      "distance from the E and S edges of the southern side, or the W and N",
+      "edges of the northern side."),
     vegetation_type = NA_character_,
     meas_protocol = "https://doi.org/10.1016/j.foreco.2022.120290",
     notes_meas = NA_character_,

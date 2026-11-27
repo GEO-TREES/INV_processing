@@ -37,7 +37,7 @@ In the root directory there are additional scripts which process data from any s
 * `./03_wd.R` - estimate wood density for each stem measurement, from the Global Wood Density Database v2 (`wd_method: "regional"`), local measurements in `wd.csv` with the Global Wood Density Database v2 for other taxa (`"field"`), or local measurements only (`"local"`)
 * `./04_height.R` - estimate stem height for each stem measurement, from a regional (`height_method: "regional"`), locally fitted (`"field"`) or published (`"custom"`, given in `height_custom`) height-diameter model. `height_custom` takes the same forms as `agb_custom`: an equation, optionally with `draws` or `vcov` to propagate the uncertainty in its parameters, or a model fitted with `brms` and saved as an `.rds` file, see `heightCustom()` in `./func.R`. This needs `BIOMASS::customHD()` with several sets of parameter values. A locally fitted model is a Bayesian model, fitted with `brms`, so that the uncertainty in its parameters is propagated to AGB as well as its residual error, see [Bayesian height-diameter models](#bayesian-height-diameter-models). Optionally, diameters of non-palm stems measured above 1.3 m are first corrected to their equivalent at 1.3 m with an exponential taper model (`taper_method`: `"cushman2014"`, Barro Colorado Island only, or `"cushman2021"`). Corrected diameters are used to estimate height and AGB, and measured diameters for diameter thresholds
 * `./05_agb_stem.R` - estimate above-ground woody biomass for each stem measurement. If `stem_allometry` is `true`, stems use the allometry given in `agb_allometry` in the stem table, e.g. `"goodman2013"` for palms, see `agb_allometries` in `./func.R`. The optional `agb_method` follows `height_method`: with `"regional"` (default) trees use Chave et al. (2014), and with `"custom"` all trees without their own allometry use the one in `agb_custom`: either an equation (`formula`, `parameters`, `sigma`, `link`; with `link: "log"` the formula gives the median AGB, so coefficients which already include the correction exp(sigma^2 / 2) must be given without it), or a model fitted with `brms` and saved as an `.rds` file (`model`, `variables`), both with `units` and `reference`, see `agbCustom()` and `agbAllomBrms()` in `./func.R`. For a `brms` model, each Monte Carlo simulation in `./08_agb_mc.R` uses one posterior draw of its parameters for all trees, so the uncertainty in its parameters is propagated. An equation with one set of `parameters` propagates only its residual error; give `draws`, a `.csv` file of sets of parameter values, or `vcov`, the covariance matrix of the estimates, to propagate the uncertainty in its coefficients too. Allometries for individual stems can also be defined in `param.yaml`, in `stem_allometry_custom`, a named list in the format of `agb_custom`
-* `./06_record_fil.R` - select stems used to estimate AGB, and AGB density. Stems used to estimate AGB density must be alive and standing, and not broken below the POM. Dead stems and fallen stems with a diameter measurement have their own AGB estimates, as for living, standing stems, i.e. with no reduction for lost branches, leaves or decayed wood, but are not included in AGB density. Stems below the minimum diameter threshold of a plot, and stems of growth forms in the optional `growth_form_exclude`, e.g. strangler figs, have their own AGB estimates, but are not part of multi-stemmed trees, and are not included in AGB density
+* `./06_record_fil.R` - select stems used to estimate AGB, and AGB density. Run after `./01_fmt.R`, so that the selection is made once and used by every other step. Stems used to estimate AGB density must be alive and standing, and not broken below the POM. Dead stems and fallen stems with a diameter measurement have their own AGB estimates, as for living, standing stems, i.e. with no reduction for lost branches, leaves or decayed wood, but are not included in AGB density. Stems below the minimum diameter threshold of a plot, and stems of growth forms in the optional `growth_form_exclude`, e.g. strangler figs, have their own AGB estimates, but are not part of multi-stemmed trees, and are not included in AGB density
 * `./07_quad.R` - fit plot polygons and create quadrats in each plot. By default the quadrat grid is centred in each plot, so where the plot dimensions are not a multiple of the quadrat dimensions, equal strips along opposite edges of the plot are left out, up to `quad_grid_tol` of the plot area. The alignment can be changed with the optional `quad_origin` in `param.yaml`
 * `./08_agb_mc.R` - AGB Monte-Carlo error propagation. If the optional `corner_error` in `param.yaml` is `"residual"` or a standard deviation in m, the error of the GNSS coordinates of plot corners is propagated to quadrat area: `./07_quad.R` shifts each plot corner by a random error in each simulation with `BIOMASS::divide_plot(sd_coord = )`, and the AGB of each quadrat is divided by its area in that simulation. With `"residual"` the standard deviation is estimated from the residuals of the GNSS points around the fitted plot polygons, pooled across the plots of the site, see `cornerErrorSD()` in `./func.R`. Optionally (`crown_method: "custom"`), quadrat AGB density is also estimated with the AGB of each tree spread over its crown, a circle with area from the crown area allometry in `crown_custom`, with its residual error, in the same simulations. Crowns crossing a quadrat edge are split among quadrats, and crowns outside the quadrat grid are folded back into the grid, so plot AGB density is unchanged
 * `./09_stem_summ.R` - create master stem measurement table
@@ -45,8 +45,8 @@ In the root directory there are additional scripts which process data from any s
 * `./11_brm.R` - Create L1, L2 and L3 datasets
 * `./12_report.R` - summarise outputs and processing choices for site reports
 
-* `./zz_site.R` - run scripts in order to process a single product version of an acquisition, defined by `p_file`, the path to its `param.yaml` file
-* `./zz_site_all.R` - run `./zz_site.R` for all product versions of the sites listed in `sites_sel`. Runs in batch mode: previous outputs are deleted without prompting, and ambiguous taxonomic names are left unmatched rather than prompting the user
+* `./run.R` - functions to run the steps: `runSite()` for a single product version of an acquisition, and `runSiteAll()` for many. Also run from the command line, see [Running the pipeline](#running-the-pipeline)
+* `./00_param.R` - read and check `param.yaml`, run by `runSite()` before the steps
 * `./zz_renv.R` - prepare reproducible R environment
 
 * `./func.R` - frequently used functions
@@ -55,7 +55,7 @@ Other directories:
 
 * `./templates/` - column definitions and templates for L0 data files and `param.yaml`
 * `./network_conv/` - template scripts to convert data exported from ForestGEO, ForestPlots, and SEOSAW into L0 data files. To use one for a new site, copy it to `./sites/<SITE>/<ACQUISITION>/01_fmt.R` and check every line marked `TODO`
-* `./tests/` - tests for functions in `./func.R`
+* `./tests/` - tests for functions in `./func.R` and `./run.R`, including a run of the whole pipeline on example data
 * `./vignettes/` - documentation, see [Documentation](#documentation)
 
 Key outputs from each site include:
@@ -73,12 +73,44 @@ Key outputs from each site include:
         * `*_L2_*_poly.gpkg` - GEO-TREES L2 plot spatial polygons
     * L3
         * `*_L3_*_quad.gpkg` - GEO-TREES L3 quadrat AGBD estimates: the mean (`AGBD_stand_estimate`), median (`AGBD_stand_median`, comparable with `medAGB` of `BIOMASS::AGBmonteCarlo()`), standard deviation (`AGBD_stand_uncertainty`) and 95% interval (`AGBD_stand_ci_lower`, `AGBD_stand_ci_upper`, the 2.5% and 97.5% quantiles) of the simulations. With crown-distributed AGBD (`AGBD_crown_estimate`, `AGBD_crown_median`, `AGBD_crown_uncertainty`, `AGBD_crown_ci_lower`, `AGBD_crown_ci_upper`) if `crown_method` is `"custom"`. Processing parameters are included as columns, one per parameter
-* `./12_report.R`, in `report/`, tables for GEO-TREES site reports, alongside the figures written to `report/` by other steps. `large_diam_cm`, the diameter thresholds for large trees, is set in `./zz_site.R`. Settings at the top of `./12_report.R` control the tolerance for stems measured above the default POM, and the figures of the site report which the figures of each step reproduce:
+* `./12_report.R`, in `report/`, tables for GEO-TREES site reports, alongside the figures written to `report/` by other steps. `large_diam_cm`, the diameter thresholds for large trees, is set in `./00_param.R`. Settings at the top of `./12_report.R` control the tolerance for stems measured above the default POM, and the figures of the site report which the figures of each step reproduce:
     * `site_summary.csv` - One row per reported value, with units, grouped by section: plot inventory (e.g. census dates and the time from the ALS acquisition, if `als_date` is set in `param.yaml`), measurement methods (e.g. allometry, taxonomic resolution, the taxonomic level of wood density estimates and their share of AGB, stems measured above the default POM), stem measurement completeness, auxiliary datasets, AGB density with its 95% interval, large trees, data quality (e.g. excluded stems, GNSS outliers, stems outside the quadrat grid, trees without coordinates), and provenance (e.g. software and BIOMASS versions).
     * `plot_summary.csv` - The same values for each plot.
     * `census_dates.csv` - Census dates of each plot: the earliest, median and latest measurement dates of stems used to estimate AGB density, and their resolution.
     * `processing_choices.csv`, `processing_choices.md` - Choices made during processing, with the parameter which sets each one: stem selection, taxonomic name matching, the sources of wood density and height, the allometry, plot geometry, and which sources of uncertainty are propagated, and which are not.
     * `figures.csv` - Figures for the report, written to `report/` by each step, with suggested captions, and the figure of the site report which each one reproduces, if any.
+
+## Running the pipeline
+
+Run from the repository root. From the command line, with the path to one or more `param.yaml` files, the names of sites, or `--all` for all sites. `--clean` deletes the outputs of previous runs of this software version first, except the cache of taxonomic name matches. The exit status is not zero if a run fails:
+
+```bash
+Rscript run.R ./sites/Paracou/2019/v1/param.yaml --clean
+```
+
+```bash
+Rscript run.R --sites=Bicuar,Amacayacu --clean
+```
+
+In an R session:
+
+```r
+source("./run.R")
+
+# One product version of an acquisition
+runSite("./sites/Paracou/2019/v1/param.yaml", clean = TRUE)
+
+# Repeat AGB error propagation and the steps after it, using the outputs of 
+# earlier steps from a previous run
+runSite("./sites/Paracou/2019/v1/param.yaml", from = "08_agb_mc")
+
+# All product versions of some sites, or of all sites if `sites` is not given
+runs <- runSiteAll(sites = c("Bicuar", "Amacayacu"))
+```
+
+`runSite()` does not prompt, and writes nothing to the global environment, so it can be used in scripts and scheduled jobs. It returns the parameters, the directories of the L1, L2 and L3 datasets, and the run time of each step. `runSiteAll()` carries on if one run fails, and returns a table with the status and error message of each run.
+
+Each step is a script, run in its own environment with the parameters, the functions in `./func.R`, its output directory `outdir`, and the files it reads from earlier steps, which are listed in `stepInputs()` in `./run.R`. A step can't use an object created by another step unless it is written to file.
 
 ## Documentation
 
@@ -119,7 +151,7 @@ Figures to check the results of each step are also written to `report/`:
 * `10_quad_agbd_cv_map.png` - Map of the coefficient of variation of quadrat AGB density in each plot. Axis ranges differ between plots, with equal x and y scales.
 * `10_quad_agbd_cv.png` - Coefficient of variation against quadrat AGB density.
 
-Each step also prints summary tables to the console, e.g. the proportion of stems matched to a taxonomic name, the taxonomic level of wood density estimates, why stems are excluded from AGB estimates, the area of fitted plot polygons, and plot AGB density with its uncertainty. Warnings are given where results suggest errors in the raw data, e.g. if the area of a fitted plot polygon differs by more than 5% from the area defined by the relative coordinates of its corners. These summary tables are also written to the output directory of each step, e.g. `08_agb_mc/plot_agb.csv`, and are used by `./12_report.R`. `./zz_site.R` lists all files in `report/` at the end of a run.
+Each step also prints summary tables to the console, e.g. the proportion of stems matched to a taxonomic name, the taxonomic level of wood density estimates, why stems are excluded from AGB estimates, the area of fitted plot polygons, and plot AGB density with its uncertainty. Warnings are given where results suggest errors in the raw data, e.g. if the area of a fitted plot polygon differs by more than 5% from the area defined by the relative coordinates of its corners. These summary tables are also written to the output directory of each step, e.g. `08_agb_mc/plot_agb.csv`, and are used by `./12_report.R`. `runSite()` lists all files in `report/` at the end of a run.
 
 ## Missing measurements
 
@@ -135,7 +167,7 @@ If `height_method` is `"field"`, `./04_height.R` compares four forms of height-d
 
 The Bayesian model:
 
-* needs the `brms` package and a C++ toolchain to compile Stan models. If `height_method` is `"field"`, `./zz_site.R` stops before processing if `brms` is not installed. The compiled model of each form is kept in the `BIOMASS` cache, `./dat/BIOMASS/cache/`, so it is only compiled once
+* needs the `brms` package and a C++ toolchain to compile Stan models. If `height_method` is `"field"`, `runSite()` stops before processing if `brms` is not installed. The compiled model of each form is kept in the `BIOMASS` cache, `./dat/BIOMASS/cache/`, so it is only compiled once
 * is fitted with a fixed random seed, 3 chains and 2700 posterior draws, the defaults of `BIOMASS::modelHD()`
 * must converge, i.e. the maximum Rhat of its parameters must be at or below 1.05. The parameters of the Weibull and Michaelis-Menten models can be poorly identified. If `height_model` is `"best"` and the Bayesian model of the form with the lowest residual standard error does not converge, the form with the next lowest is tried, with a warning. If `height_model` names a form which does not converge, or no form converges, processing stops: set `height_model` to another form, e.g. `"log2"`
 * uses the default priors of `BIOMASS::modelHD()`, except for the Weibull model, H = a (1 - exp(-(D / b)^c)), which does not converge with them. It is given the bounded uniform priors suggested in the `BIOMASS` vignette: a between 0 and 80 m, or 1.5 times the tallest measured stem if that is more, b between 0 and 100 cm, or the largest measured diameter if that is more, and c between 0.01 and 0.99, see `heightBayes()` in `./func.R`
@@ -148,7 +180,7 @@ The uncertainty in the parameters matters most where there are few height measur
 
 `./02_taxa.R` matches taxonomic names to the [World Flora Online](https://www.worldfloraonline.org/) using `BIOMASS::correctTaxo()`. In an interactive R session, you are prompted to choose the correct name where a name has multiple possible matches. Choices are saved to `wfo_cache.csv`, a table with one row per submitted name, in the directory containing `raw_dir`, as you go, so they are kept if matching is interrupted, and are reused in later runs and by other product versions. A copy is written to the outputs of `./02_taxa.R`.
 
-When processing in batch mode with `./zz_site_all.R`, ambiguous names are left unmatched and are not saved to the cache. To match them, run `./zz_site.R` for that site in an interactive R session.
+When processing in batch mode, with `runSiteAll()`, `runSite(batch = TRUE)` or from the command line, ambiguous names are left unmatched and are not saved to the cache. To match them, run `runSite()` for that site in an interactive R session.
 
 ## Environment 
 
@@ -166,17 +198,19 @@ The `BIOMASS` package is installed from the `BIOMASS_for_GEOTREES` branch on Git
 
 ## Tests
 
-Tests for the functions in `./func.R` are in `./tests/`. Run them from the repository root:
+Tests for the functions in `./func.R` and `./run.R` are in `./tests/`. Run them from the repository root:
 
 ```r
 testthat::test_dir("./tests")
 ```
 
+`./tests/test_runSite.R` runs the whole pipeline on the example data of the worked example, one 25 ha plot with 5000 stems, with the format script and parameters in `./tests/fixture/`, and checks the L1, L2 and L3 datasets. It takes about one minute. Set the environment variable `INV_TEST_SKIP_RUN` to skip it.
+
 ## Reproducibility
 
 To track data inputs and versions of the processing code, each `L`-level data output is accompanied by an [RO-Crate](https://www.researchobject.org/ro-crate/) JSON file containing this meta-data. `./11_brm.R` contains code to programmatically create these files. These files can be used to precisely reproduce each data output.
 
-A `param.yaml` file is used to track user-defined parameters for each product version of an acquisition, such as the site name, quadrat dimensions, input and output directories, the methods used to estimate stem height, wood density, and plot polygons, taper correction, the AGB allometries of individual stems, which stems are included in AGB density, how multi-stemmed trees and trees without coordinates are treated, the diameter measurement error, crown-distributed AGB density, and author information for the RO-Crate files. A copy of this file is placed alongside each `L`-level data output. A template of `param.yaml` is located in `./templates/param.yaml`, and each parameter is described in the vignette. `./zz_site.R` checks that all parameters are present and valid before processing.
+A `param.yaml` file is used to track user-defined parameters for each product version of an acquisition, such as the site name, quadrat dimensions, input and output directories, the methods used to estimate stem height, wood density, and plot polygons, taper correction, the AGB allometries of individual stems, which stems are included in AGB density, how multi-stemmed trees and trees without coordinates are treated, the diameter measurement error, crown-distributed AGB density, and author information for the RO-Crate files. A copy of this file is placed alongside each `L`-level data output. A template of `param.yaml` is located in `./templates/param.yaml`, and each parameter is described in the vignette. `./00_param.R` checks that all parameters are present and valid before processing.
 
 If `opt_s3` is `true`, raw data are first downloaded from the AWS S3 directory `s3_dir` to `raw_dir`. This is for processing on the [MAAP](https://docs.maap-project.org/en/hub/index.html) platform.
 

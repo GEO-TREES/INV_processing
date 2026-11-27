@@ -1,6 +1,6 @@
 # Estimate wood density for each measurement
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-21
+# Last updated: 2026-11-27
 
 # Join taxonomy data to stem data
 stem_taxa_all <- left_join(stem, taxa, by = c("taxon_name" = "nameOriginal"))
@@ -150,12 +150,7 @@ wd_level <- wd_check %>%
 msgTable(wd_level, "Wood density (g cm-3) by taxonomic level of the estimate:")
 
 # Figure of wood density at each taxonomic level of the estimate, for stems
-# used to estimate AGB density, see `agbdFilter()` in ./func.R
-record_agbd <- agbdFilter(stem, plot, 
-  recordFilter(stem, plot, missing_diam = param$missing_diam_method == "impute"),
-  diam_min_cm = param$agbd_diam_min_cm,
-  include_broken = param$include_broken,
-  growth_form_exclude = param$growth_form_exclude)
+# used to estimate AGB density, `record_agbd`, see ./06_record_fil.R
 wd_fig <- filter(wd_check, as.character(record_id) %in% record_agbd)
 p_wd <- wdLevelPlot(wd_fig$meanWD, wd_fig$level) +
   labs(

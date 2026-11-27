@@ -1,6 +1,6 @@
 # Estimate stem height
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-26
+# Last updated: 2026-11-27
 
 # Diameter at 1.3 m, corrected for taper, see `taper_method` in param.yaml
 # and `taperB()` in ./func.R. Only stems measured above 1.3 m are corrected,
@@ -219,14 +219,9 @@ msgTable(height_summ, paste0("Predicted stem height (", param$height_method,
   " height-diameter model):"))
 
 # Figure of stem height against diameter, for stems used to estimate AGB
-# density, see `agbdFilter()` in ./func.R. Measured heights are from the
+# density, `record_agbd`, see ./06_record_fil.R. Measured heights are from the
 # height table, or from the stem table if there is no height table. 
 # Predicted heights are drawn on top of measured heights
-record_agbd <- agbdFilter(stem, plot, 
-  recordFilter(stem, plot, missing_diam = param$missing_diam_method == "impute"),
-  diam_min_cm = param$agbd_diam_min_cm,
-  include_broken = param$include_broken,
-  growth_form_exclude = param$growth_form_exclude)
 height_pred_fig <- filter(height_check, as.character(record_id) %in% record_agbd)
 height_obs <- if (!is.null(height)) {
   filter(height, !is.na(diam_cm), !is.na(height_m))

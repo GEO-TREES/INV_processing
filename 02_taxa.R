@@ -8,7 +8,7 @@
 #
 # Ambiguous names are only offered for manual matching in interactive
 # sessions. In batch runs (`options(inv.batch = TRUE)`, set by
-# ./zz_site_all.R) they are left unmatched and are not saved to the cache, so
+# `runSite(batch = TRUE)` in ./run.R) they are left unmatched and are not saved to the cache, so
 # they can be resolved in a later interactive run.
 
 # Prompt the user only in interactive sessions

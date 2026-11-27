@@ -1,6 +1,6 @@
 # Estimate stem-level above-ground woody biomass from tree inventory data
 # John L. Godlee (johngodlee@gmail.com)
-# Last updated: 2026-10-26
+# Last updated: 2026-11-27
 
 # Multi-stemmed trees: AGB is estimated for each tree from its equivalent
 # diameter, the diameter of a single stem with the same basal area as all its
@@ -26,13 +26,9 @@
 # Diameters are corrected for taper if `taper_method` is set, see 
 # ./04_height.R
 
-# Stems which form multi-stemmed trees, as in ./06_record_fil.R. If
-# `multi_stem_method` is "stem", AGB is estimated for each stem separately
-record_agbd <- agbdFilter(stem, plot, 
-  recordFilter(stem, plot, missing_diam = param$missing_diam_method == "impute"),
-  diam_min_cm = param$agbd_diam_min_cm,
-  include_broken = param$include_broken,
-  growth_form_exclude = param$growth_form_exclude)
+# Stems which form multi-stemmed trees are the stems used to estimate AGB
+# density, `record_agbd`, see ./06_record_fil.R. If `multi_stem_method` is 
+# "stem", AGB is estimated for each stem separately
 tree_include <- if (param$multi_stem_method == "equivalent") record_agbd else character(0)
 
 # Join wood density, height, and equivalent diameter to stem data

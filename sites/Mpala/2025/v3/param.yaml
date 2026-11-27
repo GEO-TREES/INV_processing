@@ -4,7 +4,7 @@ product_version: "v3"
 out_dir: "./dat/sites/Mpala/INV/2025/v3"
 raw_dir: "./dat/sites/Mpala/INV/2025/L0"
 raw_version: "v1"
-s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/Mpala/L0"
+s3_dir: "johngodlee/GEO-TREES_INV/dat/sites/Mpala/INV/2025/L0"
 quad_dim: [100, 100]
 opt_s3: false
 height_method: "regional"

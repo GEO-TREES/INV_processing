@@ -24,7 +24,7 @@ missing_diam_method: "impute"
 taper_method: "none"
 agb_method: "regional"
 stem_allometry: false
-growth_form_exclude: []
+growth_form_exclude: ["strangler","liana"]
 crown_method: "none"
 diam_error: "chave2004"
 # Optional, species terms of the "cushman2014" taper model, by taxon name

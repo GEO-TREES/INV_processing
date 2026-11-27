@@ -28,7 +28,7 @@ unlink(list.files(outdir, full.names = TRUE,
 
 # Report settings
 # `large_diam_cm`, the diameter thresholds for large trees, is set in 
-# ./zz_site.R. The smallest is also used to report large stems measured 
+# ./00_param.R. The smallest is also used to report large stems measured 
 # above the default POM
 # Stems measured more than this distance above the default POM of the plot,
 # in m, are counted as measured above the default POM, e.g. above buttresses

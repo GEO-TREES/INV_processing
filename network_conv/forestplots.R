@@ -12,7 +12,7 @@
 # ./sites/<SITE>/<ACQUISITION>/01_fmt.R, put the raw data in
 # `raw_dir`/`raw_version` defined in param.yaml, and check every line marked
 # "TODO". When run by
-# ./zz_site.R, `param`, `indir`, `outdir`, and the column templates are
+# `runSite()` in ./run.R, `param`, `indir`, `outdir`, and the column templates are
 # already defined. To run it on its own, from the repository root, set
 # `p_file` below.
 #

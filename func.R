@@ -1,13 +1,15 @@
-#' Run scripts from their own directory
+#' Run a script, with a message if it fails
 #'
 #' @param x filepath to R script 
+#' @param envir environment in which the script is run. By default, the 
+#'     environment `runFn()` is called from
 #'
-runFn <- function(x) {
+runFn <- function(x, envir = parent.frame()) {
   message(basename(x))
   stopifnot(file.exists(x))
   tryCatch(
     {
-      source(x)
+      source(x, local = envir)
     },
     error = function(e) { 
       message("Error while running '", x, "': ", e$message)

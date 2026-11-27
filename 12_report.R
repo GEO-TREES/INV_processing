@@ -401,13 +401,18 @@ height_desc <- if (param$height_method == "field") {
         " had a lower RSE but did not converge")
     }, ". Heights are predicted for all stems from this model")
 } else if (param$height_method == "custom") {
-  paste0("Height-diameter model of ", param$height_custom$reference, ": H = ",
-    param$height_custom$formula, ", with ",
-    paste(names(param$height_custom$parameters), unlist(param$height_custom$parameters),
-      sep = " = ", collapse = ", "), ", and ",
-    if (identical(param$height_custom$link, "identity")) "normal" else "log-normal",
-    " residual error, SD ", param$height_custom$sigma, ". Heights are predicted ",
-    "for all stems from this model")
+  # The model as built, as `height_custom` can be an equation or a model
+  # fitted with brms, see `heightCustom()` in ./func.R
+  height_custom_mod <- heightCustom(param$height_custom)
+  height_custom_n <- nrow(height_custom_mod$param_sets)
+  paste0("Height-diameter model of ", height_custom_mod$name, ": H = ",
+    paste(deparse(height_custom_mod$formula[[2]]), collapse = " "), ", with ",
+    paste(names(height_custom_mod$parameters), signif(height_custom_mod$parameters, 4),
+      sep = " = ", collapse = ", "), 
+    if (height_custom_n > 1) paste0(" (means of ", height_custom_n, " sets of values)"),
+    ", and ", if (height_custom_mod$link == "identity") "normal" else "log-normal",
+    " residual error, SD ", signif(height_custom_mod$sigma, 4), 
+    ". Heights are predicted for all stems from this model")
 } else {
   paste0("No local height data used. Stem heights reported in the outputs, ",
     "e.g. quadrat maximum height, are predicted from diameter with Chave et ",
@@ -696,6 +701,10 @@ choice <- bind_rows(
     } else {
       "Stems broken above the POM are excluded from AGB density"
     }),
+  cRow("Stem selection", "Dead and fallen stems", NA, NA,
+    paste0("Dead stems and fallen stems with a diameter have AGB estimates, ",
+      "using the allometry for living, standing stems, but are not included ",
+      "in AGB density")),
   cRow("Stem selection", "Growth forms excluded", "growth_form_exclude",
     if (length(param$growth_form_exclude) > 0) {
       paste(param$growth_form_exclude, collapse = ", ")
@@ -747,6 +756,18 @@ choice <- bind_rows(
   cRow("Height", "Stem height", "height_method", param$height_method, height_desc),
   cRow("Allometry", "Above-ground woody biomass allometry", "height_method",
     param$height_method, allom_desc),
+  cRow("Allometry", "Allometry of the site", "agb_method", param$agb_method,
+    if (param$agb_method == "regional") {
+      "Chave et al. (2014), as above"
+    } else {
+      paste0("Used for all trees in place of Chave et al. (2014): ",
+        agb_allometries$custom$description, 
+        if (nrow(agb_allometries$custom$parameters) > 1) {
+          paste0(". Each simulation uses one of ", 
+            nrow(agb_allometries$custom$parameters), 
+            " sets of parameter values for all trees")
+        })
+    }),
   cRow("Allometry", "Allometries of individual stems", "stem_allometry",
     param$stem_allometry,
     if (param$stem_allometry) {
@@ -865,23 +886,51 @@ choice <- bind_rows(
         "height-diameter model, from posterior samples of its parameters")
     } else if (param$height_method == "custom") {
       paste0("Residual error of the height-diameter model of ", 
-        param$height_custom$reference, ", SD ", param$height_custom$sigma,
-        if (!identical(param$height_custom$link, "identity")) " on the log scale")
+        height_custom_mod$name, ", SD ", signif(height_custom_mod$sigma, 4),
+        if (height_custom_mod$link != "identity") " on the log scale",
+        if (height_custom_n > 1) {
+          paste0(", and the uncertainty in its parameters, from ", 
+            height_custom_n, " sets of values")
+        })
     } else {
       "Not propagated separately, height is not used in Chave et al. (2014) Eq. 7"
     }),
   cRow("Uncertainty", "Allometric model error", NA, NA,
     paste0("Residual error and coefficient uncertainty of the Chave et al. ",
       "(2014) model, from posterior samples of its parameters",
+      if (param$agb_method == "custom") {
+        paste0(". For the allometry in `agb_custom`, its residual error",
+          if (nrow(agb_allometries$custom$parameters) > 1) {
+            " and the uncertainty in its coefficients"
+          } else {
+            " only, as it has one set of coefficients"
+          })
+      },
       if (param$stem_allometry) {
         ". Residual error of other allometries assigned to stems"
       })),
+  cRow("Uncertainty", "Plot corner error", "corner_error", param$corner_error,
+    if (identical(param$corner_error, "none")) {
+      "Not propagated"
+    } else {
+      corner_err <- read.csv(file.path(param$out_dir, software_version_sanit, 
+        "07_quad", "corner_error.csv"))
+      paste0("Each plot corner is shifted by a random error in each simulation, ",
+        "with SD ", signif(corner_err$corner_sd_m[1], 3), " m in each of easting ",
+        "and northing, ", if (identical(param$corner_error, "residual")) {
+          "estimated from the residuals of the GNSS points around the fitted plot polygons, "
+        }, "and the AGB of each quadrat is divided by its area in that ",
+        "simulation. Stems stay in their quadrats")
+    }),
   cRow("Uncertainty", "Not propagated", NA, NA,
-    paste0("Errors in the GNSS coordinates of plot corners, which need ",
-      "repeated measurements of each corner; errors in stem coordinates; ",
+    paste0(if (identical(param$corner_error, "none")) {
+        "Errors in the GNSS coordinates of plot corners; "
+      } else {
+        "The effect of plot corner errors on which quadrat a tree is in; "
+      }, "errors in stem coordinates; ",
       "taxonomic misidentification; and systematic diameter errors, e.g. ",
       "stems measured around buttresses",
-      if (param$height_method == "custom") {
+      if (param$height_method == "custom" && height_custom_n == 1) {
         "; uncertainty in the parameters of the published height-diameter model"
       })))
 

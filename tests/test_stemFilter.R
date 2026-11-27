@@ -22,8 +22,8 @@ stem <- data.frame(
   diam_cm = c(12, 8, 30, 6, 20, 15, 25),
   code = c("AS", "AS", "ASB", "AS", "AS", "AS", "DS"))
 
-test_that("recordFilter() keeps alive standing stems with a diameter", {
-  expect_setequal(recordFilter(stem, plot), as.character(1:6))
+test_that("recordFilter() keeps stems with a diameter, including dead stems", {
+  expect_setequal(recordFilter(stem, plot), as.character(1:7))
 })
 
 test_that("agbdFilter() uses the minimum diameter threshold of each plot", {
@@ -51,14 +51,32 @@ test_that("recordFilter() optionally keeps stems without a diameter", {
     pom_m = 1.3, measurement_date = c(2024.5, 2024.5, 2024.6), 
     diam_cm = c(NA, 14, NA), code = c("ABS", "AS", "AS")))
   # Without a diameter: excluded by default
-  expect_setequal(recordFilter(stem_na, plot), as.character(c(1:6, 9)))
+  expect_setequal(recordFilter(stem_na, plot), as.character(c(1:7, 9)))
   # Included, but a repeat record with a diameter is preferred
   expect_setequal(recordFilter(stem_na, plot, missing_diam = TRUE), 
-    as.character(c(1:6, 8, 9)))
+    as.character(c(1:7, 8, 9)))
   # Stems without a diameter are assumed to be above the threshold
   record_fil <- recordFilter(stem_na, plot, missing_diam = TRUE)
   expect_true("8" %in% agbdFilter(stem_na, plot, record_fil))
   expect_false("8" %in% agbdFilter(stem_na, plot, record_fil, include_broken = FALSE))
+})
+
+test_that("dead and fallen stems with a diameter have AGB, but not AGB density", {
+  stem_df <- rbind(stem, data.frame(record_id = 8:14, site_id = "S1",
+    plot_id = "P1", tree_id = as.character(7:13), stem_id = as.character(7:13),
+    pom_m = 1.3, measurement_date = 2024.5,
+    diam_cm = c(22, 18, 16, NA, NA, 40, 30),
+    code = c("AF", "DF", "D", "DS", "AF", "DST", NA)))
+  # Dead standing (7), alive fallen (8), dead fallen (9) and dead (10) stems
+  # with a diameter. Not without a diameter (11, 12), broken below the POM
+  # (13) or without a code (14)
+  expect_setequal(recordFilter(stem_df, plot), as.character(1:10))
+  # Diameters of dead or fallen stems are never imputed
+  expect_setequal(recordFilter(stem_df, plot, missing_diam = TRUE),
+    as.character(1:10))
+  # None of them are included in AGB density
+  expect_setequal(agbdFilter(stem_df, plot, recordFilter(stem_df, plot)),
+    c("1", "3", "4", "5", "6"))
 })
 
 test_that("treeEquiv() combines only included stems into trees", {

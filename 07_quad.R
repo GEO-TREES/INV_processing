@@ -88,6 +88,41 @@ plot_check <- plotPolygonFit(
   draw_plot = FALSE,
   ask = FALSE)
 
+# Error of the GNSS coordinates of plot corners, see `corner_error` in
+# param.yaml. With "residual", its standard deviation is estimated from the
+# residuals of the GNSS points around their fitted positions, pooled across
+# plots, see `cornerErrorSD()` in ./func.R. It is propagated to quadrat area:
+# BIOMASS::divide_plot() shifts each plot corner by a random error in each
+# simulation and rebuilds the quadrats, and ./08_agb_mc.R divides the AGB of
+# each simulation by the quadrat area of that simulation. Stems stay in their
+# quadrats, which are defined in field coordinates
+corner_nsim <- 1000
+corner_sd <- 0
+if (!identical(param$corner_error, "none")) {
+  corner_resid <- cornerErrorSD(pt_fit, plot_check$corner_coord, 
+    param$polygon_method, plot_check$outliers)
+  corner_sd <- if (is.numeric(param$corner_error)) {
+    param$corner_error 
+  } else {
+    corner_resid$sd
+  }
+  if (is.na(corner_sd)) {
+    stop("`corner_error` is \"residual\", but the error of GNSS points can't ",
+      "be estimated from the plot polygon fit, as the plots have no more ",
+      "points than the \"", param$polygon_method, "\" method uses. Give ",
+      "`corner_error` as a standard deviation in m")
+  }
+  corner_resid$plots$corner_sd_m <- corner_sd
+  msgTable(corner_resid$plots, paste0("GNSS error of plot points: SD ", 
+    signif(corner_sd, 3), " m in each of easting and northing (`corner_error`: ",
+    param$corner_error, "). Residuals of the plot polygon fit, pooled over ", 
+    sum(corner_resid$plots$df[corner_resid$plots$df > 0], na.rm = TRUE), 
+    " degrees of freedom, estimate ", signif(corner_resid$sd, 3), " m:"))
+  write.csv(corner_resid$plots, file.path(outdir, "corner_error.csv"), row.names = FALSE)
+  # The same simulated corners each time the step is run
+  set.seed(42)
+}
+
 # Divide plots into quadrats, assigning stems to quadrats using the centroid
 # of their tree. divide_plot() renames `tree_coords` to `x_rel` and `y_rel`,
 # so the stem coordinates are removed
@@ -140,11 +175,11 @@ divide_list <- lapply(split(corner_coord, corner_coord$plot_ID), function(cc) {
       tree_coords = if (!is.null(td)) c("x_quad", "y_quad") else NULL,
       corner_plot_ID = "plot_ID",
       tree_plot_ID = if (!is.null(td)) "plot_ID" else NULL,
-      sd_coord = NULL, 
-      n = 100),
+      sd_coord = if (corner_sd > 0) corner_sd else NULL, 
+      n = corner_nsim),
     warning = function(w) {
-      if (grepl("is not a multiple of|could not be assigned to a subplot", 
-        conditionMessage(w))) {
+      if (grepl(paste0("is not a multiple of|could not be assigned to a subplot|",
+        "sd_coord will be used for every plot"), conditionMessage(w))) {
         invokeRestart("muffleWarning")
       }
     })
@@ -305,6 +340,20 @@ st_write(quad_poly, file.path(outdir, "quad_poly.gpkg"), delete_dsn = TRUE)
 
 # Write quadrat points to file
 st_write(quad_pt, file.path(outdir, "quad_pt.gpkg"), delete_dsn = TRUE)
+
+# Write the area of each quadrat in each simulation of the plot corners to
+# file, see `corner_error` in param.yaml and `quadAreaSimu()` in ./func.R
+unlink(file.path(outdir, "quad_area_simu.rds"))
+if (corner_sd > 0) {
+  quad_area_simu <- do.call(rbind, lapply(divide_list, function(x) {
+    quadAreaSimu(x$simu_coord)
+  }))
+  stopifnot(setequal(rownames(quad_area_simu), quad_pt$quadrat_id))
+  saveRDS(quad_area_simu, file.path(outdir, "quad_area_simu.rds"))
+  message("Quadrat area with corner error: median SD ", 
+    round(100 * median(apply(quad_area_simu, 1, sd) / rowMeans(quad_area_simu)), 2), 
+    "% of quadrat area")
+}
 
 # Write global stem coordinates to file
 st_write(stem_pt, file.path(outdir, "stem_pt.gpkg"), delete_dsn = TRUE)

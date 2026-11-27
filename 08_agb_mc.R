@@ -46,7 +46,12 @@
 #     `height_custom`
 # If `stem_allometry` is true, trees use the allometry in `agb_allometry` of
 # their largest stem, see `agb_allometries` in ./func.R. Each allometry is
-# simulated separately, with its own residual error
+# simulated separately, with its own residual error. If `agb_method` is
+# "custom", other trees use the allometry in `agb_custom` in place of Chave et
+# al. (2014). If an allometry has several sets of parameter values, e.g. the
+# posterior draws of a model fitted with brms, each simulation uses one set
+# for all trees, so the uncertainty in its coefficients is propagated, see 
+# `agbCustom()` and `agbAllomBrms()` in ./func.R
 #
 # Diameters are corrected for taper if `taper_method` is set, see
 # ./04_height.R
@@ -121,7 +126,7 @@ tree <- stem_fil %>%
     agb_allometry = if (param$stem_allometry) first(agb_allometry) else NA_character_,
     across(any_of(c("X", "Y")), first),
     .groups = "drop") %>%
-  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), "chave2014"))
+  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), agb_allom_default))
 
 # Diameter measurement error, see `diam_error` in param.yaml
 if (identical(param$diam_error, "none")) {
@@ -784,6 +789,24 @@ if (param$crown_method != "none") {
     "quadrat edge:"))
 }
 
+# Error of the GNSS coordinates of plot corners, see `corner_error` in
+# param.yaml and ./07_quad.R. The AGB of each quadrat in each simulation is
+# divided by the area of the quadrat in that simulation, in place of its
+# area from the fitted corners
+if (!identical(param$corner_error, "none") && 
+  file.exists(file.path(param$out_dir, software_version_sanit, "07_quad", "quad_area_simu.rds"))) {
+  quad_area_simu <- readRDS(file.path(param$out_dir, software_version_sanit, 
+    "07_quad", "quad_area_simu.rds"))
+  stopifnot(all(quad_agb_simu$quadrat_id %in% rownames(quad_area_simu)),
+    max(quad_agb_simu$sim) <= ncol(quad_area_simu))
+  quad_agb_simu$area_ha_sim <- quad_area_simu[cbind(
+    match(quad_agb_simu$quadrat_id, rownames(quad_area_simu)), quad_agb_simu$sim)]
+  area_fit <- quad_area$area_ha[match(quad_agb_simu$quadrat_id, quad_area$subplot_ID)]
+  quad_agb_simu <- quad_agb_simu %>%
+    mutate(across(any_of(c("agbd_Mg_ha", "agbd_Mg_ha_crown")), 
+      ~.x * area_fit / area_ha_sim))
+}
+
 # Write quadrat simulations to file
 write.csv(quad_agb_simu, file.path(outdir, "quad_agb_mc.csv"), row.names = FALSE)
 
@@ -915,6 +938,8 @@ quad_area_join <- quad_area %>%
 plot_agb_mc <- quad_agb_simu %>%
   mutate(plot_id = as.character(plot_id)) %>%
   inner_join(., quad_area_join, by = c("plot_id", "quadrat_id")) %>%
+  # With `corner_error`, the area of each quadrat in each simulation
+  mutate(area_ha = if ("area_ha_sim" %in% names(.)) area_ha_sim else area_ha) %>%
   group_by(plot_id, sim) %>%
   summarise(agbd_Mg_ha = sum(agbd_Mg_ha * area_ha) / sum(area_ha), 
     .groups = "drop") %>%

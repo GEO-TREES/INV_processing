@@ -11,6 +11,7 @@ height_method: "regional"
 wd_method: "regional"
 polygon_method: "procrustes"
 outside_max_dist_m: 0
+corner_error: "none"
 corner_outlier_dist_m: 10
 quad_grid_tol: 0.1
 quad_origin: "centre"
@@ -21,6 +22,7 @@ multi_stem_method: "equivalent"
 unmapped_method: "random"
 missing_diam_method: "impute"
 taper_method: "none"
+agb_method: "regional"
 stem_allometry: false
 growth_form_exclude: []
 crown_method: "none"
@@ -39,6 +41,70 @@ diam_error: "chave2004"
 #   sigma: 0.181
 #   link: "log"
 #   reference: "Martinez-Cano et al. (2019)"
+# Required if agb_method is "custom", an AGB allometry used for all trees of
+# the site in place of Chave et al. (2014). Either an equation, AGB as a function of diameter D (cm),
+# height H (m) and wood density WD (g cm-3). With link "log" the residual 
+# error is log-normal, and the formula gives the median AGB: the mean is the
+# median multiplied by exp(sigma^2 / 2). Many published equations already
+# include this correction in their coefficients, e.g. 0.0673 in Chave et al.
+# (2014) Eq. 4 is exp(-2.762 + 0.357^2 / 2), so give the coefficient without
+# it, here exp(-2.762) = 0.0632
+# agb_custom:
+#   formula: "a * (WD * D^2 * H)^b"
+#   parameters:
+#     a: 0.0632
+#     b: 0.976
+#   sigma: 0.357
+#   link: "log"
+#   units: "kg"
+#   reference: "Chave et al. (2014) Eq. 4"
+# or a model fitted with brms, saved with saveRDS(). `variables` says what
+# each variable of the model is
+# agb_custom:
+#   model: "./dat/sites/PanamaCanal/INV/2023/L0/v1/agb_allom.rds"
+#   variables:
+#     agb_kg: "AGB"
+#     dbh_cm: "D"
+#     height_m: "H"
+#   units: "kg"
+#   reference: "Local allometry from terrestrial lidar"
+# To propagate the uncertainty in the coefficients of an equation, give
+# either `draws`, a .csv file with one column per parameter and one row per
+# set of values, in place of `parameters`, or `vcov`, the covariance matrix
+# of the estimates in `parameters`
+# agb_custom:
+#   formula: "exp(la) * (WD * D^2 * H)^b"
+#   parameters:
+#     la: -2.762
+#     b: 0.976
+#   vcov:
+#     la: {la: 0.0004, b: -0.00004}
+#     b: {la: -0.00004, b: 0.000005}
+#   sigma: 0.357
+#   link: "log"
+#   units: "kg"
+#   reference: "..."
+# Optional, allometries which stems can use if stem_allometry is true, each in
+# the format of agb_custom, named as in agb_allometry in the stem table
+# stem_allometry_custom:
+#   palms_local:
+#     formula: "a * D^b"
+#     parameters:
+#       a: 0.035
+#       b: 2.75
+#     sigma: 0.59
+#     link: "log"
+#     units: "kg"
+#     reference: "..."
+# height_custom takes the same forms as agb_custom: `draws` or `vcov` to
+# propagate the uncertainty in the parameters of an equation, or a model 
+# fitted with brms, with height (m) and diameter (cm) named in `variables`
+# height_custom:
+#   model: "./dat/sites/PanamaCanal/INV/2023/L0/v1/hd_model.rds"
+#   variables:
+#     height_m: "H"
+#     dbh_cm: "D"
+#   reference: "Local height-diameter model"
 # Required if crown_method is "custom", a crown area allometry, crown area
 # (m2) as a function of diameter D (cm)
 # crown_custom:

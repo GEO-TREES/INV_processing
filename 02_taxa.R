@@ -39,7 +39,7 @@ for (i in seq_along(taxon_chunks)) {
     fill_time_s = 1,
     timeout = 60)
 
-  saveWFOCache(wfo_path, rm_empty = !taxa_interactive)
+  wfoCacheWrite(wfo_path, rm_empty = !taxa_interactive)
 }
 taxa <- bind_rows(taxa_list)
 
@@ -112,4 +112,4 @@ write.csv(taxa, file.path(outdir, "stem_taxa.csv"), row.names = FALSE)
 write.csv(taxa_review, file.path(report_dir, "taxa_review.csv"), row.names = FALSE)
 
 # Write copy of WFO cache alongside outputs
-file.copy(wfo_path, file.path(outdir, "wfo_cache.rds"), overwrite = TRUE)
+file.copy(wfo_path, file.path(outdir, "wfo_cache.csv"), overwrite = TRUE)

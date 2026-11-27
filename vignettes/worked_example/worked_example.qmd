@@ -170,6 +170,10 @@ There should be one `param.yaml` file for each version of the processed data.
 * `height_model` -- Height-diameter model used if `height_method` is `"field"`, one of `"best"` (lowest residual standard error), `"log1"`, `"log2"`, `"weibull"` or `"michaelis"`
 * `agbd_diam_min_cm` -- Minimum stem diameter in cm for AGB density. The larger of this and the minimum diameter threshold of each plot is used, e.g. `10`, the value in the template `param.yaml`, excludes stems below 10 cm in plots with a lower threshold, and `0` uses the threshold of each plot
 * `include_broken` -- `true` or `false`, whether stems broken above the POM are included in AGB density
+* `corner_error` -- Optional, the error of the GNSS coordinates of plot corners, propagated to quadrat area: `"none"` (default), `"residual"`, its standard deviation estimated from the residuals of the GNSS points around the fitted plot polygons, pooled across plots, or a standard deviation in m. Each plot corner is shifted by a random error in each simulation, and the AGB of each quadrat is divided by its area in that simulation. This is done in the automated workflow, not in this worked example
+* `agb_method` -- Optional, the AGB allometry of trees without their own allometry: `"regional"` (default), Chave et al. (2014), or `"custom"`, the allometry in `agb_custom`, as with `height_method` and `height_custom`
+* `agb_custom` -- Required if `agb_method` is `"custom"`. Either an equation (`formula`, `parameters`, `sigma`, `link`), or a model fitted with `brms` (`model`, the path of an `.rds` file, and `variables`), both with `units` (`"kg"` or `"Mg"`) and `reference`, see `agbCustom()` in `func.R` and [Estimate stem AGB]. The uncertainty in the coefficients of an equation is propagated if `draws` (a `.csv` file of sets of parameter values) or `vcov` (the covariance matrix of the estimates) is given
+* `stem_allometry_custom` -- Optional, a named list of allometries in the format of `agb_custom`, which stems can use if `stem_allometry` is `true`
 * `multi_stem_method` -- How AGB is estimated for multi-stemmed trees, either `"equivalent"` (from the equivalent diameter of a single stem with the same basal area as the tree) or `"stem"` (from each stem separately)
 * `unmapped_method` -- How trees without stem coordinates are treated, either `"random"` (assigned to a random quadrat in their plot in each Monte Carlo simulation) or `"exclude"` (excluded from AGB density)
 * `diam_error` -- Diameter measurement error propagated to AGB, either `"chave2004"` (Chave et al. 2004), `"field"` (estimated from repeat diameter measurements in `stem_dup.csv` with `BIOMASS::fitDiamError()`), `"none"`, or a number giving the standard deviation of diameter measurement error in cm
@@ -180,7 +184,7 @@ There should be one `param.yaml` file for each version of the processed data.
 * `taper_species` -- Optional, species terms of `"cushman2014"` by taxon name, e.g. `{"Ceiba pentandra": 0.0495}`
 * `stem_allometry` -- Optional, `true` or `false` (default), whether stems use the AGB allometry in `agb_allometry` in the stem table, e.g. `"goodman2013"` for palms, see `agb_allometries` in `func.R`. Stems without one use Chave et al. (2014)
 * `growth_form_exclude` -- Optional, values of `growth_form` in the stem table excluded from AGB density, e.g. `["strangler"]`. These stems have AGB estimates. None by default
-* `height_custom` -- Required if `height_method` is `"custom"`, the height-diameter model: `formula`, height (m) as a function of diameter `D` (cm), e.g. `"a * D^b / (k + D^b)"`; `parameters`, e.g. `{a: 57.1, b: 0.73, k: 21.79}`; `sigma`, the residual standard deviation; `link`, `"log"` (default) if the residual error is log-normal and `formula` gives the median height, or `"identity"`; and `reference` 
+* `height_custom` -- Required if `height_method` is `"custom"`, the height-diameter model: `formula`, height (m) as a function of diameter `D` (cm), e.g. `"a * D^b / (k + D^b)"`; `parameters`, e.g. `{a: 57.1, b: 0.73, k: 21.79}`; `sigma`, the residual standard deviation; `link`, `"log"` (default) if the residual error is log-normal and `formula` gives the median height, or `"identity"`; and `reference` . It takes the same forms as `agb_custom`: `draws` or `vcov` propagate the uncertainty in the parameters of an equation, or `model` names a model fitted with `brms`, with `variables` saying which variable is height (`H`) and which diameter (`D`)
 * `crown_method` -- Optional, whether quadrat AGB density is also estimated with the AGB of each tree spread over its crown, see [Estimate quadrat AGBD and propagate error]: `"none"` (default) or `"custom"` (crown area from the allometry in `crown_custom`)
 * `crown_custom` -- Required if `crown_method` is `"custom"`, the crown area allometry: `formula`, crown area (m^2^) as a function of diameter `D` (cm), e.g. `"a * D^b"`; `parameters`, e.g. `{a: 0.57, b: 1.34}`; `sigma`, the residual standard deviation; `link`, `"log"` (default) if the residual error is log-normal and `formula` gives the median crown area, or `"identity"`; and `reference`
 * `rocrate` -- Information on who ran the workflow, used in the RO-Crate meta-data files which accompany each data product:
@@ -246,6 +250,16 @@ param_name_vec <- c(
 # `stem_allometry` is whether stems use the AGB allometry in `agb_allometry`
 # in the stem table, see `agb_allometries` in ./func.R: false (default) or
 # true
+# `corner_error` is the error of the GNSS coordinates of plot corners, which
+# is propagated to quadrat area, see ./07_quad.R: "none" (default), 
+# "residual", estimated from the fit of the plot polygons, or a standard 
+# deviation in m
+# `agb_method` is the AGB allometry of trees without their own allometry:
+# "regional" (default), Chave et al. (2014), or "custom"
+# `agb_custom` is the AGB allometry used if `agb_method` is "custom", an
+# equation or a model fitted with brms, see `agbCustom()` in ./func.R
+# `stem_allometry_custom` is a named list of allometries, in the format of
+# `agb_custom`, which stems can use if `stem_allometry` is true
 # `growth_form_exclude` is values of `growth_form` in the stem table excluded
 # from AGB density, e.g. ["strangler"]. None by default
 # `height_custom` is the height-diameter model used if `height_method` is
@@ -261,6 +275,10 @@ param_optional_vec <- c(
   "taper_method",
   "taper_species",
   "stem_allometry",
+  "corner_error",
+  "agb_method",
+  "agb_custom",
+  "stem_allometry_custom",
   "growth_form_exclude",
   "height_custom",
   "crown_method",
@@ -375,13 +393,20 @@ if (!is.null(param$taper_species) && (!is.list(param$taper_species) ||
     "e.g. {\"Ceiba pentandra\": 0.0495}")
 }
 
-if (is.null(param$stem_allometry)) {
-  param$stem_allometry <- FALSE
+# AGB allometries, see `agbAllometryParam()` in ./func.R. Trees use Chave et 
+# al. (2014) if `agb_method` is "regional" (default), or the allometry in 
+# `agb_custom` if it is "custom", as with `height_method` and `height_custom`. 
+# If `stem_allometry` is true, stems with a value of `agb_allometry` in the 
+# stem table use that allometry instead
+if (!is.null(param$agb_custom) && is.null(param$agb_method)) {
+  stop("`agb_custom` is given, so `agb_method` must be \"custom\" to use it, ",
+    "or \"regional\" to use Chave et al. (2014)")
 }
-if (length(param$stem_allometry) != 1 || !is.logical(param$stem_allometry) ||
-  is.na(param$stem_allometry)) {
-  stop("`stem_allometry` must be true or false")
-}
+agb_allom <- agbAllometryParam(param, agb_allometries)
+agb_allometries <- agb_allom$allometries
+agb_allom_default <- agb_allom$default
+param$agb_method <- agb_allom$method
+param$stem_allometry <- agb_allom$by_stem
 
 param$growth_form_exclude <- unlist(param$growth_form_exclude)
 if (length(param$growth_form_exclude) > 0 && !is.character(param$growth_form_exclude)) {
@@ -389,8 +414,7 @@ if (length(param$growth_form_exclude) > 0 && !is.character(param$growth_form_exc
 }
 
 if (param$height_method == "custom") {
-  if (is.null(param$height_custom) ||
-    !all(c("formula", "parameters", "sigma") %in% names(param$height_custom))) {
+  if (is.null(param$height_custom)) {
     stop("`height_method` is \"custom\", so `height_custom` must give the ",
       "height-diameter model's `formula`, `parameters` and `sigma`")
   }
@@ -750,8 +774,9 @@ higher-order taxonomic rank such as just the genus or family. Some examples of v
 If `useCache = TRUE`, `correctTaxo()` creates a cache object containing
 previously queried taxonomic names, including the choices made during
 interactive matching. In the automated workflow this cache is saved with the
-raw data, to `wfo_cache.rds` in the directory containing `raw_dir`, e.g.
-`./dat/sites/<SITE>/INV/<ACQUISITION>/wfo_cache.rds`. It is shared by all
+raw data, to `wfo_cache.csv` in the directory containing `raw_dir`, e.g.
+`./dat/sites/<SITE>/INV/<ACQUISITION>/wfo_cache.csv`, a table with one row
+per submitted name, see `wfoCacheWrite()`. It is shared by all
 product versions of an acquisition, as a record of the choices made. Names are matched in chunks, and the cache is saved after
 each chunk, so choices are kept if interactive matching is interrupted. Names
 which could not be matched in a batch run are not saved, so they are offered
@@ -765,14 +790,14 @@ taxon_vec <- sort(unique(c(
   L0$height$taxon_name)))
 
 # Load WFO cache from previous processing
-loadWFOCache(file.path(indir, "wfo_cache.rds"))
+wfoCacheRead(file.path(indir, "wfo_cache.csv"))
 
 # Prompt the user only in interactive sessions
 taxa_interactive <- interactive() && !isTRUE(getOption("inv.batch"))
 
 # Match names in chunks, saving the cache after each chunk
 # In the vignette the cache is saved to a temporary file
-wfo_path <- file.path(tempdir(), "wfo_cache.rds")
+wfo_path <- file.path(tempdir(), "wfo_cache.csv")
 chunk_size <- 25
 taxon_chunks <- split(taxon_vec, ceiling(seq_along(taxon_vec) / chunk_size))
 taxa_list <- list()
@@ -790,7 +815,7 @@ for (i in seq_along(taxon_chunks)) {
     fill_time_s = 1, 
     timeout = 60)
 
-  saveWFOCache(wfo_path, rm_empty = !taxa_interactive)
+  wfoCacheWrite(wfo_path, rm_empty = !taxa_interactive)
 }
 stem_taxa_all <- bind_rows(taxa_list)
 
@@ -1470,7 +1495,7 @@ tree <- stem_all %>%
     agb_allometry = if (param$stem_allometry) first(agb_allometry) else NA_character_,
     n_taxa = n_distinct(taxon_name),
     .groups = "drop") %>%
-  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), "chave2014"))
+  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), agb_allom_default))
 
 allom_unknown <- setdiff(tree$agb_allometry, c("chave2014", names(agb_allometries)))
 if (length(allom_unknown) > 0) {
@@ -1656,8 +1681,7 @@ density in each 50x50 m quadrat.
 We apply the following filters:
 
 * Remove stems with no diameter measurement, if `missing_diam_method` is `"exclude"`. 
-* Include only living stems.
-* Include only standing stems.
+* Include only living, standing stems in AGB density. Dead stems and fallen stems with a diameter measurement have their own AGB estimates, using the allometry for living, standing stems, but are not included in AGB density.
 * Remove stems that are broken below the diameter Point of Measurement (POM). Stems broken above the POM are included.
 * Remove "missing" stems. I.e. stems which were not measured during the census.
 * Where stems were measured multiple times at multiple POMs, choose the measurement with a diameter, then the highest POM, latest measurement date, and largest diameter measurement. Stems without a `stem_id` cannot be matched across measurements, so each of their records is treated as a separate stem.
@@ -1710,11 +1734,13 @@ record_status <- L0$stem %>%
       as.character(record_id) %in% record_agbd ~ "included in AGB density",
       is.na(code) | code == "" ~ "excluded: no code",
       grepl("M", code) ~ "excluded: missing",
-      !grepl("A", code) ~ "excluded: dead",
-      !grepl("S", code) ~ "excluded: not standing",
       grepl("T", code) ~ "excluded: broken below POM",
+      !grepl("A", code) & is.na(diam_cm) ~ "excluded: dead, no diameter",
+      !grepl("S", code) & is.na(diam_cm) ~ "excluded: not standing, no diameter",
       is.na(diam_cm) ~ "excluded: no diameter",
       !as.character(record_id) %in% record_fil ~ "excluded: repeat measurement of stem",
+      !grepl("A", code) ~ "AGB only: dead",
+      !grepl("S", code) ~ "AGB only: not standing",
       !is.na(diam_min) & !is.na(diam_cm) & diam_cm < diam_min ~ 
         "AGB only: below diameter threshold",
       grepl("B", code) & !param$include_broken ~ "AGB only: broken above POM",
@@ -2696,7 +2722,7 @@ tree <- stem_fil %>%
     agb_allometry = if (param$stem_allometry) first(agb_allometry) else NA_character_,
     across(any_of(c("X", "Y")), first),
     .groups = "drop") %>%
-  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), "chave2014"))
+  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), agb_allom_default))
 
 # Group trees into Monte Carlo chunks
 # Whole plots, split into groups of whole quadrats for very large plots
@@ -3945,7 +3971,10 @@ L3_quad <- quad_summ %>%
     Plot_name = plot_id,
     Census_date = census_date,
     Quadrat_name = quadrat_id,
+    # Mean and median of the simulations. The median is `medAGB` of
+    # BIOMASS::AGBmonteCarlo(), per hectare
     AGBD_stand_estimate = agbd_Mg_ha_mc_mean,
+    AGBD_stand_median = agbd_Mg_ha_mc_median,
     AGBD_stand_uncertainty = agbd_Mg_ha_mc_sd,
     # 95% interval, the 2.5% and 97.5% quantiles of the simulations
     AGBD_stand_ci_lower = agbd_Mg_ha_mc_ci2.5,
@@ -3958,6 +3987,7 @@ L3_quad <- quad_summ %>%
     Quadrat_area = quadrat_area_ha,
     # Crown-distributed AGB density, if `crown_method` is not "none"
     AGBD_crown_estimate = any_of("agbd_Mg_ha_crown_mc_mean"),
+    AGBD_crown_median = any_of("agbd_Mg_ha_crown_mc_median"),
     AGBD_crown_uncertainty = any_of("agbd_Mg_ha_crown_mc_sd"),
     AGBD_crown_ci_lower = any_of("agbd_Mg_ha_crown_mc_ci2.5"),
     AGBD_crown_ci_upper = any_of("agbd_Mg_ha_crown_mc_ci97.5")) %>%
@@ -3965,6 +3995,7 @@ L3_quad <- quad_summ %>%
 
 # Check all values filled
 stopifnot(all(!is.na(L3_quad$AGBD_stand_estimate)))
+stopifnot(all(!is.na(L3_quad$AGBD_stand_median)))
 stopifnot(all(!is.na(L3_quad$AGBD_stand_ci_lower)))
 stopifnot(all(!is.na(L3_quad$AGBD_stand_ci_upper)))
 

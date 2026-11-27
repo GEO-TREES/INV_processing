@@ -838,12 +838,19 @@ s3Download <- function(client, bucket, prefix, dest) {
 
 #' Select stem measurements used to estimate AGB
 #'
-#' Selects stems which are alive, standing, and are not broken below the POM
-#' or missing. Where a stem was measured more than once, e.g. at different 
+#' Selects stems which have a stem code, and are not broken below the POM or
+#' missing. Where a stem was measured more than once, e.g. at different 
 #' POMs, the measurement with a diameter, the highest POM, latest date, and 
 #' largest diameter is used. Stems without coordinates, and stems below the
 #' minimum diameter threshold of the plot, are included. See `agbdFilter()`
 #' for stems used to estimate AGB density, and to form multi-stemmed trees.
+#'
+#' Dead stems and fallen stems, i.e. stems which are not alive ("A" in 
+#' `code`) and standing ("S"), are included if they have a diameter 
+#' measurement. Their AGB is estimated in the same way as living, standing 
+#' stems, i.e. with an allometry for living trees, with no reduction for lost 
+#' branches, leaves or decayed wood. They are never included in AGB density, 
+#' see `agbdFilter()`, and their diameter is never imputed.
 #'
 #' @param stem stem measurement table, see ./templates/stem_cols.csv
 #' @param plot plot meta-data table, see ./templates/plot_cols.csv
@@ -856,9 +863,9 @@ s3Download <- function(client, bucket, prefix, dest) {
 recordFilter <- function(stem, plot, missing_diam = FALSE) {
   stem %>%
     filter(
-      !is.na(diam_cm) | missing_diam,
-      grepl("A", code),
-      grepl("S", code),
+      # Diameters are imputed for living, standing stems only
+      !is.na(diam_cm) | (missing_diam & grepl("A", code) & grepl("S", code)),
+      !is.na(code), code != "",
       !grepl("T", code),
       !grepl("M", code)) %>%
     # Keep one measurement per stem. Stems without a `stem_id` cannot be
@@ -877,9 +884,10 @@ recordFilter <- function(stem, plot, missing_diam = FALSE) {
 
 #' Select stem measurements used to estimate AGB density
 #'
-#' Selects stems from `recordFilter()` with a diameter at or above the minimum
-#' diameter threshold, and optionally excludes stems broken above the POM, and
-#' stems of some growth forms. Other stems have their own AGB estimates, but
+#' Selects stems from `recordFilter()` which are alive and standing, with a 
+#' diameter at or above the minimum diameter threshold, and optionally 
+#' excludes stems broken above the POM, and stems of some growth forms. Other 
+#' stems, e.g. dead stems and fallen stems, have their own AGB estimates, but
 #' are not part of multi-stemmed trees, and are not included in AGB density,
 #' so that AGB density matches the sampling of the plot. Stems without a
 #' diameter measurement, if included by `recordFilter()`, are assumed to be at
@@ -905,6 +913,7 @@ agbdFilter <- function(stem, plot, record_fil, diam_min_cm = 0,
   diam_min <- pmax(diam_min, diam_min_cm)
   diam <- if ("diam_cm_meas" %in% names(stem)) stem$diam_cm_meas else stem$diam_cm
   keep <- as.character(stem$record_id) %in% as.character(record_fil) &
+    grepl("A", stem$code) & grepl("S", stem$code) &
     !is.na(diam_min) & (is.na(diam) | diam >= diam_min)
   if (!include_broken) {
     keep <- keep & !grepl("B", stem$code)
@@ -996,33 +1005,490 @@ agb_allometries <- list(
 #' @param D diameter (cm)
 #' @param H height (m)
 #' @param WD wood density (g cm-3)
+#' @param n_max maximum number of rows of `parameters` used, spaced evenly
 #'
 #' @return vector of AGB (Mg). With a log link, the mean of the log-normal,
 #'     exp(mu + sigma^2 / 2), consistent with the mean of simulations in
-#'     BIOMASS::AGBmonteCarlo()
+#'     BIOMASS::AGBmonteCarlo(). If `parameters` has more than one row, e.g. 
+#'     posterior draws, the mean across rows
 #'
-agbAllomMean <- function(allom, D, H = NULL, WD = NULL) {
-  p <- as.list(allom$parameters[1, , drop = FALSE])
-  mu <- eval(allom$formula[[2]], c(list(D = D, H = H, WD = WD), p))
-  if (identical(allom$link, "log")) exp(mu + p$sigma^2 / 2) else mu
+agbAllomMean <- function(allom, D, H = NULL, WD = NULL, n_max = 200) {
+  n_row <- nrow(allom$parameters)
+  rows <- unique(round(seq(1, n_row, length.out = min(n_row, n_max))))
+  out <- 0
+  for (i in rows) {
+    p <- as.list(allom$parameters[i, , drop = FALSE])
+    mu <- eval(allom$formula[[2]], c(list(D = D, H = H, WD = WD), p))
+    out <- out + if (identical(allom$link, "log")) exp(mu + p$sigma^2 / 2) else mu
+  }
+  out / length(rows)
+}
+
+#' Convert an AGB allometry to Mg, in the format of `agb_allometries`
+#'
+#' @param expr expression giving AGB, or log(AGB) if `link` is "log", as a
+#'     function of D (cm), H (m), WD (g cm-3) and the columns of `parameters`
+#' @param parameters data frame of parameter values including `sigma`, one
+#'     row per set of values, e.g. per posterior draw
+#' @param link "log" or "identity"
+#' @param units units of AGB in the allometry, "kg" or "Mg"
+#' @param description description of the allometry
+#'
+#' @return a list with `formula`, `parameters`, `link` and `description`, see
+#'     `agb_allometries`, and `variables`, which of D, H and WD are used
+#'
+agbAllomBuild <- function(expr, parameters, link, units, description) {
+  if (!identical(link, "log") && !identical(link, "identity")) {
+    stop("`link` of an AGB allometry must be \"log\" or \"identity\"")
+  }
+  if (!identical(units, "kg") && !identical(units, "Mg")) {
+    stop("`units` of an AGB allometry must be \"kg\" or \"Mg\"")
+  }
+  unknown <- setdiff(all.vars(expr), c("D", "H", "WD", names(parameters)))
+  if (length(unknown) > 0) {
+    stop("AGB allometry uses variables which are not D, H, WD or a parameter: ",
+      paste(unknown, collapse = ", "))
+  }
+  if (!"sigma" %in% names(parameters) || anyNA(parameters) ||
+    any(parameters$sigma <= 0)) {
+    stop("AGB allometry needs a residual standard deviation `sigma` > 0, ",
+      "and no missing parameter values")
+  }
+  if (units == "kg") {
+    if (link == "log") {
+      expr <- bquote(.(expr) - log(1000))
+    } else {
+      expr <- bquote((.(expr)) / 1000)
+      parameters$sigma <- parameters$sigma / 1000
+    }
+  }
+  list(
+    formula = as.formula(call("~", expr), env = baseenv()),
+    parameters = as.data.frame(parameters),
+    link = link,
+    description = description,
+    variables = intersect(c("D", "H", "WD"), all.vars(expr)))
+}
+
+#' AGB allometry from a model fitted with brms
+#'
+#' Converts a model fitted with brms::brm() to the format of 
+#' `agb_allometries`, with the posterior draws of its parameters as rows of
+#' `parameters`. BIOMASS::AGBmonteCarlo() then uses one posterior draw for all
+#' trees in each simulation, so that the uncertainty in the parameters of the
+#' model is propagated to quadrat AGB density, as well as its residual error.
+#'
+#' The model must have a gaussian or lognormal family, a constant residual
+#' standard deviation, and no group-level effects, e.g. no species effects.
+#' It can be linear in its parameters, e.g. `log(agb) ~ log(dbh) + log(h)`,
+#' with numeric predictors and no interactions, or a non-linear model, e.g.
+#' `bf(agb ~ a * dbh^b, a + b ~ 1, nl = TRUE)`.
+#'
+#' @param fit a model fitted with brms::brm()
+#' @param variables named list or character vector: names are variables in
+#'     the model, values are what they are, as expressions of `AGB`, `D` (cm),
+#'     `H` (m) and `WD` (g cm-3), e.g. `list(agb = "AGB", dbh = "D")` or 
+#'     `list(log_agb = "log(AGB)", log_d = "log(D)")`. Variables named AGB, D,
+#'     H or WD in the model need no entry
+#' @param units units of AGB in the model, "kg" or "Mg"
+#' @param n_draw maximum number of posterior draws kept, spaced evenly
+#' @param description description of the allometry
+#'
+#' @return a list in the format of `agb_allometries`
+#'
+agbAllomBrms <- function(fit, variables = NULL, units, n_draw = 1000,
+  description = "AGB allometry fitted with brms") {
+  eq <- brmsEquation(fit, variables, response = "AGB", what = "AGB allometry",
+    n_draw = n_draw)
+  agbAllomBuild(eq$expr, eq$parameters, eq$link, units, description)
+}
+
+#' Equation and posterior draws of a model fitted with brms
+#'
+#' Used by `agbAllomBrms()` and `heightCustom()`.
+#'
+#' @param fit a model fitted with brms::brm(), with a gaussian or lognormal
+#'     family, a constant residual standard deviation, and no group-level
+#'     effects. Linear in its parameters, with numeric predictors and no 
+#'     interactions, or non-linear with parameters modelled by an intercept
+#' @param variables named list or character vector: names are variables in
+#'     the model, values are what they are, as expressions of `response` and
+#'     the predictors, e.g. `list(h_m = "H", dbh = "D")`
+#' @param response name of the response, e.g. "AGB" or "H". The response of
+#'     the model must be this, or its log
+#' @param what description of the model, for messages
+#' @param n_draw maximum number of posterior draws kept, spaced evenly
+#'
+#' @return a list with `expr`, the expression of the model on the scale of 
+#'     `link`, `parameters`, a data frame of posterior draws including 
+#'     `sigma`, and `link`, "log" or "identity"
+#'
+brmsEquation <- function(fit, variables = NULL, response, what, n_draw = 1000) {
+  if (!inherits(fit, "brmsfit")) {
+    stop("`fit` must be a model fitted with brms::brm()")
+  }
+  if (!requireNamespace("brms", quietly = TRUE)) {
+    stop("A model fitted with brms needs the brms package, which is not installed")
+  }
+  fam <- fit$family$family
+  if (!fam %in% c("gaussian", "lognormal") || !identical(fit$family$link, "identity")) {
+    stop("The brms ", what, " must have a gaussian or lognormal family ",
+      "with an identity link, not ", fam, " (", fit$family$link, ")")
+  }
+  if (nrow(fit$ranef) > 0) {
+    stop("The brms ", what, " must not have group-level effects")
+  }
+  bform <- fit$formula
+  if ("sigma" %in% names(bform$pforms)) {
+    stop("The brms ", what, " must have a constant residual standard deviation")
+  }
+  f <- bform$formula
+  draws <- as.data.frame(brms::as_draws_df(fit))
+  if (!"sigma" %in% names(draws)) {
+    stop("The brms ", what, " has no residual standard deviation `sigma`")
+  }
+
+  # Replace the variables of the model with the response and predictors
+  variables <- as.list(variables)
+  var_expr <- lapply(variables, function(v) parse(text = v)[[1]])
+  rename <- function(e) do.call(substitute, list(e, var_expr))
+
+  if (isTRUE(attr(f, "nl"))) {
+    # Non-linear model: parameters with an intercept only
+    par_name <- names(bform$pforms)
+    par_ok <- vapply(bform$pforms, function(p) {
+      length(attr(terms(p), "term.labels")) == 0
+    }, logical(1))
+    if (!all(par_ok)) {
+      stop("Parameters of a non-linear brms ", what, " must be modelled ",
+        "with an intercept only, e.g. a + b ~ 1")
+    }
+    col <- paste0("b_", par_name, "_Intercept")
+    rhs <- rename(f[[3]])
+  } else {
+    # Linear model: intercept and one coefficient per term
+    tm <- terms(f)
+    term_lab <- attr(tm, "term.labels")
+    if (any(attr(tm, "order") > 1)) {
+      stop("The brms ", what, " must not have interactions")
+    }
+    coef_name <- rownames(brms::fixef(fit))
+    has_int <- attr(tm, "intercept") == 1
+    if (length(coef_name) != length(term_lab) + has_int) {
+      stop("The brms ", what, " must have numeric predictors, with one ",
+        "coefficient per term")
+    }
+    col <- paste0("b_", coef_name)
+    par_name <- paste0("beta", seq_along(coef_name) - has_int)
+    term_expr <- lapply(term_lab, function(x) rename(parse(text = x)[[1]]))
+    pieces <- c(
+      if (has_int) list(as.name(par_name[1])),
+      Map(function(p, e) call("*", as.name(p), e), 
+        par_name[seq_along(term_lab) + has_int], term_expr))
+    rhs <- Reduce(function(a, b) call("+", a, b), pieces)
+  }
+  if (!all(col %in% names(draws))) {
+    stop("Posterior draws not found for: ", paste(setdiff(col, names(draws)), collapse = ", "))
+  }
+
+  # Scale of the response
+  resp <- rename(f[[2]])
+  resp_log <- identical(resp, call("log", as.name(response)))
+  if (!resp_log && !identical(resp, as.name(response))) {
+    stop("The response of the brms ", what, " must be ", response, " or log(", 
+      response, "), see `variables`. It is: ", deparse(resp))
+  }
+  if (resp_log && fam == "lognormal") {
+    stop("The brms ", what, " has a lognormal family and a response of log(", 
+      response, ")")
+  }
+  link <- if (resp_log || fam == "lognormal") "log" else "identity"
+  # A lognormal family models the log of the response, with `rhs` on the
+  # log scale. Otherwise `rhs` is on the scale of the response of the model
+
+  parameters <- setNames(draws[, col, drop = FALSE], par_name)
+  parameters$sigma <- draws$sigma
+  rows <- unique(round(seq(1, nrow(parameters), length.out = min(nrow(parameters), n_draw))))
+  parameters <- parameters[rows, , drop = FALSE]
+  rownames(parameters) <- NULL
+
+  list(expr = rhs, parameters = parameters, link = link)
+}
+
+#' Sets of parameter values of an equation from param.yaml
+#'
+#' Used by `agbCustom()` and `heightCustom()`. One set from `parameters` and
+#' `sigma`, or several sets, to propagate the uncertainty in the parameters:
+#' from `draws`, a .csv file with one column per parameter and one row per 
+#' set, optionally with a `sigma` column, or drawn from a multivariate normal
+#' distribution with `vcov`, the covariance matrix of `parameters`, as a 
+#' named list of named lists.
+#'
+#' @param x an equation from param.yaml, e.g. `agb_custom`
+#' @param name name of the parameter, for messages
+#' @param n_draw number of sets drawn from `vcov`, and the maximum number 
+#'     kept from `draws`
+#' @param seed random seed for the draws from `vcov`
+#'
+#' @return a list with `parameters`, a data frame with one row per set of 
+#'     values, including `sigma`, and `how`, a description of the sets
+#'
+paramSets <- function(x, name, n_draw = 1000, seed = 42) {
+  how <- ""
+  if (!is.null(x$draws)) {
+    # Sets of parameter values from a file
+    if (!file.exists(x$draws)) {
+      stop("`draws` in `", name, "` not found: ", x$draws)
+    }
+    par <- read.csv(x$draws)
+    if (!"sigma" %in% names(par)) {
+      if (is.null(x$sigma)) {
+        stop("`", name, "` needs `sigma`, or a `sigma` column in `draws`")
+      }
+      par$sigma <- x$sigma
+    }
+    rows <- unique(round(seq(1, nrow(par), length.out = min(nrow(par), n_draw))))
+    par <- par[rows, , drop = FALSE]
+    how <- paste0(", with ", nrow(par), " sets of parameter values")
+  } else {
+    est <- unlist(x$parameters)
+    par <- data.frame(as.list(est), sigma = x$sigma)
+    if (!is.null(x$vcov)) {
+      # Sets of parameter values from the covariance matrix of the estimates
+      v <- vapply(names(est), function(i) {
+        vapply(names(est), function(j) {
+          vij <- x$vcov[[i]][[j]]
+          if (is.null(vij)) NA_real_ else as.numeric(vij)
+        }, numeric(1))
+      }, numeric(length(est)))
+      if (anyNA(v) || !isTRUE(all.equal(v, t(v), check.attributes = FALSE)) ||
+        any(eigen(v, symmetric = TRUE, only.values = TRUE)$values < -1e-10)) {
+        stop("`vcov` in `", name, "` must be the covariance matrix of ",
+          "`parameters`: symmetric, with a row and a column for each of ", 
+          paste(names(est), collapse = ", "))
+      }
+      # Draws don't change the random number stream of the rest of the run
+      old_seed <- if (exists(".Random.seed", envir = globalenv())) {
+        get(".Random.seed", envir = globalenv())
+      }
+      set.seed(seed)
+      d <- MASS::mvrnorm(n_draw, mu = est, Sigma = v)
+      if (is.null(old_seed)) {
+        rm(".Random.seed", envir = globalenv())
+      } else {
+        assign(".Random.seed", old_seed, envir = globalenv())
+      }
+      par <- data.frame(matrix(d, ncol = length(est), 
+        dimnames = list(NULL, names(est))), sigma = x$sigma)
+      how <- paste0(", with ", n_draw, " sets of parameter values drawn from ",
+        "the covariance matrix of the estimates")
+    }
+  }
+  rownames(par) <- NULL
+  list(parameters = par, how = how)
+}
+
+#' AGB allometry from param.yaml
+#'
+#' @param x an AGB allometry from param.yaml, e.g. `agb_custom`, a list in 
+#'     one of two forms. Either an equation: `formula`, a string giving AGB as 
+#'     a function of diameter `D` (cm), height `H` (m) and wood density `WD` 
+#'     (g cm-3), e.g. "a * (WD * D^2 * H)^b", `parameters`, a named list of 
+#'     parameter values, `sigma`, the residual standard deviation, and `link`, 
+#'     "log" (default) if the residual error is log-normal and `formula` gives 
+#'     the median AGB, or "identity". With "log", the mean AGB is the median 
+#'     multiplied by exp(sigma^2 / 2), so coefficients which already include 
+#'     this correction, e.g. 0.0673 in Chave et al. (2014) Eq. 4, must be given
+#'     without it. Or a model fitted with brms: `model`, the path of an 
+#'     .rds file of the model, and `variables`, see `agbAllomBrms()`. Both
+#'     need `units`, the units of AGB, "kg" or "Mg", and `reference`
+#' @param name name of the parameter, for messages
+#' @param n_draw number of sets of parameter values drawn from `vcov`, and 
+#'     the maximum number kept from `draws`
+#' @param seed random seed for the draws from `vcov`
+#'
+#' @details An equation with one set of `parameters` propagates only its
+#' residual error. The uncertainty in its coefficients is propagated if 
+#' several sets of parameter values are given, in one of two ways. `draws` is 
+#' the path of a .csv file with one column per parameter and one row per set 
+#' of values, e.g. posterior draws or bootstrap fits, optionally with a 
+#' `sigma` column, in place of `parameters`. Or `vcov` is the covariance 
+#' matrix of the estimates in `parameters`, as a named list of named lists, 
+#' from which sets of values are drawn from a multivariate normal 
+#' distribution. `sigma` is then fixed. Each Monte Carlo simulation uses one 
+#' set of values for all trees.
+#'
+#' @return a list in the format of `agb_allometries`
+#'
+agbCustom <- function(x, name = "agb_custom", n_draw = 1000, seed = 42) {
+  if (is.null(x$units)) {
+    stop("`", name, "` must give the `units` of AGB, \"kg\" or \"Mg\"")
+  }
+  ref <- if (is.null(x$reference)) "custom AGB allometry" else x$reference
+  if (!is.null(x$model)) {
+    if (!file.exists(x$model)) {
+      stop("`model` in `", name, "` not found: ", x$model)
+    }
+    return(agbAllomBrms(readRDS(x$model), variables = x$variables,
+      units = x$units, n_draw = n_draw,
+      description = paste0(ref, ", fitted with brms")))
+  }
+  if (is.null(x$formula) || (is.null(x$parameters) && is.null(x$draws)) ||
+    (is.null(x$sigma) && is.null(x$draws))) {
+    stop("`", name, "` must give either `model`, or the allometry's ",
+      "`formula`, `parameters` (or `draws`) and `sigma`")
+  }
+  link <- if (is.null(x$link)) "log" else x$link
+  expr <- parse(text = x$formula)[[1]]
+  if (identical(link, "log")) {
+    expr <- bquote(log(.(expr)))
+  }
+
+  sets <- paramSets(x, name, n_draw, seed)
+  par <- sets$parameters
+  how <- sets$how
+  rownames(par) <- NULL
+  agbAllomBuild(expr, par, link, x$units, paste0(ref, ", AGB = ", x$formula, how))
+}
+
+#' AGB allometries of a run, from param.yaml
+#'
+#' The parameters follow those of height. `agb_method` is "regional" 
+#' (default), for Chave et al. (2014), or "custom", for the allometry in 
+#' `agb_custom`, see `agbCustom()`. If `stem_allometry` is true, stems use the 
+#' allometry named in `agb_allometry` in the stem table: one of 
+#' `allometries`, or one defined in the optional `stem_allometry_custom`, a 
+#' named list of allometries in the format of `agb_custom`.
+#'
+#' @param param parameters from param.yaml
+#' @param allometries allometries which stems can refer to, see 
+#'     `agb_allometries`
+#'
+#' @return a list with `method`, `default`, the name of the allometry of
+#'     trees without their own allometry ("chave2014" or "custom"), `by_stem`, 
+#'     whether stems use their own allometries, and `allometries`, with the 
+#'     allometries from param.yaml added
+#'
+agbAllometryParam <- function(param, allometries = agb_allometries) {
+  method <- param[["agb_method"]]
+  if (is.null(method)) {
+    method <- "regional"
+  }
+  if (!identical(method, "regional") && !identical(method, "custom")) {
+    stop("`agb_method` must be one of: regional, custom")
+  }
+  # `[[`, as `$` would partially match `stem_allometry_custom`
+  by_stem <- param[["stem_allometry"]]
+  if (is.null(by_stem)) {
+    by_stem <- FALSE
+  }
+  if (length(by_stem) != 1 || !is.logical(by_stem) || is.na(by_stem)) {
+    stop("`stem_allometry` must be true or false")
+  }
+
+  if (method == "custom") {
+    if (is.null(param[["agb_custom"]])) {
+      stop("`agb_method` is \"custom\", so `agb_custom` must give the AGB ",
+        "allometry, see `agbCustom()` in ./func.R")
+    }
+    allometries$custom <- agbCustom(param[["agb_custom"]], "agb_custom")
+  }
+
+  stem_custom <- param[["stem_allometry_custom"]]
+  if (length(stem_custom) > 0) {
+    nm <- names(stem_custom)
+    if (is.null(nm) || any(nm == "") || anyDuplicated(nm) > 0) {
+      stop("`stem_allometry_custom` must be a list of allometries with unique names")
+    }
+    clash <- intersect(nm, c("chave2014", "custom", names(agb_allometries)))
+    if (length(clash) > 0) {
+      stop("Names in `stem_allometry_custom` already in use: ", 
+        paste(clash, collapse = ", "))
+    }
+    for (i in nm) {
+      allometries[[i]] <- agbCustom(stem_custom[[i]], 
+        paste0("stem_allometry_custom: ", i))
+    }
+  }
+
+  # Allometries which use height need a height-diameter model
+  use_h <- names(allometries)[vapply(allometries, function(a) {
+    "H" %in% all.vars(a$formula)
+  }, logical(1))]
+  use_h <- intersect(use_h, c("custom", names(stem_custom)))
+  if (length(use_h) > 0 && identical(param[["height_method"]], "regional")) {
+    stop("AGB allometries which use height (H) need a height-diameter model, ",
+      "so `height_method` must be \"field\" or \"custom\": ", 
+      paste(use_h, collapse = ", "))
+  }
+
+  list(method = method, 
+    default = if (method == "custom") "custom" else "chave2014",
+    by_stem = by_stem, allometries = allometries)
 }
 
 #' Height-diameter model from param.yaml
 #'
-#' @param x `height_custom` from param.yaml: a list with `formula`, a string
-#'     giving height (m) as a function of diameter `D` (cm), e.g.
-#'     "a * D^b / (k + D^b)", `parameters`, a named list of parameter values,
-#'     `sigma`, the residual standard deviation, `link`, "log" if the
-#'     residual error is log-normal and `formula` gives the median height, or
-#'     "identity", and `reference`
+#' @param x `height_custom` from param.yaml, a list in one of two forms, as
+#'     `agb_custom`. Either an equation: `formula`, a string giving height (m) 
+#'     as a function of diameter `D` (cm), e.g. "a * D^b / (k + D^b)", 
+#'     `parameters`, a named list of parameter values, `sigma`, the residual 
+#'     standard deviation, and `link`, "log" (default) if the residual error 
+#'     is log-normal and `formula` gives the median height, or "identity". Or 
+#'     a model fitted with brms: `model`, the path of an .rds file of the 
+#'     model, and `variables`, which says what each variable of the model is, 
+#'     as expressions of `H` and `D`, e.g. `list(height_m = "H", dbh = "D")`, 
+#'     see `brmsEquation()`. Both can have a `reference`
+#' @param name name of the parameter, for messages
+#' @param n_draw number of sets of parameter values drawn from `vcov`, and 
+#'     the maximum number kept from `draws` or from a model
+#' @param seed random seed for the draws from `vcov`
+#'
+#' @details An equation with one set of `parameters` propagates only its
+#' residual error. The uncertainty in its parameters is propagated if `draws` 
+#' or `vcov` is given, see `paramSets()`, or with a model fitted with brms, 
+#' whose posterior draws are used. Each Monte Carlo simulation then uses one 
+#' set of parameter values for all trees, see BIOMASS::customHD().
 #'
 #' @return a height-diameter model from BIOMASS::customHD()
 #'
-heightCustom <- function(x) {
+heightCustom <- function(x, name = "height_custom", n_draw = 1000, seed = 42) {
+  if (!is.null(x$model)) {
+    if (!file.exists(x$model)) {
+      stop("`model` in `", name, "` not found: ", x$model)
+    }
+    eq <- brmsEquation(readRDS(x$model), x$variables, response = "H",
+      what = "height-diameter model", n_draw = n_draw)
+    unknown <- setdiff(all.vars(eq$expr), c("D", names(eq$parameters)))
+    if (length(unknown) > 0) {
+      stop("The brms height-diameter model must predict height from diameter ",
+        "(D) only, see `variables`. Other variables: ", 
+        paste(unknown, collapse = ", "))
+    }
+    # customHD() takes height on the natural scale
+    expr <- if (eq$link == "log") bquote(exp(.(eq$expr))) else eq$expr
+    par <- eq$parameters
+    return(BIOMASS::customHD(
+      formula = as.formula(call("~", expr), env = baseenv()),
+      parameters = par[, setdiff(names(par), "sigma"), drop = FALSE],
+      sigma = par$sigma, link = eq$link, 
+      name = paste0(if (is.null(x$reference)) "height-diameter model" else x$reference,
+        ", fitted with brms")))
+  }
+  if (is.null(x$formula) || (is.null(x$parameters) && is.null(x$draws)) ||
+    (is.null(x$sigma) && is.null(x$draws))) {
+    stop("`", name, "` must give either `model`, or the height-diameter ",
+      "model's `formula`, `parameters` (or `draws`) and `sigma`")
+  }
+  par <- paramSets(x, name, n_draw, seed)$parameters
   BIOMASS::customHD(
     formula = as.formula(paste("~", x$formula)),
-    parameters = unlist(x$parameters),
-    sigma = x$sigma,
+    parameters = if (nrow(par) == 1) {
+      unlist(par[, setdiff(names(par), "sigma"), drop = FALSE]) 
+    } else {
+      par[, setdiff(names(par), "sigma"), drop = FALSE]
+    },
+    sigma = if (nrow(par) == 1) par$sigma else par$sigma,
     link = if (is.null(x$link)) "log" else x$link,
     name = x$reference)
 }
@@ -1588,6 +2054,225 @@ dateRes <- function(x) {
   ifelse(grepl("^\\d{4}-\\d{2}-\\d{2}$", x), "YYYY-MM-DD",
     ifelse(grepl("^\\d{4}-\\d{2}$", x), "YYYY-MM",
       ifelse(grepl("^\\d{4}$", x), "YYYY", NA_character_)))
+}
+
+#' Columns of the World Flora Online name matching cache file
+#'
+#' One row per submitted name. Columns starting `accepted_` are the fields of
+#' `currentPreferredUsage$hasName` in the cache of `BIOMASS::correctTaxo()`, 
+#' i.e. the accepted name which the matched name refers to.
+#'
+#' @return character vector of column names, named by their position in a
+#'     flattened cache entry, see `unlist()`
+#'
+wfoCacheCols <- function() {
+  name_fields <- c("id", "fullNameStringNoAuthorsPlain", "authorsString",
+    "nomenclaturalStatus", "role", "rank", "wfoPath")
+  out <- c("submitted_name", "method", name_fields,
+    "familyAcc", "genusAcc", "speciesAcc", paste0("accepted_", name_fields))
+  names(out) <- c("submitted_name", "method", name_fields,
+    "familyAcc", "genusAcc", "speciesAcc",
+    paste0("currentPreferredUsage.hasName.", name_fields))
+  out
+}
+
+#' Write the World Flora Online name matching cache to a .csv file
+#'
+#' Writes the cache of `BIOMASS::correctTaxo()`, see `BIOMASS::getWFOCache()`,
+#' as a table with one row per submitted name, so that name matching choices
+#' can be read and reviewed without R.
+#'
+#' @param path path of the .csv file
+#' @param rm_empty logical, if TRUE names which could not be matched (`method`
+#'     "EMPTY") are not written, so that they are offered again in the next
+#'     interactive run
+#' @param cache named list, the cache to write
+#'
+#' @return dataframe written to `path`, invisibly
+#'
+wfoCacheWrite <- function(path, rm_empty = FALSE, cache = BIOMASS::getWFOCache()) {
+  cols <- wfoCacheCols()
+  rows <- lapply(cache, function(x) {
+    y <- unlist(x)
+    unknown <- setdiff(names(y), names(cols))
+    if (length(unknown) > 0) {
+      stop("WFO cache fields not in `wfoCacheCols()`: ",
+        paste(unknown, collapse = ", "))
+    }
+    out <- setNames(rep(NA_character_, length(cols)), cols)
+    out[cols[names(y)]] <- as.character(y)
+    out
+  })
+  df <- as.data.frame(do.call(rbind, c(rows, list(
+    matrix(character(0), nrow = 0, ncol = length(cols), 
+      dimnames = list(NULL, cols))))), stringsAsFactors = FALSE)
+  rownames(df) <- NULL
+  if (!identical(df$submitted_name, as.character(names(cache)))) {
+    stop("WFO cache names do not match `submitted_name`")
+  }
+  if (rm_empty) {
+    df <- df[!df$method %in% "EMPTY", ]
+  }
+  df <- df[order(df$submitted_name), ]
+  rownames(df) <- NULL
+
+  # Write as UTF-8 bytes, so that author names with accents are written the
+  # same in every locale. `write.csv()` escapes them in a non-UTF-8 locale
+  quote_field <- function(v) {
+    ifelse(is.na(v), "NA", paste0("\"", gsub("\"", "\"\"", enc2utf8(v)), "\""))
+  }
+  lines <- c(
+    paste(quote_field(unname(cols)), collapse = ","),
+    do.call(paste, c(lapply(df, quote_field), sep = ",")))
+  con <- file(path, open = "wb")
+  on.exit(close(con))
+  writeLines(lines, con, useBytes = TRUE)
+  invisible(df)
+}
+
+#' Read the World Flora Online name matching cache from a .csv file
+#'
+#' Reads a file written by `wfoCacheWrite()` and replaces the cache of
+#' `BIOMASS::correctTaxo()` with its contents. If the file does not exist, the
+#' cache is emptied.
+#'
+#' @param path path of the .csv file
+#' @param set logical, if TRUE (default) the cache is replaced, see
+#'     `BIOMASS::setWFOCache()`
+#'
+#' @return named list with one element per submitted name, invisibly
+#'
+wfoCacheRead <- function(path, set = TRUE) {
+  cols <- wfoCacheCols()
+  cache <- list()
+  if (file.exists(path)) {
+    df <- read.csv(path, colClasses = "character", na.strings = "NA", 
+      encoding = "UTF-8", check.names = FALSE)
+    if (!identical(names(df), unname(cols))) {
+      stop("Columns of ", path, " must be: ", paste(cols, collapse = ", "))
+    }
+    if (anyDuplicated(df$submitted_name) > 0 || anyNA(df$submitted_name)) {
+      stop("`submitted_name` in ", path, " must be unique, with no missing values")
+    }
+    acc <- grepl("^accepted_", cols)
+    cache <- lapply(seq_len(nrow(df)), function(i) {
+      y <- unlist(df[i, ])
+      top <- as.list(y[!acc & !is.na(y)])
+      has_name <- y[acc & !is.na(y)]
+      if (length(has_name) > 0) {
+        names(has_name) <- sub("^accepted_", "", names(has_name))
+        top$currentPreferredUsage <- list(hasName = as.list(has_name))
+      }
+      # Field order of `BIOMASS::correctTaxo()`
+      ord <- c("id", "fullNameStringNoAuthorsPlain", "authorsString",
+        "nomenclaturalStatus", "role", "rank", "wfoPath", 
+        "currentPreferredUsage", "method", "submitted_name", "familyAcc",
+        "genusAcc", "speciesAcc")
+      top[ord[ord %in% names(top)]]
+    })
+    names(cache) <- df$submitted_name
+  }
+  if (set) {
+    BIOMASS::setWFOCache(cache)
+  }
+  invisible(cache)
+}
+
+#' Standard deviation of GNSS error of plot points, from the plot polygon fit
+#'
+#' Estimates the standard deviation of the error of GNSS points, in each of
+#' easting and northing, from the residuals of the points around their fitted
+#' positions in the plot polygons. Residuals are pooled across the plots of
+#' a site, as most plots have too few points to estimate it alone: with one
+#' point at each of four corners, a plot has 8 coordinates, of which the fit 
+#' uses 3 ("procrustes": translation and rotation) or 6 ("affine"), and all 8
+#' with "exact", where the corners are the points themselves.
+#'
+#' The fitted position of a point is found by bilinear interpolation between
+#' the fitted corners of its plot. With "procrustes", residuals also include
+#' departures of the plot from its field dimensions, so the error of the GNSS
+#' points is overestimated.
+#'
+#' @param pt plot points, with `plot_id`, `x_rel_m`, `y_rel_m`, 
+#'     `rover_easting_utm_m`, `rover_northing_utm_m` and `corner`, in one 
+#'     projected coordinate system
+#' @param corner_coord fitted plot corners, `corner_coord` from 
+#'     BIOMASS::plotPolygonFit(), with `plot_ID`, `x_rel`, `y_rel`, `x_proj` 
+#'     and `y_proj`
+#' @param method the polygon method, "exact", "affine" or "procrustes"
+#' @param outliers optional, `outliers` from BIOMASS::plotPolygonFit(), points
+#'     which were not used in the fit
+#'
+#' @return a list with `sd`, the pooled standard deviation (m), NA if there 
+#'     are no degrees of freedom, and `plots`, a data frame with the number of 
+#'     points, sum of squared residuals (m2) and degrees of freedom of each 
+#'     plot
+#'
+cornerErrorSD <- function(pt, corner_coord, method, outliers = NULL) {
+  pt <- pt[!is.na(pt$x_rel_m) & !is.na(pt$y_rel_m) & 
+    !is.na(pt$rover_easting_utm_m) & !is.na(pt$rover_northing_utm_m), ]
+  # "exact" uses corner points only
+  if (method == "exact") {
+    pt <- pt[pt$corner %in% TRUE, ]
+  }
+  if (!is.null(outliers) && nrow(outliers) > 0) {
+    key <- function(p, x, y) paste(p, round(x, 3), round(y, 3))
+    pt <- pt[!key(pt$plot_id, pt$rover_easting_utm_m, pt$rover_northing_utm_m) %in%
+      key(outliers$plot_ID, outliers$x_proj, outliers$y_proj), ]
+  }
+  corner_coord <- as.data.frame(corner_coord)
+  plots <- do.call(rbind, lapply(unique(as.character(corner_coord$plot_ID)), function(i) {
+    cc <- corner_coord[corner_coord$plot_ID == i, ]
+    p <- pt[pt$plot_id == i, ]
+    out <- data.frame(plot_id = i, n_point = nrow(p), ssr_m2 = NA_real_, df = NA_integer_)
+    if (nrow(cc) != 4 || nrow(p) == 0) {
+      return(out)
+    }
+    pred <- tryCatch(as.data.frame(BIOMASS::bilinear_interpolation(
+      coord = p[, c("x_rel_m", "y_rel_m")],
+      from_corner_coord = cc[, c("x_rel", "y_rel")],
+      to_corner_coord = cc[, c("x_proj", "y_proj")],
+      ordered_corner = TRUE)), error = function(e) NULL)
+    if (is.null(pred)) {
+      return(out)
+    }
+    n_par <- switch(method,
+      procrustes = 3L, 
+      affine = 6L,
+      exact = 2L * nrow(unique(p[, c("x_rel_m", "y_rel_m")])))
+    out$ssr_m2 <- sum((p$rover_easting_utm_m - pred[[1]])^2 + 
+      (p$rover_northing_utm_m - pred[[2]])^2)
+    out$df <- 2L * nrow(p) - n_par
+    out
+  }))
+  ok <- !is.na(plots$df) & plots$df > 0
+  list(
+    sd = if (any(ok)) sqrt(sum(plots$ssr_m2[ok]) / sum(plots$df[ok])) else NA_real_,
+    plots = plots)
+}
+
+#' Area of quadrats in each simulation of plot corner coordinates
+#'
+#' @param simu_coord `simu_coord` from BIOMASS::divide_plot(sd_coord = ), a
+#'     list with one table of quadrat corners per simulation, with 
+#'     `subplot_ID`, `x_proj` and `y_proj`, in the order of the corners 
+#'     around each quadrat
+#'
+#' @return matrix of quadrat area (ha), with one row per quadrat, named by 
+#'     `subplot_ID`, and one column per simulation
+#'
+quadAreaSimu <- function(simu_coord) {
+  area <- lapply(simu_coord, function(d) {
+    d <- as.data.frame(d)
+    vapply(split(d[, c("x_proj", "y_proj")], factor(d$subplot_ID, unique(d$subplot_ID))), 
+      function(q) {
+        j <- c(seq_len(nrow(q))[-1], 1)
+        abs(sum(q$x_proj * q$y_proj[j] - q$x_proj[j] * q$y_proj)) / 2 / 10000
+      }, numeric(1))
+  })
+  out <- do.call(cbind, area)
+  colnames(out) <- NULL
+  out
 }
 
 #' Translate flags from a plot network into GEO-TREES stem codes

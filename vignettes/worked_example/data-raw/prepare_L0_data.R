@@ -198,8 +198,8 @@ write_yaml(param_anon, "./data/param.yaml")
 
 # Copy WFO cache
 file.copy(
-  from = file.path(indir, "02_taxa/wfo_cache.rds"),
-  to = "./data/wfo_cache.rds",
+  from = file.path(indir, "02_taxa/wfo_cache.csv"),
+  to = "./data/wfo_cache.csv",
   overwrite = TRUE)
 
 # Copy version YAML file

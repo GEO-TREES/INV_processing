@@ -19,7 +19,9 @@
 #     model in `height_custom`
 # If `stem_allometry` is true, trees use the allometry in `agb_allometry` of
 # their largest stem, see `agb_allometries` in ./func.R, e.g. Goodman et al.
-# (2013) for palms. Trees without one use Chave et al. (2014)
+# (2013) for palms, or `stem_allometry_custom` in param.yaml. Trees without
+# one use Chave et al. (2014), or the allometry in `agb_custom` if 
+# `agb_method` is "custom", see `agbAllometryParam()` in ./func.R
 #
 # Diameters are corrected for taper if `taper_method` is set, see 
 # ./04_height.R
@@ -51,7 +53,7 @@ tree <- stem_all %>%
     agb_allometry = if (param$stem_allometry) first(agb_allometry) else NA_character_,
     n_taxa = n_distinct(taxon_name),
     .groups = "drop") %>%
-  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), "chave2014"))
+  mutate(agb_allometry = coalesce(na_if(agb_allometry, ""), agb_allom_default))
 
 allom_unknown <- setdiff(tree$agb_allometry, c("chave2014", names(agb_allometries)))
 if (length(allom_unknown) > 0) {

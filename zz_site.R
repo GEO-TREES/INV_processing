@@ -80,6 +80,16 @@ param_name_vec <- c(
 # `stem_allometry` is whether stems use the AGB allometry in `agb_allometry`
 # in the stem table, see `agb_allometries` in ./func.R: false (default) or
 # true
+# `corner_error` is the error of the GNSS coordinates of plot corners, which
+# is propagated to quadrat area, see ./07_quad.R: "none" (default), 
+# "residual", estimated from the fit of the plot polygons, or a standard 
+# deviation in m
+# `agb_method` is the AGB allometry of trees without their own allometry:
+# "regional" (default), Chave et al. (2014), or "custom"
+# `agb_custom` is the AGB allometry used if `agb_method` is "custom", an
+# equation or a model fitted with brms, see `agbCustom()` in ./func.R
+# `stem_allometry_custom` is a named list of allometries, in the format of
+# `agb_custom`, which stems can use if `stem_allometry` is true
 # `growth_form_exclude` is values of `growth_form` in the stem table excluded
 # from AGB density, e.g. ["strangler"]. None by default
 # `height_custom` is the height-diameter model used if `height_method` is
@@ -95,6 +105,10 @@ param_optional_vec <- c(
   "taper_method",
   "taper_species",
   "stem_allometry",
+  "corner_error",
+  "agb_method",
+  "agb_custom",
+  "stem_allometry_custom",
   "growth_form_exclude",
   "height_custom",
   "crown_method",
@@ -209,27 +223,37 @@ if (!is.null(param$taper_species) && (!is.list(param$taper_species) ||
     "e.g. {\"Ceiba pentandra\": 0.0495}")
 }
 
-if (is.null(param$stem_allometry)) {
-  param$stem_allometry <- FALSE
-}
-if (length(param$stem_allometry) != 1 || !is.logical(param$stem_allometry) ||
-  is.na(param$stem_allometry)) {
-  stop("`stem_allometry` must be true or false")
-}
-
 param$growth_form_exclude <- unlist(param$growth_form_exclude)
 if (length(param$growth_form_exclude) > 0 && !is.character(param$growth_form_exclude)) {
   stop("`growth_form_exclude` must be values of `growth_form`, e.g. [\"strangler\"]")
 }
 
 if (param$height_method == "custom") {
-  if (is.null(param$height_custom) ||
-    !all(c("formula", "parameters", "sigma") %in% names(param$height_custom))) {
+  if (is.null(param$height_custom)) {
     stop("`height_method` is \"custom\", so `height_custom` must give the ",
       "height-diameter model's `formula`, `parameters` and `sigma`")
   }
   # Check the model can be built
   invisible(heightCustom(param$height_custom))
+}
+
+# AGB allometries, see `agbAllometryParam()` in ./func.R. Trees use Chave et 
+# al. (2014) if `agb_method` is "regional" (default), or the allometry in 
+# `agb_custom` if it is "custom", as with `height_method` and `height_custom`. 
+# If `stem_allometry` is true, stems with a value of `agb_allometry` in the 
+# stem table use that allometry instead
+if (!is.null(param$agb_custom) && is.null(param$agb_method)) {
+  stop("`agb_custom` is given, so `agb_method` must be \"custom\" to use it, ",
+    "or \"regional\" to use Chave et al. (2014)")
+}
+agb_allom <- agbAllometryParam(param, agb_allometries)
+agb_allometries <- agb_allom$allometries
+agb_allom_default <- agb_allom$default
+param$agb_method <- agb_allom$method
+param$stem_allometry <- agb_allom$by_stem
+if (param$agb_method == "custom") {
+  message("AGB allometry of the site: ", agb_allometries$custom$description,
+    " (", nrow(agb_allometries$custom$parameters), " set(s) of parameter values)")
 }
 
 # A local height-diameter model is fitted as a Bayesian model with the brms
@@ -238,6 +262,17 @@ if (param$height_method == "custom") {
 if (param$height_method == "field" && !requireNamespace("brms", quietly = TRUE)) {
   stop("`height_method` is \"field\", so the local height-diameter model is ",
     "fitted as a Bayesian model with the brms package, which is not installed")
+}
+
+if (is.null(param$corner_error)) {
+  param$corner_error <- "none"
+}
+if (length(param$corner_error) != 1 || 
+  !(param$corner_error %in% c("none", "residual") ||
+    (is.numeric(param$corner_error) && !is.na(param$corner_error) && 
+      param$corner_error >= 0))) {
+  stop("`corner_error` must be \"none\", \"residual\", or a standard ",
+    "deviation in m >= 0")
 }
 
 if (is.null(param$crown_method)) {
@@ -331,7 +366,7 @@ if (tolower(trimws(user_input)) %in% c("y", "yes")) {
   # stores choices made during interactive taxonomic name matching
   ver_dir <- file.path(param$out_dir, software_version_sanit)
   files_rem <- list.files(ver_dir, recursive = TRUE, full.names = TRUE, all.files = TRUE)
-  files_rem <- files_rem[basename(files_rem) != "wfo_cache.rds"]
+  files_rem <- files_rem[!basename(files_rem) %in% c("wfo_cache.csv", "wfo_cache.rds")]
   invisible(file.remove(files_rem))
 
   # Delete empty sub-directories, deepest first
@@ -401,16 +436,23 @@ dir.create(outdir, showWarnings = FALSE, recursive = TRUE)
 stem <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "stem.csv"), colClasses = stem_col_class)
 # WFO cache is shared by all product versions of an acquisition, and is
 # stored with the raw data, in the directory containing `raw_dir`
-wfo_path <- file.path(dirname(param$raw_dir), "wfo_cache.rds")
+# It is a .csv file, see `wfoCacheWrite()` in ./func.R, so that name matching 
+# choices can be reviewed without R
+wfo_path <- file.path(dirname(param$raw_dir), "wfo_cache.csv")
 if (!file.exists(wfo_path)) {
-  # Use cache from a previous location, if any
-  wfo_old <- c(file.path(acq_dir, "wfo_cache.rds"), file.path(outdir, "wfo_cache.rds"))
+  # Convert a cache saved as .rds by a previous version of the pipeline, if
+  # any. The .rds file is not deleted
+  wfo_old <- c(
+    file.path(dirname(param$raw_dir), "wfo_cache.rds"),
+    file.path(acq_dir, "wfo_cache.rds"), 
+    file.path(outdir, "wfo_cache.rds"))
   wfo_old <- wfo_old[file.exists(wfo_old)]
   if (length(wfo_old) > 0) {
-    file.copy(wfo_old[1], wfo_path)
+    message("Converting ", wfo_old[1], " to ", wfo_path)
+    wfoCacheWrite(wfo_path, cache = readRDS(wfo_old[1]))
   }
 }
-loadWFOCache(wfo_path) 
+wfoCacheRead(wfo_path)
 if (file.exists(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"))) {
   wd <- read.csv(file.path(param$out_dir, software_version_sanit, "01_fmt", "wd.csv"), colClasses = wd_col_class)
 } else {

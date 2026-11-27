@@ -93,12 +93,12 @@ test_that("recordFilter() and agbdFilter() select stems for AGB and AGB density"
     pom_m = c(1.3, 1.3, 1.3, 1.3, 1.3, NA, 1.3, 2),
     measurement_date = 2024.5,
     code = c("AS", "ASB", "AS", "DS", "AST", "ASM", "AS", "AS"))
-  # Excludes dead (4), broken below POM (5), missing (6), and the lower POM
-  # of a stem measured twice (7). Broken above POM (2) and small (3) included
+  # Excludes broken below POM (5), missing (6), and the lower POM of a stem
+  # measured twice (7). Broken above POM (2), small (3) and dead (4) included
   record_fil <- recordFilter(stem, plot)
-  expect_equal(record_fil, c("1", "2", "3", "8"))
+  expect_equal(record_fil, c("1", "2", "3", "4", "8"))
 
-  # Small stems (3) are excluded from AGB density
+  # Small stems (3) and dead stems (4) are excluded from AGB density
   expect_equal(agbdFilter(stem, plot, record_fil), c("1", "2", "8"))
 })
 

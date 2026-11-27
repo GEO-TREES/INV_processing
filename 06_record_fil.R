@@ -6,12 +6,14 @@
 # Stems without coordinates are kept, and are assigned to quadrats at random
 # during AGB error propagation in ./08_agb_mc.R. If `missing_diam_method` is
 # "impute", stems without a diameter are kept, and their diameters are 
-# imputed during AGB error propagation
+# imputed during AGB error propagation. Dead stems and fallen stems with a 
+# diameter are kept, and have AGB estimates
 record_fil <- recordFilter(stem, plot, 
   missing_diam = param$missing_diam_method == "impute")
 
 # Select stems used to estimate AGB density, and to form multi-stemmed trees,
-# see `agbdFilter()` in ./func.R. Stems below the minimum diameter threshold,
+# see `agbdFilter()` in ./func.R. Dead stems and fallen stems are excluded.
+# Stems below the minimum diameter threshold,
 # the larger of `agbd_diam_min_cm` and the threshold of the plot, are
 # excluded. Stems broken above the POM are excluded if `include_broken` is
 # false, and stems of growth forms in `growth_form_exclude`, e.g. strangler
@@ -39,11 +41,13 @@ record_status <- stem %>%
       as.character(record_id) %in% record_agbd ~ "included in AGB density",
       is.na(code) | code == "" ~ "excluded: no code",
       grepl("M", code) ~ "excluded: missing",
-      !grepl("A", code) ~ "excluded: dead",
-      !grepl("S", code) ~ "excluded: not standing",
       grepl("T", code) ~ "excluded: broken below POM",
+      !grepl("A", code) & is.na(diam_cm) ~ "excluded: dead, no diameter",
+      !grepl("S", code) & is.na(diam_cm) ~ "excluded: not standing, no diameter",
       is.na(diam_cm) ~ "excluded: no diameter",
       !as.character(record_id) %in% record_fil ~ "excluded: repeat measurement of stem",
+      !grepl("A", code) ~ "AGB only: dead",
+      !grepl("S", code) ~ "AGB only: not standing",
       !is.na(diam_min) & !is.na(diam_cm) & diam_cm < diam_min ~ 
         "AGB only: below diameter threshold",
       grepl("B", code) & !param$include_broken ~ "AGB only: broken above POM",

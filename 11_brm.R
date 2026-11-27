@@ -89,7 +89,10 @@ L3_quad <- quad_summ %>%
     Plot_name = plot_id,
     Census_date = census_date,
     Quadrat_name = quadrat_id,
+    # Mean and median of the simulations. The median is `medAGB` of
+    # BIOMASS::AGBmonteCarlo(), per hectare
     AGBD_stand_estimate = agbd_Mg_ha_mc_mean,
+    AGBD_stand_median = agbd_Mg_ha_mc_median,
     AGBD_stand_uncertainty = agbd_Mg_ha_mc_sd,
     # 95% interval, the 2.5% and 97.5% quantiles of the simulations
     AGBD_stand_ci_lower = agbd_Mg_ha_mc_ci2.5,
@@ -102,6 +105,7 @@ L3_quad <- quad_summ %>%
     Quadrat_area = quadrat_area_ha,
     # Crown-distributed AGB density, if `crown_method` is not "none"
     AGBD_crown_estimate = any_of("agbd_Mg_ha_crown_mc_mean"),
+    AGBD_crown_median = any_of("agbd_Mg_ha_crown_mc_median"),
     AGBD_crown_uncertainty = any_of("agbd_Mg_ha_crown_mc_sd"),
     AGBD_crown_ci_lower = any_of("agbd_Mg_ha_crown_mc_ci2.5"),
     AGBD_crown_ci_upper = any_of("agbd_Mg_ha_crown_mc_ci97.5")) %>%
@@ -109,6 +113,7 @@ L3_quad <- quad_summ %>%
 
 # Check all values filled
 stopifnot(all(!is.na(L3_quad$AGBD_stand_estimate)))
+stopifnot(all(!is.na(L3_quad$AGBD_stand_median)))
 stopifnot(all(!is.na(L3_quad$AGBD_stand_ci_lower)))
 stopifnot(all(!is.na(L3_quad$AGBD_stand_ci_upper)))
 

@@ -343,8 +343,8 @@ lapply(names(rocrate_list), function(x) {
     file.path(L_dir_list[[x]], "ro-crate-metadata.json"))
 })
 
-# Copy param.yaml to each data output
+# Copy param.yaml to each data output, replacing the copy from a previous run
 lapply(L_dir_list, function(x) { 
-  file.copy(p_file, file.path(x, "param.yaml"))
+  file.copy(p_file, file.path(x, "param.yaml"), overwrite = TRUE)
 })
 
